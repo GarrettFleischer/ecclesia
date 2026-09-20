@@ -1,0 +1,10 @@
+{
+  "name": "Ecclesia",
+  "short_name": "Ecclesia",
+  "description": "Churches connecting the members of the body.",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#f3eee4",
+  "theme_color": "#2a3729",
+  "lang": "en"
+}

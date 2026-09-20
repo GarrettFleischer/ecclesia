@@ -66,13 +66,45 @@ p { margin: 0 0 0.8rem; }
   font-size: 1.2rem;
   color: var(--ink);
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.mark-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--olive);
+  box-shadow: 0 0 0 3px rgba(61, 79, 60, 0.15);
 }
 
 .who {
   color: var(--ink-soft);
   text-decoration: none;
   font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
+
+.who-name { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.avatar {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  background: var(--olive);
+  color: #f7f3ea;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.avatar-lg { width: 2.4rem; height: 2.4rem; font-size: 0.85rem; margin-bottom: 0.35rem; }
 
 .sheet {
   width: min(760px, calc(100% - 2rem));
@@ -262,11 +294,23 @@ textarea { resize: vertical; }
   text-align: center;
   text-decoration: none;
   color: var(--ink-soft);
-  font-size: 0.78rem;
-  padding: 0.45rem 0.15rem;
+  font-size: 0.72rem;
+  padding: 0.4rem 0.15rem 0.3rem;
   border-radius: 12px;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12rem;
 }
+
+.dock-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: block;
+}
+
+.dock-icon svg { width: 100%; height: 100%; display: block; }
 
 .dock-link.is-active {
   color: var(--olive-deep);

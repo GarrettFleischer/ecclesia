@@ -12,11 +12,14 @@ axum = { version = "=0.8.1", features = ["form", "macros", "query"] }
 axum-extra = { version = "=0.10.0", features = ["cookie"] }
 chrono = { version = "=0.4.39", default-features = false, features = ["clock", "std"] }
 cookie = "=0.18.1"
+hex = "=0.4.3"
+hmac = "=0.12.1"
 idna = "=1.0.3"
 idna_adapter = "=1.1.0"
 indexmap = "=2.7.1"
 maud = "=0.26.0"
 serde = { version = "=1.0.217", features = ["derive"] }
+sha2 = "=0.10.8"
 tempfile = "=3.14.0"
 sqlx = { version = "=0.8.2", default-features = false, features = [
     "derive",

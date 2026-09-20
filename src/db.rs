@@ -6,8 +6,8 @@ use sqlx::{
 use std::str::FromStr;
 
 use crate::domain::{
-    new_id, now_iso, Application, ApplicationCard, Church, ChurchMember, Endorsement,
-    EndorsementCard, Gift, MemberGift, Membership, Need, NeedCard, Notification, User,
+    new_id, now_iso, Application, ApplicationCard, Church, ChurchMember, Effect, Endorsement,
+    EndorsementCard, Gift, MemberGift, Membership, Need, NeedCard, Notification, User, Write,
 };
 
 #[derive(Clone)]
@@ -1268,6 +1268,145 @@ impl Db {
                 )
             })
             .collect())
+    }
+
+    pub async fn apply(&self, effect: &Effect) -> anyhow::Result<()> {
+        for write in &effect.writes {
+            match write {
+                Write::InsertUser(user) => {
+                    sqlx::query(
+                        "INSERT INTO users (id, name, email, city, region, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&user.id)
+                    .bind(&user.name)
+                    .bind(&user.email)
+                    .bind(&user.city)
+                    .bind(&user.region)
+                    .bind(&user.bio)
+                    .bind(&user.created_at)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Write::UpdateUser {
+                    id,
+                    name,
+                    city,
+                    region,
+                    bio,
+                } => {
+                    self.update_user(id, name, city, region, bio).await?;
+                }
+                Write::InsertChurch(church) => {
+                    sqlx::query(
+                        "INSERT INTO churches (id, name, city, region, country, description, gathering, owner_id, invite_code, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&church.id)
+                    .bind(&church.name)
+                    .bind(&church.city)
+                    .bind(&church.region)
+                    .bind(&church.country)
+                    .bind(&church.description)
+                    .bind(&church.gathering)
+                    .bind(&church.owner_id)
+                    .bind(&church.invite_code)
+                    .bind(&church.created_at)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Write::InsertMembership(membership) => {
+                    sqlx::query(
+                        "INSERT INTO memberships (id, church_id, user_id, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&membership.id)
+                    .bind(&membership.church_id)
+                    .bind(&membership.user_id)
+                    .bind(&membership.role)
+                    .bind(&membership.status)
+                    .bind(&membership.created_at)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Write::SetMembershipStatus { id, status } => {
+                    self.set_membership_status(id, status).await?;
+                }
+                Write::InsertNeed(need) => {
+                    sqlx::query(
+                        "INSERT INTO needs (id, church_id, author_id, title, body, gift_id, scope, status, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&need.id)
+                    .bind(&need.church_id)
+                    .bind(&need.author_id)
+                    .bind(&need.title)
+                    .bind(&need.body)
+                    .bind(&need.gift_id)
+                    .bind(&need.scope)
+                    .bind(&need.status)
+                    .bind(&need.created_at)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Write::SetNeedStatus { id, status } => {
+                    self.set_need_status(id, status).await?;
+                }
+                Write::InsertApplication(application) => {
+                    sqlx::query(
+                        "INSERT INTO applications (id, need_id, user_id, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&application.id)
+                    .bind(&application.need_id)
+                    .bind(&application.user_id)
+                    .bind(&application.message)
+                    .bind(&application.status)
+                    .bind(&application.created_at)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Write::SetApplicationStatus { id, status } => {
+                    self.set_application_status(id, status).await?;
+                }
+                Write::InsertEndorsement(endorsement) => {
+                    sqlx::query(
+                        "INSERT INTO endorsements (id, from_user_id, to_user_id, gift_id, note, status, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&endorsement.id)
+                    .bind(&endorsement.from_user_id)
+                    .bind(&endorsement.to_user_id)
+                    .bind(&endorsement.gift_id)
+                    .bind(&endorsement.note)
+                    .bind(&endorsement.status)
+                    .bind(&endorsement.created_at)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Write::SetEndorsementStatus { id, status } => {
+                    self.set_endorsement_status(id, status).await?;
+                }
+                Write::UpsertMemberGift {
+                    user_id,
+                    gift_id,
+                    note,
+                } => {
+                    self.add_member_gift(user_id, gift_id, note).await?;
+                }
+                Write::RemoveMemberGift { user_id, gift_id } => {
+                    self.remove_member_gift(user_id, gift_id).await?;
+                }
+            }
+        }
+        for notice in &effect.notices {
+            self.notify(
+                &notice.user_id,
+                &notice.kind,
+                &notice.title,
+                &notice.body,
+                &notice.href,
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 

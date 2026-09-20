@@ -15,6 +15,10 @@ pub enum Nav {
     None,
 }
 
+pub fn csrf_input(csrf: &str) -> Markup {
+    html! { input type="hidden" name="csrf" value=(csrf); }
+}
+
 pub fn page(
     title: &str,
     user: Option<&User>,
@@ -29,18 +33,26 @@ pub fn page(
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
+                meta name="theme-color" content="#2a3729";
+                meta name="apple-mobile-web-app-capable" content="yes";
+                meta name="apple-mobile-web-app-status-bar-style" content="black-translucent";
+                meta name="apple-mobile-web-app-title" content="Ecclesia";
+                link rel="manifest" href="/static/manifest.webmanifest";
                 title { (title) " · Ecclesia" }
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
-                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
+                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
                 link rel="stylesheet" href="/static/app.css";
             }
             body {
                 @if nav != Nav::None {
                     header class="topbar" {
-                        a class="mark" href="/home" { span { "Ecclesia" } }
+                        a class="mark" href="/home" { span class="mark-dot" aria-hidden="true" {} span { "Ecclesia" } }
                         @if let Some(user) = user {
-                            a class="who" href="/me" { (user.name) }
+                            a class="who" href="/me" {
+                                span class="avatar" { (initials(&user.name)) }
+                                span class="who-name" { (user.name) }
+                            }
                         }
                     }
                 }
@@ -52,11 +64,11 @@ pub fn page(
                 }
                 @if nav != Nav::None {
                     nav class="dock" aria-label="Primary" {
-                        (dock_link("/", "Home", nav == Nav::Home, None))
-                        (dock_link("/churches", "Churches", nav == Nav::Churches, None))
-                        (dock_link("/the-body", "The body", nav == Nav::Body, None))
-                        (dock_link("/inbox", "Inbox", nav == Nav::Inbox, if unread > 0 { Some(unread) } else { None }))
-                        (dock_link("/me", "You", nav == Nav::You, None))
+                        (dock_link("/home", "Home", "home", nav == Nav::Home, None))
+                        (dock_link("/churches", "Churches", "church", nav == Nav::Churches, None))
+                        (dock_link("/the-body", "The body", "body", nav == Nav::Body, None))
+                        (dock_link("/inbox", "Inbox", "inbox", nav == Nav::Inbox, if unread > 0 { Some(unread) } else { None }))
+                        (dock_link("/me", "You", "you", nav == Nav::You, None))
                     }
                 }
             }
@@ -64,15 +76,44 @@ pub fn page(
     }
 }
 
-fn dock_link(href: &str, label: &str, active: bool, badge: Option<i64>) -> Markup {
+fn dock_link(href: &str, label: &str, icon: &str, active: bool, badge: Option<i64>) -> Markup {
     html! {
         a class={ "dock-link" (if active { " is-active" } else { "" }) } href=(href) {
+            span class="dock-icon" aria-hidden="true" { (dock_svg(icon)) }
             span { (label) }
             @if let Some(n) = badge {
                 span class="badge" { (n) }
             }
         }
     }
+}
+
+fn dock_svg(icon: &str) -> Markup {
+    match icon {
+        "home" => {
+            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { path d="M4 11.5 12 5l8 6.5V20H4z"; path d="M10 20v-6h4v6"; } }
+        }
+        "church" => {
+            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { path d="M12 3v4M10 5h4"; path d="M5 21V10l7-5 7 5v11"; path d="M9 21v-6h6v6"; } }
+        }
+        "body" => {
+            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { circle cx="8" cy="8" r="2.2"; circle cx="16" cy="8" r="2.2"; circle cx="12" cy="16" r="2.2"; path d="M9.7 9.7 11 14.2M14.3 9.7 13 14.2"; } }
+        }
+        "inbox" => {
+            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { path d="M4 6h16v12H4z"; path d="M4 12h4l2 3h4l2-3h4"; } }
+        }
+        _ => {
+            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { circle cx="12" cy="8" r="3"; path d="M5 20c1.5-4 12.5-4 14 0"; } }
+        }
+    }
+}
+
+fn initials(name: &str) -> String {
+    name.split_whitespace()
+        .filter_map(|part| part.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
 }
 
 pub fn flash_from(ok: Option<String>, err: Option<String>) -> Option<(bool, String)> {
@@ -122,11 +163,13 @@ fn flash_err(code: &str) -> String {
         "closed" => "That need is no longer open.".into(),
         "invite" => "That invite code does not match a church.".into(),
         "pending" => "There is nothing pending to decide.".into(),
+        "bad_email" => "That does not look like an email we can use.".into(),
+        "csrf" => "This form went stale. Refresh and try once more.".into(),
         other => other.to_string(),
     }
 }
 
-pub fn landing(users: &[User], flash: Option<(bool, String)>) -> Markup {
+pub fn landing(users: &[User], flash: Option<(bool, String)>, csrf: &str, demo: bool) -> Markup {
     page(
         "The body, together",
         None,
@@ -143,34 +186,39 @@ pub fn landing(users: &[User], flash: Option<(bool, String)>) -> Markup {
                     "Neighboring churches can see what the next parish cannot carry alone."
                 }
             }
-            section class="panel" {
-                h2 { "Walk through the Cedar Falls valley" }
-                p class="muted" {
-                    "This first slice has no passwords. Enter as someone already in the story — pastor, member, neighbor, or the person still waiting in the doorway."
-                }
-                div class="persona-grid" {
-                    @for user in users {
-                        form method="post" action="/session" {
-                            input type="hidden" name="user_id" value=(user.id);
-                            button class="persona" type="submit" {
-                                strong { (user.name) }
-                                span { (persona_line(user)) }
+            @if demo {
+                section class="panel" {
+                    h2 { "Walk through the Cedar Falls valley" }
+                    p class="muted" {
+                        "Demo seats have no passwords. Enter as a pastor, a member, a neighbor, or the person still waiting in the doorway. Production turns this off."
+                    }
+                    div class="persona-grid" {
+                        @for user in users {
+                            form method="post" action="/session" {
+                                (csrf_input(csrf))
+                                input type="hidden" name="user_id" value=(user.id);
+                                button class="persona" type="submit" {
+                                    span class="avatar avatar-lg" { (initials(&user.name)) }
+                                    strong { (user.name) }
+                                    span { (persona_line(user)) }
+                                }
                             }
                         }
                     }
                 }
             }
             section class="panel" {
-                h2 { "Or take your own seat" }
+                h2 { "Take your own seat" }
                 form class="stack" method="post" action="/register" {
-                    label { "Name" input name="name" required placeholder="Your name"; }
-                    label { "Email" input type="email" name="email" required placeholder="you@church.org"; }
+                    (csrf_input(csrf))
+                    label { "Name" input name="name" required placeholder="Your name" maxlength="80"; }
+                    label { "Email" input type="email" name="email" required placeholder="you@church.org" maxlength="120"; }
                     div class="split" {
-                        label { "City" input name="city" required placeholder="Cedar Falls"; }
-                        label { "Region" input name="region" required placeholder="Iowa"; }
+                        label { "City" input name="city" required placeholder="Cedar Falls" maxlength="80"; }
+                        label { "Region" input name="region" required placeholder="Iowa" maxlength="80"; }
                     }
                     label { "How do you serve?"
-                        textarea name="bio" rows="3" placeholder="The gifts you already practice, even if no one has ordained them." {}
+                        textarea name="bio" rows="3" maxlength="800" placeholder="The gifts you already practice, even if no one has ordained them." {}
                     }
                     button class="btn" type="submit" { "Create my place" }
                 }
@@ -199,6 +247,7 @@ pub fn home(
     pending: &[(Membership, Church)],
     needs: &[NeedCard],
     unread: i64,
+    csrf: &str,
 ) -> Markup {
     page(
         "Home",
@@ -225,6 +274,7 @@ pub fn home(
                             } @else {
                                 p { (church.name) " invited you." }
                                 form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
+                                    (csrf_input(csrf))
                                     button class="btn" type="submit" { "Accept and come in" }
                                 }
                             }
@@ -260,6 +310,7 @@ pub fn churches_index(
     flash: Option<(bool, String)>,
     churches: &[(Church, i64, i64)],
     unread: i64,
+    csrf: &str,
 ) -> Markup {
     page(
         "Churches",
@@ -274,6 +325,7 @@ pub fn churches_index(
             }
             p class="muted" { "A church here is a group with a shepherd. You request or receive an invite. They approve. Then your gifts are actually findable." }
             form class="row-form" method="post" action="/invites/redeem" {
+                (csrf_input(csrf))
                 label { "Invite code"
                     input name="code" placeholder="grace-k2m9" autocomplete="off";
                 }
@@ -296,7 +348,12 @@ pub fn churches_index(
     )
 }
 
-pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<(bool, String)>) -> Markup {
+pub fn church_new(
+    viewer: &Viewer,
+    unread: i64,
+    flash: Option<(bool, String)>,
+    csrf: &str,
+) -> Markup {
     page(
         "Plant a church group",
         Some(&viewer.user),
@@ -307,7 +364,8 @@ pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<(bool, String)>) -
             h1 { "Plant a church group" }
             p class="muted" { "You become the owner — the pastor or steward who approves people in. Neighboring churches will see you if you share a city or region." }
             form class="stack" method="post" action="/churches" {
-                label { "Church name" input name="name" required placeholder="Grace Covenant Church"; }
+                (csrf_input(csrf))
+                label { "Church name" input name="name" required placeholder="Grace Covenant Church" maxlength="120"; }
                 div class="split" {
                     label { "City" input name="city" required value=(viewer.user.city); }
                     label { "Region" input name="region" required value=(viewer.user.region); }
@@ -329,6 +387,7 @@ pub fn church_show(
     needs: &[NeedCard],
     flash: Option<(bool, String)>,
     unread: i64,
+    csrf: &str,
 ) -> Markup {
     let mine = viewer.membership_in(&church.id);
     let governor = viewer.can_govern(&church.id);
@@ -356,6 +415,7 @@ pub fn church_show(
                     }
                     "pending_invite" => {
                         form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
+                            (csrf_input(csrf))
                             button class="btn" type="submit" { "Accept this church's invite" }
                         }
                     }
@@ -366,6 +426,7 @@ pub fn church_show(
                 }
             } @else {
                 form method="post" action={ "/churches/" (church.id) "/join" } {
+                    (csrf_input(csrf))
                     button class="btn" type="submit" { "Ask to join" }
                 }
             }
@@ -375,6 +436,7 @@ pub fn church_show(
                     p class="muted" { "Share this invite code. They still confirm; you already chose them. Or invite someone already in Ecclesia by email." }
                     p class="code" { (church.invite_code) }
                     form class="row-form" method="post" action={ "/churches/" (church.id) "/invite" } {
+                        (csrf_input(csrf))
                         label { "Invite by email"
                             input type="email" name="email" required placeholder="james@stlukes.test";
                         }
@@ -396,9 +458,11 @@ pub fn church_show(
                                 @if member.status == "pending_request" {
                                     div class="row" {
                                         form method="post" action={ "/memberships/" (member.membership_id) "/approve" } {
+                                            (csrf_input(csrf))
                                             button class="btn" type="submit" { "Approve" }
                                         }
                                         form method="post" action={ "/memberships/" (member.membership_id) "/decline" } {
+                                            (csrf_input(csrf))
                                             button class="btn btn-quiet" type="submit" { "Decline" }
                                         }
                                     }
@@ -446,6 +510,7 @@ pub fn need_new(
     selected_church: Option<&str>,
     unread: i64,
     flash: Option<(bool, String)>,
+    csrf: &str,
 ) -> Markup {
     page(
         "Post a need",
@@ -465,6 +530,7 @@ pub fn need_new(
                 }
             } @else {
                 form class="stack" method="post" action="/needs" {
+                    (csrf_input(csrf))
                     label { "Church"
                         select name="church_id" required {
                             @for church in churches {
@@ -515,6 +581,7 @@ pub fn need_show(
     already: bool,
     unread: i64,
     flash: Option<(bool, String)>,
+    csrf: &str,
 ) -> Markup {
     let mine = viewer.user.id == need.author_id || viewer.can_govern(&need.church_id);
     page(
@@ -545,8 +612,9 @@ pub fn need_show(
                     section class="panel" {
                         h2 { "Offer to help" }
                         form class="stack" method="post" action={ "/needs/" (need.id) "/apply" } {
+                            (csrf_input(csrf))
                             label { "How you can carry this"
-                                textarea name="message" rows="3" required placeholder="When you can come, and what you will actually do." {}
+                                textarea name="message" rows="3" required maxlength="600" placeholder="When you can come, and what you will actually do." {}
                             }
                             button class="btn" type="submit" { "Apply to help" }
                         }
@@ -560,6 +628,7 @@ pub fn need_show(
             }
             @if mine && need.is_open() {
                 form method="post" action={ "/needs/" (need.id) "/close" } {
+                    (csrf_input(csrf))
                     button class="btn btn-quiet" type="submit" { "Close this need" }
                 }
             }
@@ -577,9 +646,11 @@ pub fn need_show(
                             @if mine && application.status == "pending" {
                                 div class="row" {
                                     form method="post" action={ "/applications/" (application.id) "/accept" } {
+                                        (csrf_input(csrf))
                                         button class="btn" type="submit" { "Receive them" }
                                     }
                                     form method="post" action={ "/applications/" (application.id) "/decline" } {
+                                        (csrf_input(csrf))
                                         button class="btn btn-quiet" type="submit" { "Not this time" }
                                     }
                                 }
@@ -601,6 +672,7 @@ pub fn member_show(
     catalog: &[Gift],
     unread: i64,
     flash: Option<(bool, String)>,
+    csrf: &str,
 ) -> Markup {
     let self_view = viewer.user.id == person.id;
     page(
@@ -659,6 +731,7 @@ pub fn member_show(
                     h2 { "Endorse a gift" }
                     p class="muted" { "They will be notified and can accept it onto their profile — or decline. You do not get to write their name for them." }
                     form class="stack" method="post" action={ "/members/" (person.id) "/endorse" } {
+                        (csrf_input(csrf))
                         label { "Gift"
                             select name="gift_id" required {
                                 @for gift in catalog {
@@ -683,6 +756,7 @@ pub fn inbox(
     notes: &[Notification],
     unread: i64,
     flash: Option<(bool, String)>,
+    csrf: &str,
 ) -> Markup {
     page(
         "Inbox",
@@ -710,9 +784,11 @@ pub fn inbox(
                                 p { (endorsement.note) }
                                 div class="row" {
                                     form method="post" action={ "/endorsements/" (endorsement.id) "/accept" } {
+                                        (csrf_input(csrf))
                                         button class="btn" type="submit" { "Accept onto my profile" }
                                     }
                                     form method="post" action={ "/endorsements/" (endorsement.id) "/decline" } {
+                                        (csrf_input(csrf))
                                         button class="btn btn-quiet" type="submit" { "Decline" }
                                     }
                                 }
@@ -746,6 +822,7 @@ pub fn me(
     memberships: &[(Church, Membership)],
     unread: i64,
     flash: Option<(bool, String)>,
+    csrf: &str,
 ) -> Markup {
     let used: Vec<&str> = gifts.iter().map(|g| g.gift_id.as_str()).collect();
     page(
@@ -757,7 +834,8 @@ pub fn me(
         html! {
             h1 { (viewer.user.name) }
             form class="stack" method="post" action="/me" {
-                label { "Name" input name="name" required value=(viewer.user.name); }
+                (csrf_input(csrf))
+                label { "Name" input name="name" required value=(viewer.user.name) maxlength="80"; }
                 div class="split" {
                     label { "City" input name="city" required value=(viewer.user.city); }
                     label { "Region" input name="region" required value=(viewer.user.region); }
@@ -780,12 +858,14 @@ pub fn me(
                                 @if !gift.note.is_empty() { p class="muted" { (gift.note) } }
                             }
                             form method="post" action={ "/me/gifts/" (gift.gift_id) "/remove" } {
+                                (csrf_input(csrf))
                                 button class="btn btn-quiet" type="submit" { "Remove" }
                             }
                         }
                     }
                 }
                 form class="stack" method="post" action="/me/gifts" {
+                    (csrf_input(csrf))
                     label { "Add a gift"
                         select name="gift_id" required {
                             @for gift in catalog {
@@ -817,6 +897,7 @@ pub fn me(
                 }
             }
             form method="post" action="/session/logout" {
+                (csrf_input(csrf))
                 button class="btn btn-quiet" type="submit" { "Leave this seat" }
             }
         },
