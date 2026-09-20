@@ -1,0 +1,36 @@
+[package]
+name = "ecclesia"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+description = "The ecclesia — churches connecting the members of the body"
+license = "MIT"
+
+[dependencies]
+anyhow = "=1.0.95"
+axum = { version = "=0.8.1", features = ["form", "macros", "query"] }
+axum-extra = { version = "=0.10.0", features = ["cookie"] }
+chrono = { version = "=0.4.39", default-features = false, features = ["clock", "std"] }
+cookie = "=0.18.1"
+idna = "=1.0.3"
+idna_adapter = "=1.1.0"
+indexmap = "=2.7.1"
+maud = "=0.26.0"
+serde = { version = "=1.0.217", features = ["derive"] }
+tempfile = "=3.14.0"
+sqlx = { version = "=0.8.2", default-features = false, features = [
+    "derive",
+    "runtime-tokio",
+    "sqlite",
+] }
+thiserror = "=2.0.11"
+time = "=0.3.37"
+tokio = { version = "=1.43.0", features = ["macros", "rt-multi-thread", "net", "fs"] }
+tower-http = { version = "=0.6.2", features = ["fs", "trace"] }
+tracing = "=0.1.41"
+tracing-subscriber = { version = "=0.3.19", features = ["env-filter"] }
+uuid = { version = "=1.11.1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "=1.43.0", features = ["macros", "rt-multi-thread"] }
+tower = { version = "=0.5.3", features = ["util"] }
