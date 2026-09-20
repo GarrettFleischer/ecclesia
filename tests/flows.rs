@@ -111,6 +111,36 @@ async fn neighboring_need_is_visible_across_the_valley() {
 }
 
 #[tokio::test]
+async fn apply_form_keeps_the_submit_button_outside_the_textarea() {
+    let app = app().await;
+    let (app, elena) = login(app, "user_elena").await;
+    let page = get(app.clone(), &elena, "/needs/need_spanish").await;
+    let after_open = page
+        .split_once("<textarea")
+        .expect("apply textarea")
+        .1;
+    let (inside, rest) = after_open
+        .split_once("</textarea>")
+        .expect("textarea must be closed");
+    assert!(
+        !inside.contains("Apply to help"),
+        "submit control was swallowed by an unclosed textarea: {inside}"
+    );
+    assert!(rest.contains(r#"<button class="btn" type="submit">Apply to help</button>"#));
+
+    let status = post(
+        app.clone(),
+        &elena,
+        "/needs/need_spanish/apply",
+        "message=I+can+hold+both+languages+on+Thursday",
+    );
+    assert_eq!(status.await, StatusCode::SEE_OTHER);
+
+    let again = get(app, &elena, "/needs/need_spanish").await;
+    assert!(again.contains("You already offered"));
+}
+
+#[tokio::test]
 async fn endorsement_is_not_public_until_accepted() {
     let app = app().await;
     let (app, ruth) = login(app, "user_ruth").await;

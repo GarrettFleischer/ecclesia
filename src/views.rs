@@ -170,7 +170,7 @@ pub fn landing(users: &[User], flash: Option<(bool, String)>) -> Markup {
                         label { "Region" input name="region" required placeholder="Iowa"; }
                     }
                     label { "How do you serve?"
-                        textarea name="bio" rows="3" placeholder="The gifts you already practice, even if no one has ordained them.";
+                        textarea name="bio" rows="3" placeholder="The gifts you already practice, even if no one has ordained them." {}
                     }
                     button class="btn" type="submit" { "Create my place" }
                 }
@@ -314,7 +314,7 @@ pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<(bool, String)>) -
                 }
                 label { "When you gather" input name="gathering" placeholder="Sundays 10:00 a.m."; }
                 label { "Who you are"
-                    textarea name="description" rows="4" required placeholder="A household in this city, not a brand.";
+                    textarea name="description" rows="4" required placeholder="A household in this city, not a brand." {}
                 }
                 button class="btn" type="submit" { "Create the group" }
             }
@@ -474,7 +474,7 @@ pub fn need_new(
                     }
                     label { "Title" input name="title" required placeholder="Meal train for the Okonkwo family"; }
                     label { "The actual need"
-                        textarea name="body" rows="5" required placeholder="When, where, what kind of help, and what would be too much.";
+                        textarea name="body" rows="5" required placeholder="When, where, what kind of help, and what would be too much." {}
                     }
                     label { "Primary gift you are hoping for"
                         select name="gift_id" {
@@ -546,7 +546,7 @@ pub fn need_show(
                         h2 { "Offer to help" }
                         form class="stack" method="post" action={ "/needs/" (need.id) "/apply" } {
                             label { "How you can carry this"
-                                textarea name="message" rows="3" required placeholder="When you can come, and what you will actually do.";
+                                textarea name="message" rows="3" required placeholder="When you can come, and what you will actually do." {}
                             }
                             button class="btn" type="submit" { "Apply to help" }
                         }
@@ -667,7 +667,7 @@ pub fn member_show(
                             }
                         }
                         label { "What you have actually seen"
-                            textarea name="note" rows="3" required placeholder="Be specific. A gift is a life, not a compliment.";
+                            textarea name="note" rows="3" required placeholder="Be specific. A gift is a life, not a compliment." {}
                         }
                         button class="btn" type="submit" { "Send endorsement" }
                     }
