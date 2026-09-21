@@ -181,19 +181,19 @@ fn dock_class(state: DockState) -> &'static str {
 fn dock_svg(icon: DockIcon) -> Markup {
     match icon {
         DockIcon::Home => {
-            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { path d="M4 11.5 12 5l8 6.5V20H4z"; path d="M10 20v-6h4v6"; } }
+            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M12 4.2 3.8 11h2.1v8.2h5.1v-5h2v5h5.1V11h2.1L12 4.2z" {} } }
         }
         DockIcon::Church => {
-            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { path d="M12 3v4M10 5h4"; path d="M5 21V10l7-5 7 5v11"; path d="M9 21v-6h6v6"; } }
+            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M11.2 2.5h1.6v1.6h1.6v1.6h-1.6v1.3L18 9.4V21h-5.1v-5.2h-1.8V21H6V9.4l5.2-2.4V5.7H9.6V4.1h1.6V2.5z" {} } }
         }
         DockIcon::Body => {
-            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { circle cx="8" cy="8" r="2.2"; circle cx="16" cy="8" r="2.2"; circle cx="12" cy="16" r="2.2"; path d="M9.7 9.7 11 14.2M14.3 9.7 13 14.2"; } }
+            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M8 6.2a2.3 2.3 0 1 1 0 4.6 2.3 2.3 0 0 1 0-4.6zm8 0a2.3 2.3 0 1 1 0 4.6 2.3 2.3 0 0 1 0-4.6zM12 13.4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm-2.7-3.1 1.4 3.3h2.6l1.4-3.3-1.5-.7-1.2 2.1-1.2-2.1z" {} } }
         }
         DockIcon::Inbox => {
-            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { path d="M4 6h16v12H4z"; path d="M4 12h4l2 3h4l2-3h4"; } }
+            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M3.8 6.2h16.4v4.2h-4.1l-1.3 2.3H9.2L7.9 10.4H3.8V6.2zm0 5.8h3.3l1.4 2.4h6.8l1.4-2.4h3.3v6.8H3.8V12z" {} } }
         }
         DockIcon::You => {
-            html! { svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" { circle cx="12" cy="8" r="3"; path d="M5 20c1.5-4 12.5-4 14 0"; } }
+            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M12 4.6a3.6 3.6 0 1 1 0 7.2 3.6 3.6 0 0 1 0-7.2zM5.2 19.8c.9-3.4 4-5.1 6.8-5.1s5.9 1.7 6.8 5.1v1.1H5.2z" {} } }
         }
     }
 }

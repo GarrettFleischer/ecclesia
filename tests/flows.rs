@@ -114,6 +114,24 @@ async fn post(app: axum::Router, cookie: &str, csrf: &str, uri: &str, extra: &st
 }
 
 #[tokio::test]
+async fn us_ui_01_svg_marks_close_their_tags() {
+    let app = app().await;
+    let (landing, _, _) = get_page(app.clone(), None, "/").await;
+    assert!(
+        landing.contains("</circle>"),
+        "vesica circles must close or the cross is swallowed"
+    );
+    assert!(
+        landing.contains("</path>"),
+        "vesica path must close or the cross is swallowed"
+    );
+
+    let (app, cookie) = login(app, "user_miriam").await;
+    let home = get(app, &cookie, "/home").await;
+    assert!(home.contains("</path>"), "dock icons must close path tags");
+}
+
+#[tokio::test]
 async fn us_sec_02_http_rejects_a_missing_csrf() {
     let app = app().await;
     let (app, cookie) = login(app, "user_miriam").await;

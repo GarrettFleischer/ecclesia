@@ -15,7 +15,13 @@ pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat)
         flash,
         html! {
             section class="hero hero-illum" {
-                div class="vesica" aria-hidden="true" {}
+                div class="vesica" aria-hidden="true" {
+                    svg viewBox="0 0 80 80" width="80" height="80" {
+                        circle cx="40" cy="40" r="30" fill="none" stroke="#b1842c" stroke-width="1.4" {}
+                        circle cx="40" cy="40" r="22" fill="none" stroke="#3a4d39" stroke-width="1.1" opacity="0.55" {}
+                        path fill="#b1842c" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
+                    }
+                }
                 p class="eyebrow" { "For churches who refuse to be islands" }
                 h1 { "The ecclesia is a people, not a campus." }
                 hr class="gold-rule";
