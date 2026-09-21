@@ -13,6 +13,6 @@ pub use churches::{church_new, church_show, churches_index, the_body};
 pub use flash::{flash_from, Flash};
 pub use home::home;
 pub use landing::landing;
-pub use layout::{csrf_input, error_page, page, Nav};
+pub use layout::{csrf_input, error_page, page, rewrite_row, Nav};
 pub use needs::{need_new, need_show};
 pub use people::{inbox, me, member_show};

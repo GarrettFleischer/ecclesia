@@ -1,6 +1,6 @@
 //! Posting needs and receiving offers.
 
-use super::flags::{CatalogPresence, PriorOffer};
+use super::flags::{CatalogPresence, Posture, PriorOffer};
 use super::model::{
     Application, ApplicationCard, ApplicationStatus, Church, DomainError, Effect, Need, NeedSight,
     NeedStatus, Viewer, Write,
@@ -18,9 +18,11 @@ pub fn post_need(
     gift_id: Option<&str>,
     gift: CatalogPresence,
     scope: &str,
+    posture: Posture,
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     if !viewer.is_active_in(church_id) {
         return Err(DomainError::NotInTheBody);
     }
@@ -56,9 +58,11 @@ pub fn apply_to_need(
     church: &Church,
     prior: PriorOffer,
     message: &str,
+    posture: Posture,
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     can_apply(viewer, need.sight(), church)?;
     refuse_duplicate_offer(prior)?;
     let message = note_field(message)?;
@@ -211,6 +215,7 @@ mod tests {
                 None,
                 CatalogPresence::Listed,
                 "church",
+                Posture::Lifts,
                 "n1".into(),
                 "t".into()
             ),
@@ -253,6 +258,7 @@ mod tests {
             &church("grace"),
             PriorOffer::Fresh,
             "I can hold Thursday.",
+            Posture::Lifts,
             "a1".into(),
             "t1".into(),
         )

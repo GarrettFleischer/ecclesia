@@ -1,10 +1,10 @@
 use maud::{html, Markup};
 
-use crate::leaf::{DemoSeat, User};
+use crate::leaf::{DemoSeat, User, VoiceKind};
 
 use super::cards::persona_grid;
 use super::flash::Flash;
-use super::layout::{csrf_input, page, Nav};
+use super::layout::{csrf_input, page, rewrite_row, Nav};
 
 pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat) -> Markup {
     page(
@@ -45,6 +45,7 @@ pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat)
                     }
                     label { "About you"
                         textarea name="bio" rows="3" maxlength="800" placeholder="A line or two. What you do, what you're good at." {}
+                        (rewrite_row(VoiceKind::Bio))
                     }
                     button class="btn" type="submit" { "Create account" }
                 }

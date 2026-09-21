@@ -76,6 +76,7 @@ fn flash_err(code: &str) -> String {
         "pending" => "Nothing to decide.".into(),
         "bad_email" => "Check the email address.".into(),
         "csrf" => "The form expired. Try again.".into(),
+        "tone" => "Write it so it lifts someone up.".into(),
         other => other.to_string(),
     }
 }

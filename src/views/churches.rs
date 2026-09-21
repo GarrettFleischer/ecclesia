@@ -2,6 +2,7 @@ use maud::{html, Markup};
 
 use crate::leaf::{
     visible_need_cards, Church, ChurchCard, ChurchMember, Membership, NeedCard, PlaceGroup, Viewer,
+    VoiceKind,
 };
 
 use super::cards::{
@@ -9,7 +10,7 @@ use super::cards::{
     pending_member_cards, pending_people, place_sections,
 };
 use super::flash::Flash;
-use super::layout::{csrf_input, page, share_button, Nav};
+use super::layout::{csrf_input, page, rewrite_row, share_button, Nav};
 
 pub fn churches_index(
     viewer: &Viewer,
@@ -76,6 +77,7 @@ pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<Flash>, csrf: &str
                 label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m."; }
                 label { "About the church"
                     textarea name="description" rows="4" required placeholder="A few sentences. Where you are, who comes, what you're about." {}
+                    (rewrite_row(VoiceKind::Church))
                 }
                 button class="btn" type="submit" { "Add church" }
             }

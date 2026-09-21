@@ -1,6 +1,6 @@
 //! Gifts, endorsements, and how a person is known.
 
-use super::flags::{CatalogPresence, EndorsementQueue, GiftOnProfile};
+use super::flags::{CatalogPresence, EndorsementQueue, GiftOnProfile, Posture};
 use super::model::{
     DomainError, Effect, Endorsement, EndorsementCard, EndorsementStatus, Gift, User, Write,
 };
@@ -69,9 +69,11 @@ pub fn endorse(
     skill: SkillSource<'_>,
     queue: EndorsementQueue,
     note: &str,
+    posture: Posture,
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     can_endorse(&from.id, &to.id)?;
     refuse_waiting_endorsement(queue)?;
     let skill_name = skill_field(skill.display())?;
@@ -223,7 +225,9 @@ pub fn add_gift(
     gift_id: &str,
     gift: CatalogPresence,
     note: &str,
+    posture: Posture,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     require_listed_gift(gift)?;
     Ok(Effect::write(Write::UpsertMemberGift {
         user_id: user_id.into(),
@@ -254,7 +258,9 @@ pub fn update_profile(
     city: &str,
     region: &str,
     bio: &str,
+    posture: Posture,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     let (name, city, region, bio) = profile_fields(name, city, region, bio)?;
     Ok(Effect::write(Write::UpdateUser {
         id: user_id.into(),
@@ -323,6 +329,7 @@ mod tests {
             },
             EndorsementQueue::Clear,
             "He sat with my cousin and didn't try to fill the silence.",
+            Posture::Lifts,
             "e2".into(),
             "t1".into(),
         )

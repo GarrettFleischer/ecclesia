@@ -502,6 +502,61 @@ form.stack > .btn { width: 100%; }
 
 .btn-quiet:hover { background: var(--paper-deep); color: var(--ink); }
 
+.rewrite-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.85rem;
+  min-height: 2.1rem;
+}
+
+button.rewrite {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  font: 600 0.88rem/1 var(--sans);
+  padding: 0.2rem 0;
+  min-height: 36px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  position: relative;
+  justify-self: start;
+}
+
+button.rewrite::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.42rem;
+  height: 1px;
+  background: var(--gold-soft);
+  transform: scaleX(0.32);
+  transform-origin: left;
+  transition: transform 240ms var(--ease);
+}
+
+button.rewrite:hover { color: var(--olive-deep); }
+button.rewrite:hover::after { transform: scaleX(1); }
+button.rewrite.is-busy { color: var(--ink-soft); }
+button.rewrite.is-busy::after {
+  transform: scaleX(1);
+  animation: rewrite-pulse 1.1s var(--ease) infinite;
+}
+
+.rewrite-status {
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.rewrite-status.is-live { color: var(--ok); }
+
+@keyframes rewrite-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 .pill, .code {
   display: inline-block;
   background: var(--paper-deep);
@@ -703,6 +758,7 @@ form.stack > .btn { width: 100%; }
   .page-rise > *,
   .stack > *,
   .flash,
+  button.rewrite.is-busy::after,
   .mark-dot,
   .badge,
   .orb {

@@ -1,5 +1,6 @@
 //! Join requests, invites, and planting a household.
 
+use super::flags::Posture;
 use super::model::{
     Church, DomainError, Effect, Membership, MembershipStatus, User, Viewer, Write,
 };
@@ -201,11 +202,13 @@ pub fn plant_church(
     region: &str,
     description: &str,
     gathering: &str,
+    posture: Posture,
     church_id: String,
     membership_id: String,
     nonce4: &str,
     now: String,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     let (name, city, region, description, gathering) =
         church_fields(name, city, region, description, gathering)?;
     let church = planted_church(
@@ -370,6 +373,7 @@ mod tests {
             "Iowa",
             "A table in the north end.",
             "Sundays",
+            Posture::Lifts,
             "c1".into(),
             "m1".into(),
             "ab12",

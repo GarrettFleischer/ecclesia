@@ -7,6 +7,7 @@ mod forms;
 mod needs;
 mod people;
 mod push;
+mod voice;
 
 use axum::http::StatusCode;
 use axum::middleware;
@@ -19,8 +20,10 @@ use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
 use crate::db::Db;
-use crate::leaf::{DemoSeat, Effect};
+use crate::leaf::{DemoSeat, Effect, Posture, VoiceKind};
+use crate::sdk::judge::JudgeHub;
 use crate::sdk::push::PushHub;
+use crate::sdk::refine::RefineHub;
 use crate::views;
 
 pub use context::security_headers;
@@ -31,6 +34,8 @@ pub struct AppState {
     pub secret: String,
     pub demo: DemoSeat,
     pub push: PushHub,
+    pub judge: JudgeHub,
+    pub refine: RefineHub,
 }
 
 impl AppState {
@@ -40,6 +45,10 @@ impl AppState {
         self.db.apply(effect).await?;
         self.push.dispatch(&self.db, &effect.notices).await;
         Ok(())
+    }
+
+    pub(crate) async fn weigh(&self, kind: VoiceKind, parts: &[&str]) -> Posture {
+        self.judge.weigh(kind, parts).await
     }
 }
 
@@ -82,11 +91,15 @@ pub async fn serve() -> anyhow::Result<()> {
     let demo = DemoSeat::from_env_value(std::env::var("ECCLESIA_DEMO").ok().as_deref());
     let db = Db::connect(&database_url).await?;
     let push = PushHub::load();
+    let judge = JudgeHub::load();
+    let refine = RefineHub::load();
     let state = AppState {
         db,
         secret,
         demo,
         push,
+        judge,
+        refine,
     };
 
     let app = router(state);
@@ -119,6 +132,7 @@ pub fn router(state: AppState) -> Router {
         .route("/session", post(auth::start_session))
         .route("/session/logout", post(auth::logout))
         .route("/register", post(auth::register_user))
+        .route("/refine", post(voice::refine_words))
         .route("/home", get(auth::home))
         .route(
             "/churches",

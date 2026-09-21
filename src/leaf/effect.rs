@@ -46,6 +46,8 @@ pub enum DomainError {
     NotFound,
     #[error("Demo sign-in is off.")]
     DemoDisabled,
+    #[error("Write it so it lifts someone up.")]
+    TearsDown,
 }
 
 impl DomainError {
@@ -67,6 +69,7 @@ impl DomainError {
             Self::UnknownGift => "missing",
             Self::NotFound => "not_found",
             Self::DemoDisabled => "forbidden",
+            Self::TearsDown => "tone",
         }
     }
 }

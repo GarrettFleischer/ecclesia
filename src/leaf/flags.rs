@@ -120,3 +120,68 @@ impl OfferState {
         }
     }
 }
+
+/// Whether the words lift people up. The skin weighs them; the leaf only sees this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Posture {
+    Lifts,
+    TearsDown,
+}
+
+pub fn require_uplifting(posture: Posture) -> Result<(), super::model::DomainError> {
+    match posture {
+        Posture::Lifts => Ok(()),
+        Posture::TearsDown => Err(super::model::DomainError::TearsDown),
+    }
+}
+
+/// What kind of words the person is writing. The skin uses this to ask the right question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceKind {
+    Need,
+    Offer,
+    Endorsement,
+    GiftNote,
+    Bio,
+    Church,
+}
+
+impl VoiceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Need => "need",
+            Self::Offer => "offer",
+            Self::Endorsement => "endorsement",
+            Self::GiftNote => "gift",
+            Self::Bio => "bio",
+            Self::Church => "church",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "need" => Some(Self::Need),
+            "offer" => Some(Self::Offer),
+            "endorsement" => Some(Self::Endorsement),
+            "gift" => Some(Self::GiftNote),
+            "bio" => Some(Self::Bio),
+            "church" => Some(Self::Church),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::leaf::DomainError;
+
+    #[test]
+    fn us_tone_01_tears_down_is_refused() {
+        assert_eq!(require_uplifting(Posture::Lifts), Ok(()));
+        assert_eq!(
+            require_uplifting(Posture::TearsDown),
+            Err(DomainError::TearsDown)
+        );
+    }
+}

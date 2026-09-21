@@ -5,7 +5,7 @@ use axum_extra::extract::cookie::CookieJar;
 use crate::leaf::{
     accept_application, apply_to_need, close_need, decline_application, post_need,
     require_need_view, visible_offers, Application, CatalogPresence, Need, OfferState, PriorOffer,
-    Viewer,
+    Viewer, VoiceKind,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
@@ -55,6 +55,9 @@ pub async fn create_need(
     let viewer = viewer_for(&state.db, signed.user).await?;
     let gift = optional_gift_id(&form.gift_id);
     let presence = gift_presence(&state, gift).await?;
+    let posture = state
+        .weigh(VoiceKind::Need, &[&form.title, &form.body])
+        .await;
     let effect = match post_need(
         &viewer,
         &form.church_id,
@@ -63,6 +66,7 @@ pub async fn create_need(
         gift,
         presence,
         &form.scope,
+        posture,
         new_id(),
         now_iso(),
     ) {
@@ -157,12 +161,14 @@ pub async fn apply_need(
     };
     let prior =
         PriorOffer::of_existing(state.db.application_pair(&need.id, &viewer.user.id).await?);
+    let posture = state.weigh(VoiceKind::Offer, &[&form.message]).await;
     let effect = match apply_to_need(
         &viewer,
         &need,
         &church,
         prior,
         &form.message,
+        posture,
         new_id(),
         now_iso(),
     ) {

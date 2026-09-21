@@ -16,6 +16,6 @@ Short version:
 - Do not clone a collection to walk it again. Iterate, move, or borrow (`NeedSight`).
 - Loops live in their own named function. Page bodies compose those functions.
 - Do not write macros to hide repetition (HTTP gates, write dispatch, status strings). Extract a function, an enum, or a trait after a second identical use.
-- HTTP loads values, calls a leaf, commits the effect. It does not decide membership, visibility, or endorsements.
+- HTTP loads values, calls a leaf, commits the effect. It does not decide membership, visibility, or endorsements. It may weigh words and pass a `Posture`; the leaf refuses `TearsDown`.
 
 `us_clean_01`, `us_perf_01`, and `us_leaf_01` in `src/style.rs` enforce this. Run `cargo test style` after changing `src/`.

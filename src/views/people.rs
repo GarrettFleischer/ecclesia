@@ -2,7 +2,7 @@ use maud::{html, Markup};
 
 use crate::leaf::{
     declined_visible_to, Church, EndorsementCard, Gift, MemberGift, Membership, Notification, User,
-    Viewer,
+    Viewer, VoiceKind,
 };
 
 use super::cards::{
@@ -11,7 +11,7 @@ use super::cards::{
     DeclineAction,
 };
 use super::flash::Flash;
-use super::layout::{csrf_input, first_name, page, Nav};
+use super::layout::{csrf_input, first_name, page, rewrite_row, Nav};
 
 pub fn member_show(
     viewer: &Viewer,
@@ -152,6 +152,7 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
                 }
                 label { "Why"
                     textarea name="note" rows="5" required maxlength="600" placeholder="She stayed until the last parent came." {}
+                    (rewrite_row(VoiceKind::Endorsement))
                 }
                 button class="btn" type="submit" { "Send" }
             }
@@ -270,6 +271,7 @@ pub fn me(
                 }
                 label { "About you"
                     textarea name="bio" rows="3" { (viewer.user.bio) }
+                    (rewrite_row(VoiceKind::Bio))
                 }
                 button class="btn" type="submit" { "Save" }
             }
@@ -285,6 +287,7 @@ pub fn me(
                     }
                     label { "Note (optional)"
                         input name="note" placeholder="Thursday nights. Hospital visits. Spreadsheets.";
+                        (rewrite_row(VoiceKind::GiftNote))
                     }
                     button class="btn btn-quiet" type="submit" { "Add" }
                 }

@@ -2,7 +2,7 @@ use axum::extract::{Form, Query, State};
 use axum::response::{Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
-use crate::leaf::{may_impersonate, pair_memberships, register, EmailAvailability};
+use crate::leaf::{may_impersonate, pair_memberships, register, EmailAvailability, VoiceKind};
 use crate::sdk::clock::{new_id, now_iso};
 use crate::sdk::session::{self, Session};
 use crate::views;
@@ -90,6 +90,7 @@ pub async fn register_user(
         return Ok(with_cookie(jar, fail_csrf("/")));
     }
     let availability = EmailAvailability::of_existing(state.db.user_by_email(&form.email).await?);
+    let posture = state.weigh(VoiceKind::Bio, &[&form.name, &form.bio]).await;
     let effect = match register(
         &form.name,
         &form.email,
@@ -97,6 +98,7 @@ pub async fn register_user(
         &form.region,
         &form.bio,
         availability,
+        posture,
         new_id(),
         now_iso(),
     ) {

@@ -8,6 +8,7 @@
   paintBadge(unread);
   hookInstall(native);
   hookShare(native);
+  hookRewrite(csrf);
   hookHaptics(native);
   hookAlerts(csrf, native);
   if (native) {
@@ -132,6 +133,77 @@ function hookShare(native) {
       // The person cancelled the sheet.
     }
   });
+}
+
+function hookRewrite(csrf) {
+  document.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-rewrite]");
+    if (!btn || !csrf) {
+      return;
+    }
+    const field = rewriteField(btn);
+    if (!field) {
+      return;
+    }
+    const status = btn.parentElement.querySelector(".rewrite-status");
+    beginRewrite(btn, status);
+    try {
+      const body = await requestRewrite(csrf, btn.getAttribute("data-kind") || "", field.value);
+      field.value = body.text;
+      finishRewrite(status, body.seat);
+    } catch (_error) {
+      if (status) {
+        status.hidden = false;
+        status.textContent = "Couldn't rewrite. Try again.";
+        status.classList.remove("is-live");
+      }
+    } finally {
+      btn.classList.remove("is-busy");
+      btn.disabled = false;
+    }
+  });
+}
+
+function rewriteField(btn) {
+  const host = btn.closest("label");
+  return host ? host.querySelector("textarea, input:not([type=hidden])") : null;
+}
+
+function beginRewrite(btn, status) {
+  btn.classList.add("is-busy");
+  btn.disabled = true;
+  if (!status) {
+    return;
+  }
+  status.hidden = false;
+  status.textContent = "Rewriting…";
+  status.classList.remove("is-live");
+}
+
+async function requestRewrite(csrf, kind, text) {
+  const response = await fetch("/refine", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ csrf, kind, text }),
+  });
+  const body = await response.json();
+  if (!response.ok || typeof body.text !== "string") {
+    throw new Error("refine");
+  }
+  return body;
+}
+
+function finishRewrite(status, seat) {
+  if (!status) {
+    return;
+  }
+  if (seat === "echo") {
+    status.textContent = "No rewrite model is running. Your words are unchanged.";
+    status.classList.remove("is-live");
+    return;
+  }
+  status.textContent = "Rewritten. Edit anything you want.";
+  status.classList.add("is-live");
 }
 
 function hookHaptics(native) {

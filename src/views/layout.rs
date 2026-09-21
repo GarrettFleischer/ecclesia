@@ -2,7 +2,7 @@
 
 use maud::{html, Markup, DOCTYPE};
 
-use crate::leaf::User;
+use crate::leaf::{User, VoiceKind};
 
 use super::flash::Flash;
 
@@ -43,6 +43,15 @@ pub enum DockIcon {
 
 pub fn csrf_input(csrf: &str) -> Markup {
     html! { input type="hidden" name="csrf" value=(csrf); }
+}
+
+pub fn rewrite_row(kind: VoiceKind) -> Markup {
+    html! {
+        span class="rewrite-row" {
+            button type="button" class="rewrite" data-rewrite data-kind=(kind.as_str()) { "Rewrite" }
+            span class="rewrite-status" hidden {}
+        }
+    }
 }
 
 pub fn share_button(label: &str, title: &str, text: &str) -> Markup {

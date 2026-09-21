@@ -95,6 +95,10 @@ mod tests {
             "src/http/churches.rs",
             "src/http/needs.rs",
             "src/http/people.rs",
+            "src/http/voice.rs",
+            "src/leaf/flags.rs",
+            "src/sdk/judge.rs",
+            "src/sdk/refine.rs",
         ] {
             paths.push(root.join(rel));
         }

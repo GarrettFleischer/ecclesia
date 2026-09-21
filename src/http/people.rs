@@ -6,7 +6,7 @@ use axum_extra::extract::cookie::CookieJar;
 use crate::leaf::{
     accept_endorsement, add_gift, decline_endorsement, endorse, pair_memberships, remove_gift,
     update_profile, CatalogPresence, Endorsement, EndorsementQueue, GiftOnProfile, SkillSource,
-    User,
+    User, VoiceKind,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
@@ -85,12 +85,16 @@ pub async fn endorse_member(
             .pending_endorsement(&signed.user.id, &id, skill.display())
             .await?,
     );
+    let posture = state
+        .weigh(VoiceKind::Endorsement, &[skill.display(), &form.note])
+        .await;
     let effect = match endorse(
         &signed.user,
         &person,
         skill,
         queue,
         &form.note,
+        posture,
         new_id(),
         now_iso(),
     ) {
@@ -242,12 +246,14 @@ pub async fn update_me(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    let posture = state.weigh(VoiceKind::Bio, &[&form.name, &form.bio]).await;
     let effect = match update_profile(
         &signed.user.id,
         &form.name,
         &form.city,
         &form.region,
         &form.bio,
+        posture,
     ) {
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(signed.jar, leaf_err("/me", error))),
@@ -266,7 +272,14 @@ pub async fn add_gift_http(
         Err(response) => return Ok(response),
     };
     let presence = CatalogPresence::of_lookup(state.db.gift(&form.gift_id).await?);
-    let effect = match add_gift(&signed.user.id, &form.gift_id, presence, &form.note) {
+    let posture = state.weigh(VoiceKind::GiftNote, &[&form.note]).await;
+    let effect = match add_gift(
+        &signed.user.id,
+        &form.gift_id,
+        presence,
+        &form.note,
+        posture,
+    ) {
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(signed.jar, leaf_err("/me", error))),
     };

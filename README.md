@@ -27,6 +27,11 @@ Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the demo.
 
 For a shared host: `ECCLESIA_DEMO=0`, a long random `ECCLESIA_SECRET`, and your own VAPID keys. See [docs/MOBILE.md](docs/MOBILE.md).
 
+To weigh words with Jev, set `ECCLESIA_JEV_KEY`. To classify and rewrite on a
+local GPU (Ollama or llama.cpp on a 4080 Super), set `ECCLESIA_LLM_URL` and
+`ECCLESIA_LLM_MODEL`. See [docs/VOICE.md](docs/VOICE.md). Without those, an
+on-box word gate still stops obvious attacks. Rewrite stays optional.
+
 ## Walk the demo
 
 1. **Peter Lang** — asked to join Grace Covenant.
@@ -41,6 +46,7 @@ Invite codes: `grace-k2m9`, `luke-p4r1`, `mercy-n8q2`.
 ## Docs
 
 - How to write copy: [docs/PROSE.md](docs/PROSE.md)
+- Classification and rewrite: [docs/VOICE.md](docs/VOICE.md)
 - User stories: [docs/SPEC.md](docs/SPEC.md)
 - Leaves and honest functions: [docs/LEAVES.md](docs/LEAVES.md)
 - Leaves and SDK: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

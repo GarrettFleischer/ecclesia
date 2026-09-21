@@ -21,6 +21,8 @@ async fn app() -> axum::Router {
         secret: "test-secret".into(),
         demo: DemoSeat::Open,
         push: ecclesia::sdk::push::PushHub::silent(),
+        judge: ecclesia::sdk::judge::JudgeHub::word_gate(),
+        refine: ecclesia::sdk::refine::RefineHub::silent(),
     })
 }
 
@@ -451,6 +453,104 @@ async fn get_public_with_headers(app: axum::Router, uri: &str) -> (String, axum:
     assert_eq!(response.status(), StatusCode::OK, "GET {uri}");
     let headers = response.headers().clone();
     (body_string(response).await, headers)
+}
+
+#[tokio::test]
+async fn us_tone_01_an_attack_is_refused() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let (_page, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/needs/new").await;
+    let csrf = csrf.expect("need csrf");
+    let location = post_location(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/needs",
+        "church_id=church_grace&title=Attack&body=You+are+worthless+and+you+suck.&scope=church",
+    )
+    .await;
+    assert!(
+        location.contains("err=tone"),
+        "attack should bounce with tone, got {location}"
+    );
+
+    let home = get(app, &cookie, "/home").await;
+    assert!(!home.contains("You are worthless"));
+}
+
+#[tokio::test]
+async fn us_refine_01_silent_echoes_the_same_words() {
+    let app = app().await;
+    let (landing, cookie, csrf) = get_page(app.clone(), None, "/").await;
+    let csrf = csrf.expect("landing csrf");
+    assert!(landing.contains("data-rewrite"));
+    assert!(landing.contains(r#"data-kind="bio""#));
+
+    let (status, body) = post_json(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/refine",
+        "kind=endorsement&text=+She+stayed.+",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#""text":"She stayed.""#));
+    assert!(body.contains(r#""seat":"echo""#));
+
+    let (app, cookie) = login(app, "user_elena").await;
+    let need = get(app.clone(), &cookie, "/needs/need_spanish").await;
+    assert!(need.contains(r#"data-kind="offer""#));
+    let member = get(app, &cookie, "/members/user_daniel").await;
+    assert!(member.contains(r#"data-kind="endorsement""#));
+}
+
+async fn post_location(
+    app: axum::Router,
+    cookie: &str,
+    csrf: &str,
+    uri: &str,
+    extra: &str,
+) -> String {
+    let body = format!("csrf={csrf}&{extra}");
+    let response = app
+        .oneshot(
+            Request::post(uri)
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string()
+}
+
+async fn post_json(
+    app: axum::Router,
+    cookie: &str,
+    csrf: &str,
+    uri: &str,
+    extra: &str,
+) -> (StatusCode, String) {
+    let body = format!("csrf={csrf}&{extra}");
+    let response = app
+        .oneshot(
+            Request::post(uri)
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    (response.status(), body_string(response).await)
 }
 
 fn endorsement_id_near(html: &str, marker: &str) -> Option<String> {

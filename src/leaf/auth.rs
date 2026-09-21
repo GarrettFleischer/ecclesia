@@ -1,6 +1,6 @@
 //! Registration and demo-seat rules.
 
-use super::flags::{DemoSeat, EmailAvailability};
+use super::flags::{DemoSeat, EmailAvailability, Posture};
 use super::model::{DomainError, Effect, User, Write};
 use super::validate::person_fields;
 
@@ -12,9 +12,11 @@ pub fn register(
     region: &str,
     bio: &str,
     availability: EmailAvailability,
+    posture: Posture,
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
     refuse_taken_email(availability)?;
     let (name, email, city, region, bio) = person_fields(name, email, city, region, bio)?;
     Ok(Effect::write(Write::InsertUser(User {
@@ -57,6 +59,7 @@ mod tests {
             "Iowa",
             "I cook",
             EmailAvailability::Free,
+            Posture::Lifts,
             "u1".into(),
             "t1".into(),
         )
@@ -80,6 +83,7 @@ mod tests {
                 "B",
                 "",
                 EmailAvailability::Taken,
+                Posture::Lifts,
                 "u1".into(),
                 "t".into()
             ),

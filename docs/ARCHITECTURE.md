@@ -76,9 +76,11 @@ siblings of `sdk`, not inside it.
 | `clock` | `sdk/clock.rs` | OS time, UUID | ids and timestamps leaves receive |
 | `session` | `sdk/session.rs` | HMAC cookies | who is signed in, CSRF |
 | `push` | `sdk/push.rs`, `sdk/web_push.rs` | Web Push, optional FCM | deliver notices to an installed phone |
+| `judge` | `sdk/judge.rs` | Jev, local OpenAI-compat, or word gate | weigh words; return `Posture` |
+| `refine` | `sdk/refine.rs` | local OpenAI-compat, or silent | optional rewrite |
 | `memory` | `sdk/memory.rs` | process RAM | apply effects in tests |
 | `db` | `db/{schema,seed,users,churches,needs,gifts,notices,push,apply}.rs` | SQLite | persist effects |
-| `http` | `http/{auth,churches,needs,people,push,context,forms}.rs` | Axum | load, call a leaf, apply, render |
+| `http` | `http/{auth,churches,needs,people,push,voice,context,forms}.rs` | Axum | load, call a leaf, apply, render |
 | `views` | `views/{layout,flash,cards,landing,home,churches,needs,people}.rs` | Maud | HTML; loops live in `cards` |
 
 HTTP is not allowed to decide who may join, see a need, or accept an endorsement.
@@ -99,5 +101,5 @@ those functions; they do not embed `for` in the middle of a story.
 - **Integration** — Axum + SQLite (`tests/flows.rs`), including CSRF.
 
 See [SPEC.md](SPEC.md) for the story list, [PROSE.md](PROSE.md) for copy,
-[MOBILE.md](MOBILE.md) for iOS and Android, and [SECURITY.md](SECURITY.md) for
-the skin’s duties.
+[VOICE.md](VOICE.md) for classification and rewrite, [MOBILE.md](MOBILE.md)
+for iOS and Android, and [SECURITY.md](SECURITY.md) for the skin’s duties.

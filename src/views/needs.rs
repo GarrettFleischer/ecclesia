@@ -2,11 +2,12 @@ use maud::{html, Markup};
 
 use crate::leaf::{
     is_need_steward, ApplicationCard, Church, DomainError, Gift, NeedCard, OfferState, Viewer,
+    VoiceKind,
 };
 
 use super::cards::{application_cards, church_options, gift_options, scope_label, StewardView};
 use super::flash::Flash;
-use super::layout::{csrf_input, page, share_button, Nav};
+use super::layout::{csrf_input, page, rewrite_row, share_button, Nav};
 
 pub fn need_new(
     viewer: &Viewer,
@@ -56,6 +57,7 @@ fn need_form_or_empty(
             label { "Title" input name="title" required placeholder="Dinners for the Okonkwos this week"; }
             label { "Details"
                 textarea name="body" rows="5" required placeholder="What, when, and where. Anything that helps someone decide if they can do it." {}
+                (rewrite_row(VoiceKind::Need))
             }
             label { "Gift needed"
                 select name="gift_id" {
@@ -166,6 +168,7 @@ fn offer_panel(
                     (csrf_input(csrf))
                     label { "Message"
                         textarea name="message" rows="3" required maxlength="600" placeholder="When you're free and what you can do." {}
+                        (rewrite_row(VoiceKind::Offer))
                     }
                     button class="btn" type="submit" { "Apply to help" }
                 }

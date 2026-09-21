@@ -91,6 +91,13 @@ pub struct ProfileForm {
 }
 
 #[derive(Deserialize)]
+pub struct RefineForm {
+    pub csrf: String,
+    pub kind: String,
+    pub text: String,
+}
+
+#[derive(Deserialize)]
 pub struct GiftForm {
     pub csrf: String,
     pub gift_id: String,

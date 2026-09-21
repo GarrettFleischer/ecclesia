@@ -4,7 +4,7 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
     accept_invite, approve_membership, decline_membership, invite_member, parse_invite_email,
-    plant_church, redeem_invite, request_join, Church, Viewer,
+    plant_church, redeem_invite, request_join, Church, Viewer, VoiceKind,
 };
 use crate::sdk::clock::{new_id, nonce4, now_iso};
 use crate::views;
@@ -71,6 +71,12 @@ pub async fn create_church(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    let posture = state
+        .weigh(
+            VoiceKind::Church,
+            &[&form.name, &form.gathering, &form.description],
+        )
+        .await;
     let effect = match plant_church(
         &signed.user,
         &form.name,
@@ -78,6 +84,7 @@ pub async fn create_church(
         &form.region,
         &form.description,
         &form.gathering,
+        posture,
         new_id(),
         new_id(),
         &nonce4(),
