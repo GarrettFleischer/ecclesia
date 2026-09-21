@@ -230,7 +230,7 @@ async fn us_need_05_neighboring_need_is_visible_across_the_valley() {
     let (app, peter) = login(app, "user_peter").await;
     let home = get(app, &peter, "/home").await;
     assert!(!home.contains("Spanish interpreter"));
-    assert!(home.contains("Pending"));
+    assert!(home.contains("Waiting"));
 }
 
 #[tokio::test]

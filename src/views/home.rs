@@ -53,8 +53,8 @@ fn pending_section(pending: &[(&Church, &Membership)], csrf: &str) -> Markup {
         return html! {};
     }
     html! {
-        section class="panel" {
-            h2 { "Pending" }
+        section {
+            h2 { "Waiting" }
             (pending_door_cards(pending, csrf))
         }
     }
