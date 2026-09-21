@@ -13,7 +13,7 @@ mod users;
 
 use anyhow::Context;
 use sqlx::{
-    sqlite::SqliteConnectOptions, sqlite::SqliteJournalMode, sqlite::SqlitePoolOptions, SqlitePool,
+    SqlitePool, sqlite::SqliteConnectOptions, sqlite::SqliteJournalMode, sqlite::SqlitePoolOptions,
 };
 use std::str::FromStr;
 

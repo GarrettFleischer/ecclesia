@@ -1,6 +1,6 @@
 //! Repeated cards and option lists. Loops live here, not inside page bodies.
 
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 use crate::leaf::{
     ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchMember, EndorsementCard, Gift,
@@ -213,10 +213,10 @@ pub fn church_options<'a>(
     }
 }
 
-pub fn gift_options(gifts: &[Gift]) -> Markup {
+pub fn gift_options(gifts: &[Gift], selected: &str) -> Markup {
     html! {
         @for gift in gifts {
-            option value=(gift.id) { (gift.name) " · " (gift.category) }
+            option value=(gift.id) selected[selected == gift.id] { (gift.name) " · " (gift.category) }
         }
     }
 }
@@ -229,11 +229,11 @@ pub fn catalog_name_options(catalog: &[Gift]) -> Markup {
     }
 }
 
-pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift]) -> Markup {
+pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift], selected: &str) -> Markup {
     html! {
         @for gift in catalog {
             @if !held.iter().any(|owned| owned.gift_id == gift.id) {
-                option value=(gift.id) { (gift.name) " · " (gift.category) }
+                option value=(gift.id) selected[selected == gift.id] { (gift.name) " · " (gift.category) }
             }
         }
     }

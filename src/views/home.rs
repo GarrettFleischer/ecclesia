@@ -1,10 +1,10 @@
-use maud::{html, Markup};
+use maud::{Markup, html};
 
-use crate::leaf::{visible_need_cards, Church, Membership, NeedCard, Viewer};
+use crate::leaf::{Church, Membership, NeedCard, Viewer, visible_need_cards};
 
 use super::cards::{need_card_stack, pending_door_cards};
 use super::flash::Flash;
-use super::layout::{page, Nav};
+use super::layout::{Nav, page};
 
 pub fn home(
     viewer: &Viewer,

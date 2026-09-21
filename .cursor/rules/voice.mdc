@@ -6,9 +6,10 @@ alwaysApply: false
 
 Read `docs/VOICE.md` before changing classification or rewrite.
 
-- The leaf never calls Jev, Ollama, or any HTTP model. It takes `Posture`.
-- `JudgeHub` weighs words (Jev nouls, local chat, or the word gate). `RefineHub` rewrites if the person asks.
-- Do not add Rig or another LLM crate. This crate is Rust 1.83 / edition 2021. Talk to an OpenAI-compatible server with `reqwest`.
-- GPU inference stays in Ollama or llama.cpp on the person's machine. Not in the Axum binary.
-- Fail to the word gate if Jev or the chat model is down. Do not block every post on a provider outage.
-- Rewrite is optional. The person still submits. Classification runs on what they send.
+- The leaf never calls Jev, OpenRouter, or any HTTP model. It takes `Posture`.
+- Prompts live in `src/sdk/prompts.rs`. Edit that file when the wording should change.
+- `JudgeHub` weighs words (Jev, OpenRouter `openrouter/free`, local chat, or the word gate).
+- `RefineHub` rewrites on the first submit. The person edits, then `VoicePass::Publish`.
+- Talk to OpenRouter / Ollama with `reqwest`. Do not add Rig unless the user asks.
+- Fail to the word gate if a remote judge is down. Do not block every post on an outage.
+- Classification runs on the words they publish, not the first draft.

@@ -3,9 +3,9 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
+    Application, CatalogPresence, Need, OfferState, PriorOffer, Viewer, VoiceKind,
     accept_application, apply_to_need, close_need, decline_application, post_need,
-    require_need_view, visible_offers, Application, CatalogPresence, Need, OfferState, PriorOffer,
-    Viewer, VoiceKind,
+    require_need_view, visible_offers,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
@@ -35,10 +35,10 @@ pub async fn need_new(
         html(views::need_new(
             &viewer,
             &gifts,
-            query.church_id.as_deref(),
             count,
             views::flash_from(flash.ok, flash.err),
             &signed.session.csrf,
+            &views::NeedDraft::blank(query.church_id.as_deref().unwrap_or("")),
         )),
     ))
 }
@@ -53,6 +53,30 @@ pub async fn create_need(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.db, signed.user).await?;
+    if state.awaiting_review(&form.pass, &[&form.title, &form.body]) {
+        let title = state.polish(VoiceKind::Need, &form.title).await;
+        let body = state.polish(VoiceKind::Need, &form.body).await;
+        let gifts = state.db.gifts().await?;
+        let count = unread(&state.db, &viewer.user.id).await?;
+        return Ok(with_cookie(
+            signed.jar,
+            html(views::need_new(
+                &viewer,
+                &gifts,
+                count,
+                None,
+                &signed.session.csrf,
+                &views::NeedDraft {
+                    church_id: &form.church_id,
+                    title: &title,
+                    body: &body,
+                    gift_id: &form.gift_id,
+                    scope: &form.scope,
+                    kind: views::DraftKind::Review,
+                },
+            )),
+        ));
+    }
     let gift = optional_gift_id(&form.gift_id);
     let presence = gift_presence(&state, gift).await?;
     let posture = state
@@ -102,43 +126,16 @@ pub async fn need_show(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.db, signed.user).await?;
-    let Some(card) = state.db.need_card(&id).await? else {
-        return Ok(with_cookie(
-            signed.jar,
-            html(views::error_page("We couldn't find that need.")),
-        ));
-    };
-    let Some(church) = state.db.church(&card.church_id).await? else {
-        return Ok(with_cookie(
-            signed.jar,
-            html(views::error_page("We couldn't find that church.")),
-        ));
-    };
-    if let Err(error) = require_need_view(&viewer, card.sight(), &church) {
-        return Ok(with_cookie(
-            signed.jar,
-            html(views::error_page(&error.to_string())),
-        ));
-    }
-    let applications = state.db.applications_for_need(&card.id).await?;
-    let offers: Vec<_> = visible_offers(&viewer, card.sight(), &applications).collect();
-    let offer = OfferState::of_existing(applications.iter().find(|a| a.user_id == viewer.user.id));
-    let help = crate::leaf::can_apply(&viewer, card.sight(), &church);
-    let count = unread(&state.db, &viewer.user.id).await?;
-    Ok(with_cookie(
+    paint_need(
+        &state,
         signed.jar,
-        html(views::need_show(
-            &viewer,
-            &card,
-            &church,
-            &offers,
-            help,
-            offer,
-            count,
-            views::flash_from(flash.ok, flash.err),
-            &signed.session.csrf,
-        )),
-    ))
+        viewer,
+        &id,
+        views::flash_from(flash.ok, flash.err),
+        &signed.session.csrf,
+        &views::OfferDraft::blank(),
+    )
+    .await
 }
 
 pub async fn apply_need(
@@ -159,6 +156,22 @@ pub async fn apply_need(
     let Some(church) = state.db.church(&need.church_id).await? else {
         return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
+    if state.awaiting_review(&form.pass, &[&form.message]) {
+        let message = state.polish(VoiceKind::Offer, &form.message).await;
+        return paint_need(
+            &state,
+            signed.jar,
+            viewer,
+            &id,
+            None,
+            &signed.session.csrf,
+            &views::OfferDraft {
+                message: &message,
+                kind: views::DraftKind::Review,
+            },
+        )
+        .await;
+    }
     let prior =
         PriorOffer::of_existing(state.db.application_pair(&need.id, &viewer.user.id).await?);
     let posture = state.weigh(VoiceKind::Offer, &[&form.message]).await;
@@ -288,4 +301,44 @@ async fn load_application_decision(
         application,
         dest,
     })
+}
+
+async fn paint_need(
+    state: &AppState,
+    jar: CookieJar,
+    viewer: Viewer,
+    id: &str,
+    flash: Option<views::Flash>,
+    csrf: &str,
+    draft: &views::OfferDraft<'_>,
+) -> Result<Response, AppError> {
+    let Some(card) = state.db.need_card(id).await? else {
+        return Ok(with_cookie(
+            jar,
+            html(views::error_page("We couldn't find that need.")),
+        ));
+    };
+    let Some(church) = state.db.church(&card.church_id).await? else {
+        return Ok(with_cookie(
+            jar,
+            html(views::error_page("We couldn't find that church.")),
+        ));
+    };
+    if let Err(error) = require_need_view(&viewer, card.sight(), &church) {
+        return Ok(with_cookie(
+            jar,
+            html(views::error_page(&error.to_string())),
+        ));
+    }
+    let applications = state.db.applications_for_need(&card.id).await?;
+    let offers: Vec<_> = visible_offers(&viewer, card.sight(), &applications).collect();
+    let offer = OfferState::of_existing(applications.iter().find(|a| a.user_id == viewer.user.id));
+    let help = crate::leaf::can_apply(&viewer, card.sight(), &church);
+    let count = unread(&state.db, &viewer.user.id).await?;
+    Ok(with_cookie(
+        jar,
+        html(views::need_show(
+            &viewer, &card, &church, &offers, help, offer, count, flash, csrf, draft,
+        )),
+    ))
 }

@@ -1,21 +1,22 @@
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 use crate::leaf::{
-    is_need_steward, ApplicationCard, Church, DomainError, Gift, NeedCard, OfferState, Viewer,
-    VoiceKind,
+    ApplicationCard, Church, DomainError, Gift, NeedCard, OfferState, Viewer, VoiceKind,
+    is_need_steward,
 };
 
-use super::cards::{application_cards, church_options, gift_options, scope_label, StewardView};
+use super::cards::{StewardView, application_cards, church_options, gift_options, scope_label};
+use super::draft::{NeedDraft, OfferDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{csrf_input, page, rewrite_row, share_button, Nav};
+use super::layout::{Nav, csrf_input, page, rewrite_row, share_button};
 
 pub fn need_new(
     viewer: &Viewer,
     gifts: &[Gift],
-    selected_church: Option<&str>,
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
+    draft: &NeedDraft<'_>,
 ) -> Markup {
     page(
         "Post a need",
@@ -26,7 +27,7 @@ pub fn need_new(
         csrf,
         html! {
             h1 { "Post a need" }
-            (need_form_or_empty(viewer, gifts, selected_church, csrf))
+            (need_form_or_empty(viewer, gifts, csrf, draft))
         },
     )
 }
@@ -34,8 +35,8 @@ pub fn need_new(
 fn need_form_or_empty(
     viewer: &Viewer,
     gifts: &[Gift],
-    selected_church: Option<&str>,
     csrf: &str,
+    draft: &NeedDraft<'_>,
 ) -> Markup {
     let mut churches = viewer.active_churches().peekable();
     if churches.peek().is_none() {
@@ -49,38 +50,43 @@ fn need_form_or_empty(
     html! {
         form class="stack" method="post" action="/needs" {
             (csrf_input(csrf))
+            (voice_pass_input(draft.kind))
+            (review_banner(draft.kind))
             label { "Church"
                 select name="church_id" required {
-                    (church_options(churches, selected_church))
+                    (church_options(churches, Some(draft.church_id).filter(|id| !id.is_empty())))
                 }
             }
-            label { "Title" input name="title" required placeholder="Dinners for the Okonkwos this week"; }
+            label { "Title"
+                input name="title" required placeholder="Dinners for the Okonkwos this week" value=(draft.title);
+                (rewrite_row(VoiceKind::Need))
+            }
             label { "Details"
-                textarea name="body" rows="5" required placeholder="What, when, and where. Anything that helps someone decide if they can do it." {}
+                textarea name="body" rows="5" required placeholder="What, when, and where. Anything that helps someone decide if they can do it." { (draft.body) }
                 (rewrite_row(VoiceKind::Need))
             }
             label { "Gift needed"
                 select name="gift_id" {
                     option value="" { "Anyone" }
-                    (gift_options(gifts))
+                    (gift_options(gifts, draft.gift_id))
                 }
             }
             fieldset class="scopes" {
                 legend { "Who can see this" }
                 label class="choice" {
-                    input type="radio" name="scope" value="church" checked;
+                    input type="radio" name="scope" value="church" checked[draft.scope != "neighboring" && draft.scope != "body"];
                     span { strong { "This church" } " Members only." }
                 }
                 label class="choice" {
-                    input type="radio" name="scope" value="neighboring";
+                    input type="radio" name="scope" value="neighboring" checked[draft.scope == "neighboring"];
                     span { strong { "Churches nearby" } " Same city or region." }
                 }
                 label class="choice" {
-                    input type="radio" name="scope" value="body";
+                    input type="radio" name="scope" value="body" checked[draft.scope == "body"];
                     span { strong { "Everyone on Ecclesia" } }
                 }
             }
-            button class="btn" type="submit" { "Post need" }
+            button class="btn" type="submit" { (draft.kind.submit_label("Post need")) }
         }
     }
 }
@@ -95,6 +101,7 @@ pub fn need_show(
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
+    draft: &OfferDraft<'_>,
 ) -> Markup {
     let steward = steward_of(viewer, need);
     page(
@@ -118,7 +125,7 @@ pub fn need_show(
                 " · " (need.status)
             }
             (matching_gift_pill(viewer, need))
-            (offer_panel(need, can_help, offer, steward, csrf))
+            (offer_panel(need, can_help, offer, steward, csrf, draft))
             (already_offered(offer))
             (close_form(need, steward, csrf))
             section {
@@ -153,6 +160,7 @@ fn offer_panel(
     offer: OfferState,
     steward: StewardView,
     csrf: &str,
+    draft: &OfferDraft<'_>,
 ) -> Markup {
     if !need.is_open()
         || matches!(steward, StewardView::Steward)
@@ -166,11 +174,13 @@ fn offer_panel(
                 h2 { "Offer to help" }
                 form class="stack" method="post" action={ "/needs/" (need.id) "/apply" } {
                     (csrf_input(csrf))
+                    (voice_pass_input(draft.kind))
+                    (review_banner(draft.kind))
                     label { "Message"
-                        textarea name="message" rows="3" required maxlength="600" placeholder="When you're free and what you can do." {}
+                        textarea name="message" rows="3" required maxlength="600" placeholder="When you're free and what you can do." { (draft.message) }
                         (rewrite_row(VoiceKind::Offer))
                     }
-                    button class="btn" type="submit" { "Apply to help" }
+                    button class="btn" type="submit" { (draft.kind.submit_label("Apply to help")) }
                 }
             }
         },

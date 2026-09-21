@@ -158,7 +158,7 @@ mod tests {
     use super::*;
     use crate::leaf::sample::user_named;
     use crate::leaf::{
-        accept_endorsement, accept_invite, approve_membership, request_join, Viewer,
+        Viewer, accept_endorsement, accept_invite, approve_membership, request_join,
     };
 
     fn user(id: &str, name: &str) -> User {

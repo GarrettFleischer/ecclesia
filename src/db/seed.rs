@@ -1,5 +1,5 @@
-use super::seed_data::*;
 use super::Db;
+use super::seed_data::*;
 use crate::domain::now_iso;
 
 impl Db {

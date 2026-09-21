@@ -1,16 +1,17 @@
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 use crate::leaf::{
-    visible_need_cards, Church, ChurchCard, ChurchMember, Membership, NeedCard, PlaceGroup, Viewer,
-    VoiceKind,
+    Church, ChurchCard, ChurchMember, Membership, NeedCard, PlaceGroup, Viewer, VoiceKind,
+    visible_need_cards,
 };
 
 use super::cards::{
     active_member_items, church_index_cards, has_active_member, need_card_stack,
     pending_member_cards, pending_people, place_sections,
 };
+use super::draft::{ChurchDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{csrf_input, page, rewrite_row, share_button, Nav};
+use super::layout::{Nav, csrf_input, page, rewrite_row, share_button};
 
 pub fn churches_index(
     viewer: &Viewer,
@@ -56,7 +57,13 @@ fn church_list(churches: &[ChurchCard]) -> Markup {
     }
 }
 
-pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<Flash>, csrf: &str) -> Markup {
+pub fn church_new(
+    viewer: &Viewer,
+    unread: i64,
+    flash: Option<Flash>,
+    csrf: &str,
+    draft: &ChurchDraft<'_>,
+) -> Markup {
     page(
         "Add your church",
         Some(&viewer.user),
@@ -69,17 +76,19 @@ pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<Flash>, csrf: &str
             p class="muted" { "You'll be its pastor here, so you decide who joins." }
             form class="stack" method="post" action="/churches" {
                 (csrf_input(csrf))
-                label { "Church name" input name="name" required placeholder="Grace Covenant Church" maxlength="120"; }
+                (voice_pass_input(draft.kind))
+                (review_banner(draft.kind))
+                label { "Church name" input name="name" required placeholder="Grace Covenant Church" maxlength="120" value=(draft.name); }
                 div class="split" {
-                    label { "City" input name="city" required value=(viewer.user.city); }
-                    label { "State or region" input name="region" required value=(viewer.user.region); }
+                    label { "City" input name="city" required value=(draft.city); }
+                    label { "State or region" input name="region" required value=(draft.region); }
                 }
-                label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m."; }
+                label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m." value=(draft.gathering); }
                 label { "About the church"
-                    textarea name="description" rows="4" required placeholder="A few sentences. Where you are, who comes, what you're about." {}
+                    textarea name="description" rows="4" required placeholder="A few sentences. Where you are, who comes, what you're about." { (draft.description) }
                     (rewrite_row(VoiceKind::Church))
                 }
-                button class="btn" type="submit" { "Add church" }
+                button class="btn" type="submit" { (draft.kind.submit_label("Add church")) }
             }
         },
     )

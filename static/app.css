@@ -552,6 +552,21 @@ button.rewrite.is-busy::after {
 
 .rewrite-status.is-live { color: var(--ok); }
 
+.review-banner {
+  margin: 0 0 0.35rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: #efe3bf;
+  color: var(--olive-deep);
+  box-shadow: inset 0 0 0 1px rgba(177, 132, 44, 0.18);
+  animation: slide-down 480ms var(--ease) both;
+}
+
+form.is-reviewing {
+  opacity: 0.62;
+  pointer-events: none;
+}
+
 @keyframes rewrite-pulse {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }

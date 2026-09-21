@@ -63,5 +63,6 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 | US-SEC-02 | Every POST carries a CSRF token bound to the session. | session + HTTP | `us_sec_02_*` |
 | US-PROSE-01 | User-facing copy follows [PROSE.md](PROSE.md). | `style` | `us_prose_01` |
 | US-LEAF-01 | Leaves do no I/O. | `style` | `us_leaf_01` |
-| US-TONE-01 | Posted words must lift people up. The skin weighs them (Jev, a local model, or the word gate) and the leaf refuses `TearsDown`. | `require_uplifting`, `JudgeHub` | `us_tone_01_*` |
-| US-REFINE-01 | I can ask to rewrite a bio, need, offer, endorsement, gift note, or church description. A local model does it if one is running. I still send the words. | `RefineHub`, `/refine` | `us_refine_01_*` |
+| US-TONE-01 | Posted words must lift people up. The skin weighs them (Jev, OpenRouter, a local model, or the word gate) and the leaf refuses `TearsDown`. | `require_uplifting`, `JudgeHub` | `us_tone_01_*` |
+| US-REFINE-01 | I can ask to rewrite a bio, need, offer, endorsement, gift note, or church description. | `RefineHub`, `/refine` | `us_refine_01_*` |
+| US-REFINE-02 | When I submit, I see the rewritten words, I can edit them, then I publish. | `VoicePass`, writing forms | `us_refine_02_*` |

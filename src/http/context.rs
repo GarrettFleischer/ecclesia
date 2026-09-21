@@ -1,12 +1,12 @@
-use axum::http::{header, HeaderValue};
+use axum::http::{HeaderValue, header};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::db::Db;
 use crate::leaf::{
-    churches_with_counts, group_churches_by_place, unique_church_ids, Church, ChurchCard,
-    DomainError, Effect, Membership, PlaceGroup, User, Viewer,
+    Church, ChurchCard, DomainError, Effect, Membership, PlaceGroup, User, Viewer,
+    churches_with_counts, group_churches_by_place, unique_church_ids,
 };
 use crate::sdk::session::{self, Session};
 

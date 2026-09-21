@@ -1,6 +1,6 @@
 //! Chrome: document shell, dock, avatars, CSRF field.
 
-use maud::{html, Markup, DOCTYPE};
+use maud::{DOCTYPE, Markup, html};
 
 use crate::leaf::{User, VoiceKind};
 
@@ -182,11 +182,7 @@ fn dock(nav: Nav, unread: i64) -> Markup {
 }
 
 fn unread_badge(unread: i64) -> Option<i64> {
-    if unread > 0 {
-        Some(unread)
-    } else {
-        None
-    }
+    if unread > 0 { Some(unread) } else { None }
 }
 
 fn dock_link(

@@ -76,8 +76,10 @@ siblings of `sdk`, not inside it.
 | `clock` | `sdk/clock.rs` | OS time, UUID | ids and timestamps leaves receive |
 | `session` | `sdk/session.rs` | HMAC cookies | who is signed in, CSRF |
 | `push` | `sdk/push.rs`, `sdk/web_push.rs` | Web Push, optional FCM | deliver notices to an installed phone |
-| `judge` | `sdk/judge.rs` | Jev, local OpenAI-compat, or word gate | weigh words; return `Posture` |
-| `refine` | `sdk/refine.rs` | local OpenAI-compat, or silent | optional rewrite |
+| `judge` | `sdk/judge.rs` | Jev, OpenRouter free, local chat, or word gate | weigh words; return `Posture` |
+| `refine` | `sdk/refine.rs` | OpenRouter free, local chat, polish, or silent | rewrite before publish |
+| `chat` | `sdk/chat.rs` | OpenAI-compat HTTP | shared client and OpenRouter headers |
+| `prompts` | `sdk/prompts.rs` | — | classify and rewrite wording |
 | `memory` | `sdk/memory.rs` | process RAM | apply effects in tests |
 | `db` | `db/{schema,seed,users,churches,needs,gifts,notices,push,apply}.rs` | SQLite | persist effects |
 | `http` | `http/{auth,churches,needs,people,push,voice,context,forms}.rs` | Axum | load, call a leaf, apply, render |

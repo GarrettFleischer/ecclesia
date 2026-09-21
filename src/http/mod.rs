@@ -9,11 +9,11 @@ mod people;
 mod push;
 mod voice;
 
+use axum::Router;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Router;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
@@ -49,6 +49,22 @@ impl AppState {
 
     pub(crate) async fn weigh(&self, kind: VoiceKind, parts: &[&str]) -> Posture {
         self.judge.weigh(kind, parts).await
+    }
+
+    pub(crate) fn awaiting_review(&self, pass: &str, parts: &[&str]) -> bool {
+        self.refine.is_live()
+            && crate::leaf::VoicePass::parse(pass) == crate::leaf::VoicePass::Review
+            && parts.iter().any(|part| !part.trim().is_empty())
+    }
+
+    pub(crate) async fn polish(&self, kind: VoiceKind, text: &str) -> String {
+        match self.refine.rewrite(kind, text).await {
+            Ok(text) => text,
+            Err(error) => {
+                tracing::warn!("rewrite failed: {error:#}");
+                text.trim().to_string()
+            }
+        }
     }
 }
 

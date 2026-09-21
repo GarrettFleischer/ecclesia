@@ -9,6 +9,7 @@
   hookInstall(native);
   hookShare(native);
   hookRewrite(csrf);
+  hookReview(csrf);
   hookHaptics(native);
   hookAlerts(csrf, native);
   if (native) {
@@ -204,6 +205,85 @@ function finishRewrite(status, seat) {
   }
   status.textContent = "Rewritten. Edit anything you want.";
   status.classList.add("is-live");
+}
+
+function hookReview(csrf) {
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !csrf) {
+      return;
+    }
+    if (form.dataset.reviewed === "1") {
+      return;
+    }
+    const fields = reviewFields(form);
+    if (!fields.length) {
+      return;
+    }
+    event.preventDefault();
+    form.classList.add("is-reviewing");
+    try {
+      const live = await fillRefined(csrf, fields);
+      if (!live) {
+        markReviewed(form);
+        form.submit();
+        return;
+      }
+      showReview(form);
+    } catch (_error) {
+      markReviewed(form);
+      form.submit();
+    } finally {
+      form.classList.remove("is-reviewing");
+    }
+  });
+}
+
+function reviewFields(form) {
+  return [...form.querySelectorAll("[data-rewrite]")]
+    .map((btn) => ({
+      field: rewriteField(btn),
+      kind: btn.getAttribute("data-kind") || "",
+    }))
+    .filter((item) => item.field && item.field.value.trim());
+}
+
+async function fillRefined(csrf, fields) {
+  let live = false;
+  for (const item of fields) {
+    const body = await requestRewrite(csrf, item.kind, item.field.value);
+    item.field.value = body.text;
+    if (body.seat === "live") {
+      live = true;
+    }
+  }
+  return live;
+}
+
+function markReviewed(form) {
+  form.dataset.reviewed = "1";
+  const pass = form.querySelector('input[name="pass"]');
+  if (pass) {
+    pass.value = "publish";
+  }
+}
+
+function showReview(form) {
+  markReviewed(form);
+  if (!form.querySelector(".review-banner")) {
+    const banner = document.createElement("p");
+    banner.className = "review-banner";
+    banner.textContent = "Read this through. Edit anything you want. Then publish.";
+    form.prepend(banner);
+  }
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) {
+    submit.textContent = "Publish";
+  }
+  const banner = form.querySelector(".review-banner");
+  if (banner && banner.scrollIntoView) {
+    banner.scrollIntoView({ block: "nearest" });
+  }
 }
 
 function hookHaptics(native) {

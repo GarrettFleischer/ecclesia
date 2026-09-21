@@ -358,10 +358,12 @@ mod tests {
     fn us_end_02_accept_does_not_overwrite_a_gift_they_already_named() {
         let endorsement = pending("Hospitality", "gift_hospitality");
         let effect = accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Named).unwrap();
-        assert!(!effect
-            .writes
-            .iter()
-            .any(|write| matches!(write, Write::UpsertMemberGift { .. })));
+        assert!(
+            !effect
+                .writes
+                .iter()
+                .any(|write| matches!(write, Write::UpsertMemberGift { .. }))
+        );
     }
 
     #[test]
@@ -369,10 +371,12 @@ mod tests {
         let endorsement = pending("Sitting still with people", "");
         let effect =
             accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Absent).unwrap();
-        assert!(!effect
-            .writes
-            .iter()
-            .any(|write| matches!(write, Write::UpsertMemberGift { .. })));
+        assert!(
+            !effect
+                .writes
+                .iter()
+                .any(|write| matches!(write, Write::UpsertMemberGift { .. }))
+        );
         assert!(effect.notices[0].title.contains("Sitting still"));
         assert!(effect.notices[0].title.contains("accepted"));
     }

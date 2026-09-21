@@ -1,7 +1,6 @@
-//! Optional rewrite, like Gmail's refine. A separate model from the judge.
-//!
-//! Point `ECCLESIA_LLM_URL` at Ollama or llama.cpp on the machine with the GPU.
-//! Tests and a box with no model use `silent`, which returns the same words.
+//! Rewrite before publish. OpenRouter's free router is the default hosted path.
+//! A local OpenAI-compatible server is for a box with a GPU.
+//! Tests use `silent` (echo) or `polish` (collapse spaces, marked live).
 
 use std::sync::Arc;
 
@@ -9,7 +8,11 @@ use serde_json::json;
 
 use crate::leaf::VoiceKind;
 
-use super::judge::{chat_completions_url, ChatResponse};
+use super::chat::{
+    ChatEndpoint, ChatResponse, apply_headers, chat_completions_url, from_local_env,
+    from_openrouter_env, http_client, refine_model_override,
+};
+use super::prompts;
 
 #[derive(Clone)]
 pub struct RefineHub {
@@ -18,10 +21,9 @@ pub struct RefineHub {
 
 enum RefineInner {
     Silent,
+    Polish,
     Chat {
-        url: String,
-        key: Option<String>,
-        model: String,
+        endpoint: ChatEndpoint,
         http: reqwest::Client,
     },
 }
@@ -33,15 +35,46 @@ impl RefineHub {
         }
     }
 
-    pub fn load() -> Self {
-        match from_chat_env() {
-            Some(hub) => hub,
-            None => Self::silent(),
+    pub fn polish() -> Self {
+        Self {
+            inner: Arc::new(RefineInner::Polish),
         }
     }
 
+    pub fn load() -> Self {
+        if let Some(mut endpoint) = from_openrouter_env() {
+            endpoint.model = refine_model_override(&endpoint.model);
+            tracing::info!(
+                "rewriting with OpenRouter {} at {}",
+                endpoint.model,
+                endpoint.url
+            );
+            return Self {
+                inner: Arc::new(RefineInner::Chat {
+                    endpoint,
+                    http: http_client(25),
+                }),
+            };
+        }
+        if let Some(mut endpoint) = from_local_env() {
+            endpoint.model = refine_model_override(&endpoint.model);
+            tracing::info!(
+                "rewriting with the local chat model {} at {}",
+                endpoint.model,
+                endpoint.url
+            );
+            return Self {
+                inner: Arc::new(RefineInner::Chat {
+                    endpoint,
+                    http: http_client(20),
+                }),
+            };
+        }
+        Self::silent()
+    }
+
     pub fn is_live(&self) -> bool {
-        matches!(self.inner.as_ref(), RefineInner::Chat { .. })
+        !matches!(self.inner.as_ref(), RefineInner::Silent)
     }
 
     pub async fn rewrite(&self, kind: VoiceKind, text: &str) -> anyhow::Result<String> {
@@ -51,97 +84,47 @@ impl RefineHub {
         }
         match self.inner.as_ref() {
             RefineInner::Silent => Ok(trimmed.to_string()),
-            RefineInner::Chat {
-                url,
-                key,
-                model,
-                http,
-            } => chat_rewrite(http, url, key.as_deref(), model, kind, trimmed).await,
+            RefineInner::Polish => Ok(collapse_spaces(trimmed)),
+            RefineInner::Chat { endpoint, http } => {
+                chat_rewrite(http, endpoint, kind, trimmed).await
+            }
         }
     }
 }
 
-fn from_chat_env() -> Option<RefineHub> {
-    let url = std::env::var("ECCLESIA_LLM_URL")
-        .ok()
-        .filter(|value| !value.trim().is_empty())?;
-    let model = refine_model();
-    let key = std::env::var("ECCLESIA_LLM_KEY")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    tracing::info!("rewriting with the local chat model {model} at {url}");
-    Some(RefineHub {
-        inner: Arc::new(RefineInner::Chat {
-            url,
-            key,
-            model,
-            http: http_client(),
-        }),
-    })
-}
-
-fn refine_model() -> String {
-    std::env::var("ECCLESIA_REFINE_MODEL")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            std::env::var("ECCLESIA_LLM_MODEL")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-        })
-        .unwrap_or_else(|| "llama3.1:8b".into())
-}
-
-fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
-}
-
-fn rewrite_preamble(kind: VoiceKind) -> &'static str {
-    match kind {
-        VoiceKind::Need => {
-            "Rewrite this church need so it is clear and kind. Keep the facts they named. Return only the rewritten text."
+fn collapse_spaces(text: &str) -> String {
+    let mut out = String::new();
+    let mut pending_space = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            pending_space = !out.is_empty();
+            continue;
         }
-        VoiceKind::Offer => {
-            "Rewrite this offer to help so it is clear and kind. Keep when they can come and what they can do. Return only the rewritten text."
+        if pending_space {
+            out.push(' ');
+            pending_space = false;
         }
-        VoiceKind::Endorsement => {
-            "Rewrite this endorsement so it is clear and heartfelt. Keep the specific thing they saw. Return only the rewritten text."
-        }
-        VoiceKind::GiftNote => {
-            "Rewrite this gift note so it is clear. Keep how they serve. Return only the rewritten text."
-        }
-        VoiceKind::Bio => {
-            "Rewrite this short bio so it is clear. Keep how they named themselves. Return only the rewritten text."
-        }
-        VoiceKind::Church => {
-            "Rewrite this church description so it is clear. Keep where they are and who comes. Return only the rewritten text."
-        }
+        out.push(ch);
     }
+    out
 }
 
 async fn chat_rewrite(
     http: &reqwest::Client,
-    base: &str,
-    key: Option<&str>,
-    model: &str,
+    endpoint: &ChatEndpoint,
     kind: VoiceKind,
     text: &str,
 ) -> anyhow::Result<String> {
-    let url = chat_completions_url(base);
-    let mut request = http.post(&url).json(&json!({
-        "model": model,
+    let url = chat_completions_url(&endpoint.url);
+    let body = json!({
+        "model": endpoint.model,
         "temperature": 0.4,
         "messages": [
-            { "role": "system", "content": rewrite_preamble(kind) },
+            { "role": "system", "content": prompts::refine_system(kind) },
             { "role": "user", "content": text }
         ]
-    }));
-    if let Some(key) = key {
-        request = request.bearer_auth(key);
-    }
+    });
+    let request = apply_headers(http.post(&url).json(&body), endpoint);
     let response = request.send().await?.error_for_status()?;
     let parsed: ChatResponse = response.json().await?;
     let rewritten = parsed.first_text().trim();
@@ -164,5 +147,16 @@ mod tests {
             .unwrap();
         assert_eq!(text, "She stayed.");
         assert!(!hub.is_live());
+    }
+
+    #[tokio::test]
+    async fn us_refine_02_polish_collapses_spaces() {
+        let hub = RefineHub::polish();
+        let text = hub
+            .rewrite(VoiceKind::Need, "Need   five   dinners")
+            .await
+            .unwrap();
+        assert_eq!(text, "Need five dinners");
+        assert!(hub.is_live());
     }
 }

@@ -1,17 +1,18 @@
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 use crate::leaf::{
-    declined_visible_to, Church, EndorsementCard, Gift, MemberGift, Membership, Notification, User,
-    Viewer, VoiceKind,
+    Church, EndorsementCard, Gift, MemberGift, Membership, Notification, User, Viewer, VoiceKind,
+    declined_visible_to,
 };
 
 use super::cards::{
-    accepted_endorsement_cards, catalog_name_options, declined_endorsement_cards, household_items,
-    member_gift_cards, my_gift_cards, notice_cards, pending_endorsement_cards, unused_gift_options,
-    DeclineAction,
+    DeclineAction, accepted_endorsement_cards, catalog_name_options, declined_endorsement_cards,
+    household_items, member_gift_cards, my_gift_cards, notice_cards, pending_endorsement_cards,
+    unused_gift_options,
 };
+use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{csrf_input, first_name, page, rewrite_row, Nav};
+use super::layout::{Nav, csrf_input, first_name, page, rewrite_row};
 
 pub fn member_show(
     viewer: &Viewer,
@@ -24,6 +25,7 @@ pub fn member_show(
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
+    draft: &EndorseDraft<'_>,
 ) -> Markup {
     let nav = nav_for_person(viewer, person);
     page(
@@ -47,7 +49,7 @@ pub fn member_show(
             }
             (endorsement_section(endorsements))
             (declined_endorsement_section(viewer, person, declined, csrf))
-            (endorse_panel(viewer, person, catalog, csrf))
+            (endorse_panel(viewer, person, catalog, csrf, draft))
         },
     )
 }
@@ -135,7 +137,13 @@ fn decline_action_for(viewer_id: &str, person_id: &str) -> DeclineAction {
     }
 }
 
-fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -> Markup {
+fn endorse_panel(
+    viewer: &Viewer,
+    person: &User,
+    catalog: &[Gift],
+    csrf: &str,
+    draft: &EndorseDraft<'_>,
+) -> Markup {
     if viewer.user.id == person.id {
         return html! {};
     }
@@ -144,17 +152,19 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
             h2 { "Endorse " (first_name(&person.name)) }
             form class="stack" method="post" action={ "/members/" (person.id) "/endorse" } {
                 (csrf_input(csrf))
+                (voice_pass_input(draft.kind))
+                (review_banner(draft.kind))
                 label { "Skill"
-                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality";
+                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality" value=(draft.skill);
                     datalist id="catalog-skills" {
                         (catalog_name_options(catalog))
                     }
                 }
                 label { "Why"
-                    textarea name="note" rows="5" required maxlength="600" placeholder="She stayed until the last parent came." {}
+                    textarea name="note" rows="5" required maxlength="600" placeholder="She stayed until the last parent came." { (draft.note) }
                     (rewrite_row(VoiceKind::Endorsement))
                 }
-                button class="btn" type="submit" { "Send" }
+                button class="btn" type="submit" { (draft.kind.submit_label("Send")) }
             }
         }
     }
@@ -252,6 +262,8 @@ pub fn me(
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
+    profile: &ProfileDraft<'_>,
+    gift: &GiftDraft<'_>,
 ) -> Markup {
     page(
         "You",
@@ -264,32 +276,36 @@ pub fn me(
             h1 { (viewer.user.name) }
             form class="stack" method="post" action="/me" {
                 (csrf_input(csrf))
-                label { "Name" input name="name" required value=(viewer.user.name) maxlength="80"; }
+                (voice_pass_input(profile.kind))
+                (review_banner(profile.kind))
+                label { "Name" input name="name" required value=(profile.name) maxlength="80"; }
                 div class="split" {
-                    label { "City" input name="city" required value=(viewer.user.city); }
-                    label { "State or region" input name="region" required value=(viewer.user.region); }
+                    label { "City" input name="city" required value=(profile.city); }
+                    label { "State or region" input name="region" required value=(profile.region); }
                 }
                 label { "About you"
-                    textarea name="bio" rows="3" { (viewer.user.bio) }
+                    textarea name="bio" rows="3" { (profile.bio) }
                     (rewrite_row(VoiceKind::Bio))
                 }
-                button class="btn" type="submit" { "Save" }
+                button class="btn" type="submit" { (profile.kind.submit_label("Save")) }
             }
             section class="panel" {
                 h2 { "Your gifts" }
                 (my_gifts_block(gifts, csrf))
                 form class="stack" method="post" action="/me/gifts" {
                     (csrf_input(csrf))
+                    (voice_pass_input(gift.kind))
+                    (review_banner(gift.kind))
                     label { "Add a gift"
                         select name="gift_id" required {
-                            (unused_gift_options(catalog, gifts))
+                            (unused_gift_options(catalog, gifts, gift.gift_id))
                         }
                     }
                     label { "Note (optional)"
-                        input name="note" placeholder="Thursday nights. Hospital visits. Spreadsheets.";
+                        input name="note" placeholder="Thursday nights. Hospital visits. Spreadsheets." value=(gift.note);
                         (rewrite_row(VoiceKind::GiftNote))
                     }
-                    button class="btn btn-quiet" type="submit" { "Add" }
+                    button class="btn btn-quiet" type="submit" { (gift.kind.submit_label("Add")) }
                 }
             }
             section {

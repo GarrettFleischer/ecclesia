@@ -2,7 +2,7 @@ use axum::extract::{Form, Query, State};
 use axum::response::{Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
-use crate::leaf::{may_impersonate, pair_memberships, register, EmailAvailability, VoiceKind};
+use crate::leaf::{EmailAvailability, VoiceKind, may_impersonate, pair_memberships, register};
 use crate::sdk::clock::{new_id, now_iso};
 use crate::sdk::session::{self, Session};
 use crate::views;
@@ -32,6 +32,7 @@ pub async fn landing(
             views::flash_from(flash.ok, flash.err),
             &session.csrf,
             state.demo,
+            &views::RegisterDraft::blank(),
         )),
     ))
 }
@@ -88,6 +89,27 @@ pub async fn register_user(
     let (session, jar) = bind_session(jar, &state.secret);
     if !session.check_csrf(&form.csrf) {
         return Ok(with_cookie(jar, fail_csrf("/")));
+    }
+    if state.awaiting_review(&form.pass, &[&form.bio]) {
+        let bio = state.polish(VoiceKind::Bio, &form.bio).await;
+        let users = demo_people(&state).await?;
+        return Ok(with_cookie(
+            jar,
+            html(views::landing(
+                &users,
+                None,
+                &session.csrf,
+                state.demo,
+                &views::RegisterDraft {
+                    name: &form.name,
+                    email: &form.email,
+                    city: &form.city,
+                    region: &form.region,
+                    bio: &bio,
+                    kind: views::DraftKind::Review,
+                },
+            )),
+        ));
     }
     let availability = EmailAvailability::of_existing(state.db.user_by_email(&form.email).await?);
     let posture = state.weigh(VoiceKind::Bio, &[&form.name, &form.bio]).await;

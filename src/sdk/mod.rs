@@ -6,9 +6,11 @@
 //! Persistence (`src/db`) and HTTP (`src/http`) are sibling skins, not
 //! modules of this crate. They apply effects after a leaf returns.
 
+pub mod chat;
 pub mod clock;
 pub mod judge;
 pub mod memory;
+pub mod prompts;
 pub mod push;
 pub mod refine;
 pub mod session;

@@ -190,8 +190,8 @@ fn passed_application_notice(need: &Need, application: &Application) -> super::m
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::leaf::sample::{church, membership, user, viewer_of};
     use crate::leaf::Church;
+    use crate::leaf::sample::{church, membership, user, viewer_of};
 
     #[test]
     fn us_need_01_requires_active_membership() {

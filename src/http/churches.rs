@@ -3,8 +3,8 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
-    accept_invite, approve_membership, decline_membership, invite_member, parse_invite_email,
-    plant_church, redeem_invite, request_join, Church, Viewer, VoiceKind,
+    Church, Viewer, VoiceKind, accept_invite, approve_membership, decline_membership,
+    invite_member, parse_invite_email, plant_church, redeem_invite, request_join,
 };
 use crate::sdk::clock::{new_id, nonce4, now_iso};
 use crate::views;
@@ -58,6 +58,7 @@ pub async fn church_new(
             count,
             views::flash_from(flash.ok, flash.err),
             &signed.session.csrf,
+            &views::ChurchDraft::blank(&viewer.user.city, &viewer.user.region),
         )),
     ))
 }
@@ -71,6 +72,27 @@ pub async fn create_church(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    if state.awaiting_review(&form.pass, &[&form.description]) {
+        let description = state.polish(VoiceKind::Church, &form.description).await;
+        let count = unread(&state.db, &signed.user.id).await?;
+        return Ok(with_cookie(
+            signed.jar,
+            html(views::church_new(
+                &viewer_for(&state.db, signed.user).await?,
+                count,
+                None,
+                &signed.session.csrf,
+                &views::ChurchDraft {
+                    name: &form.name,
+                    city: &form.city,
+                    region: &form.region,
+                    gathering: &form.gathering,
+                    description: &description,
+                    kind: views::DraftKind::Review,
+                },
+            )),
+        ));
+    }
     let posture = state
         .weigh(
             VoiceKind::Church,

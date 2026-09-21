@@ -26,6 +26,8 @@ pub struct RegisterForm {
     pub region: String,
     #[serde(default)]
     pub bio: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +39,8 @@ pub struct ChurchForm {
     #[serde(default)]
     pub gathering: String,
     pub description: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]
@@ -60,6 +64,8 @@ pub struct NeedForm {
     #[serde(default)]
     pub gift_id: String,
     pub scope: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]
@@ -71,6 +77,8 @@ pub struct NeedQuery {
 pub struct ApplyForm {
     pub csrf: String,
     pub message: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]
@@ -78,6 +86,8 @@ pub struct EndorseForm {
     pub csrf: String,
     pub skill: String,
     pub note: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +98,8 @@ pub struct ProfileForm {
     pub region: String,
     #[serde(default)]
     pub bio: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]
@@ -103,6 +115,8 @@ pub struct GiftForm {
     pub gift_id: String,
     #[serde(default)]
     pub note: String,
+    #[serde(default)]
+    pub pass: String,
 }
 
 #[derive(Deserialize)]

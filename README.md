@@ -6,7 +6,7 @@ A church posts a need. People who can help say so. Nearby churches see those nee
 
 ## Run it
 
-Rust 1.83+.
+Nightly Rust (edition 2024). `rustup toolchain install nightly`.
 
 ```bash
 cargo test
@@ -27,10 +27,11 @@ Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the demo.
 
 For a shared host: `ECCLESIA_DEMO=0`, a long random `ECCLESIA_SECRET`, and your own VAPID keys. See [docs/MOBILE.md](docs/MOBILE.md).
 
-To weigh words with Jev, set `ECCLESIA_JEV_KEY`. To classify and rewrite on a
-local GPU (Ollama or llama.cpp on a 4080 Super), set `ECCLESIA_LLM_URL` and
-`ECCLESIA_LLM_MODEL`. See [docs/VOICE.md](docs/VOICE.md). Without those, an
-on-box word gate still stops obvious attacks. Rewrite stays optional.
+To weigh words with Jev, set `ECCLESIA_JEV_KEY`. For hosted rewrite and
+classify while testing, set `ECCLESIA_OPENROUTER_KEY` (Free Models Router,
+`openrouter/free`). On a 4080 Super, set `ECCLESIA_LLM_URL` instead. See
+[docs/VOICE.md](docs/VOICE.md). Without those, a word gate still stops
+obvious attacks. First submit shows the rewrite. Then you publish.
 
 ## Walk the demo
 

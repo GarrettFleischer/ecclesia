@@ -171,6 +171,29 @@ impl VoiceKind {
     }
 }
 
+/// First submit is a review of the rewrite. Second submit publishes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoicePass {
+    Review,
+    Publish,
+}
+
+impl VoicePass {
+    pub fn parse(value: &str) -> Self {
+        match value.trim() {
+            "publish" => Self::Publish,
+            _ => Self::Review,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Review => "review",
+            Self::Publish => "publish",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +206,12 @@ mod tests {
             require_uplifting(Posture::TearsDown),
             Err(DomainError::TearsDown)
         );
+    }
+
+    #[test]
+    fn us_refine_02_first_pass_is_review() {
+        assert_eq!(VoicePass::parse(""), VoicePass::Review);
+        assert_eq!(VoicePass::parse("review"), VoicePass::Review);
+        assert_eq!(VoicePass::parse("publish"), VoicePass::Publish);
     }
 }

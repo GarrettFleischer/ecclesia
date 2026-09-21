@@ -1,9 +1,9 @@
 //! Optional rewrite. CSRF is enough; guests write a bio before they have a seat.
 
+use axum::Json;
 use axum::extract::{Form, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::Json;
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
 

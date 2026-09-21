@@ -1,14 +1,21 @@
 //! Weigh whether words lift people up.
 //!
-//! Prefer Jev (typed nouls). On a local box, the same questions go to an
-//! OpenAI-compatible server. Tests use `silent`, which always lifts.
+//! Prefer Jev (typed nouls). For testing, OpenRouter's free router asks the
+//! same two scores. A local OpenAI-compatible server is the last chat path.
+//! Tests use `silent`, which always lifts.
 
 use std::sync::Arc;
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::leaf::{Posture, VoiceKind};
+
+use super::chat::{
+    ChatEndpoint, ChatResponse, apply_headers, chat_completions_url, from_local_env,
+    from_openrouter_env, http_client, is_openrouter,
+};
+use super::prompts;
 
 const JEV_DEFAULT_URL: &str = "https://jevtypesafeai.com/api/v1/decide";
 const NOUL_GATE: f64 = 0.5;
@@ -28,9 +35,7 @@ enum JudgeInner {
         http: reqwest::Client,
     },
     Chat {
-        url: String,
-        key: Option<String>,
-        model: String,
+        endpoint: ChatEndpoint,
         http: reqwest::Client,
     },
 }
@@ -52,10 +57,33 @@ impl JudgeHub {
         if let Some(hub) = from_jev_env() {
             return hub;
         }
-        if let Some(hub) = from_chat_env() {
-            return hub;
+        if let Some(endpoint) = from_openrouter_env() {
+            tracing::info!(
+                "weighing words with OpenRouter {} at {}",
+                endpoint.model,
+                endpoint.url
+            );
+            return Self {
+                inner: Arc::new(JudgeInner::Chat {
+                    endpoint,
+                    http: http_client(12),
+                }),
+            };
         }
-        tracing::info!("no Jev or local LLM; using the word gate for obvious attacks");
+        if let Some(endpoint) = from_local_env() {
+            tracing::info!(
+                "weighing words with the local chat model {} at {}",
+                endpoint.model,
+                endpoint.url
+            );
+            return Self {
+                inner: Arc::new(JudgeInner::Chat {
+                    endpoint,
+                    http: http_client(8),
+                }),
+            };
+        }
+        tracing::info!("no Jev or chat model; using the word gate for obvious attacks");
         Self::word_gate()
     }
 
@@ -82,18 +110,15 @@ impl JudgeHub {
                 model,
                 http,
             } => jev_weigh(http, url, key, model, kind, parts).await,
-            JudgeInner::Chat {
-                url,
-                key,
-                model,
-                http,
-            } => chat_weigh(http, url, key.as_deref(), model, kind, parts).await,
+            JudgeInner::Chat { endpoint, http } => chat_weigh(http, endpoint, kind, parts).await,
         }
     }
 }
 
 fn from_jev_env() -> Option<JudgeHub> {
-    let key = std::env::var("ECCLESIA_JEV_KEY").ok().filter(filled)?;
+    let key = std::env::var("ECCLESIA_JEV_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())?;
     let url = std::env::var("ECCLESIA_JEV_URL").unwrap_or_else(|_| JEV_DEFAULT_URL.into());
     let model = std::env::var("ECCLESIA_JEV_MODEL").unwrap_or_else(|_| "jev-latest".into());
     tracing::info!("weighing words with Jev at {url}");
@@ -105,32 +130,6 @@ fn from_jev_env() -> Option<JudgeHub> {
             http: http_client(8),
         }),
     })
-}
-
-fn from_chat_env() -> Option<JudgeHub> {
-    let url = std::env::var("ECCLESIA_LLM_URL").ok().filter(filled)?;
-    let model = std::env::var("ECCLESIA_LLM_MODEL").unwrap_or_else(|_| "llama3.1:8b".into());
-    let key = std::env::var("ECCLESIA_LLM_KEY").ok().filter(filled);
-    tracing::info!("weighing words with the local chat model {model} at {url}");
-    Some(JudgeHub {
-        inner: Arc::new(JudgeInner::Chat {
-            url,
-            key,
-            model,
-            http: http_client(8),
-        }),
-    })
-}
-
-fn http_client(seconds: u64) -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(seconds))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
-}
-
-fn filled(value: &String) -> bool {
-    !value.trim().is_empty()
 }
 
 fn joined_is_empty(parts: &[&str]) -> bool {
@@ -167,18 +166,18 @@ pub fn jev_body(kind: VoiceKind, parts: &[&str]) -> Value {
         "questions": {
             "tears_down": {
                 "type": "noul",
-                "instructions": "Does this text tear a person down, criticize them, insult them, or speak about them with contempt?",
+                "instructions": prompts::jev_tears_down_instructions(),
                 "criteria": {
-                    "true": "It attacks, mocks, or criticizes a person.",
-                    "false": "It names a need, a gift, or a kindness without attacking anyone."
+                    "true": prompts::jev_tears_down_true(),
+                    "false": prompts::jev_tears_down_false()
                 }
             },
             "profanity": {
                 "type": "noul",
-                "instructions": "Does this text contain profanity, slurs, or crude sexual language?",
+                "instructions": prompts::jev_profanity_instructions(),
                 "criteria": {
-                    "true": "It uses profanity or slurs.",
-                    "false": "The wording is clean."
+                    "true": prompts::jev_profanity_true(),
+                    "false": prompts::jev_profanity_false()
                 }
             }
         }
@@ -259,62 +258,28 @@ impl JevResponse {
 
 async fn chat_weigh(
     http: &reqwest::Client,
-    base: &str,
-    key: Option<&str>,
-    model: &str,
+    endpoint: &ChatEndpoint,
     kind: VoiceKind,
     parts: &[&str],
 ) -> anyhow::Result<Posture> {
-    let url = chat_completions_url(base);
+    let url = chat_completions_url(&endpoint.url);
     let text = join_parts(parts);
-    let mut request = http.post(&url).json(&json!({
-        "model": model,
+    let mut body = json!({
+        "model": endpoint.model,
         "temperature": 0,
         "messages": [
-            {
-                "role": "system",
-                "content": "You weigh short church-app posts. Reply with JSON only: {\"tears_down\":0.0,\"profanity\":0.0}. Each value is 0 to 1. tears_down is high if the text attacks, mocks, or criticizes a person. profanity is high if it uses slurs or crude language. A plain need or a kind note is 0."
-            },
-            {
-                "role": "user",
-                "content": format!("kind={}\n{}", kind.as_str(), text)
-            }
+            { "role": "system", "content": prompts::classify_system() },
+            { "role": "user", "content": prompts::classify_user(kind, &text) }
         ]
-    }));
-    if let Some(key) = key {
-        request = request.bearer_auth(key);
+    });
+    if is_openrouter(&endpoint.url) {
+        body["response_format"] = json!({ "type": "json_object" });
     }
+    let request = apply_headers(http.post(&url).json(&body), endpoint);
     let response = request.send().await?.error_for_status()?;
     let parsed: ChatResponse = response.json().await?;
     let scores = parse_score_json(parsed.first_text())?;
     Ok(posture_from_nouls(scores.tears_down, scores.profanity))
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ChatResponse {
-    #[serde(default)]
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    #[serde(default)]
-    message: ChatMessage,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ChatMessage {
-    #[serde(default)]
-    content: String,
-}
-
-impl ChatResponse {
-    pub(crate) fn first_text(&self) -> &str {
-        self.choices
-            .first()
-            .map(|choice| choice.message.content.as_str())
-            .unwrap_or("")
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -338,17 +303,6 @@ fn json_object(raw: &str) -> Option<&str> {
         return None;
     }
     Some(&raw[start..=end])
-}
-
-pub fn chat_completions_url(base: &str) -> String {
-    let trimmed = base.trim_end_matches('/');
-    if trimmed.ends_with("/chat/completions") {
-        trimmed.into()
-    } else if trimmed.ends_with("/v1") {
-        format!("{trimmed}/chat/completions")
-    } else {
-        format!("{trimmed}/v1/chat/completions")
-    }
 }
 
 pub fn word_gate(parts: &[&str]) -> Posture {
@@ -403,6 +357,7 @@ fn forbidden_needles() -> &'static [&'static str] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sdk::chat::chat_completions_url;
 
     #[test]
     fn us_tone_01_word_gate_lets_a_kind_note_through() {

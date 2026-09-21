@@ -2,6 +2,7 @@
 
 mod cards;
 mod churches;
+mod draft;
 mod flash;
 mod home;
 mod landing;
@@ -10,9 +11,13 @@ mod needs;
 mod people;
 
 pub use churches::{church_new, church_show, churches_index, the_body};
-pub use flash::{flash_from, Flash};
+pub use draft::{
+    ChurchDraft, DraftKind, EndorseDraft, GiftDraft, NeedDraft, OfferDraft, ProfileDraft,
+    RegisterDraft,
+};
+pub use flash::{Flash, flash_from};
 pub use home::home;
 pub use landing::landing;
-pub use layout::{csrf_input, error_page, page, rewrite_row, Nav};
+pub use layout::{Nav, csrf_input, error_page, page, rewrite_row};
 pub use needs::{need_new, need_show};
 pub use people::{inbox, me, member_show};

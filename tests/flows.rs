@@ -1,11 +1,14 @@
 use axum::body::Body;
-use axum::http::{header, Request, StatusCode};
+use axum::http::{Request, StatusCode, header};
 use ecclesia::db::Db;
-use ecclesia::http::{router, AppState};
+use ecclesia::http::{AppState, router};
 use ecclesia::leaf::DemoSeat;
 use tower::ServiceExt;
 
-async fn app() -> axum::Router {
+async fn app_with(
+    judge: ecclesia::sdk::judge::JudgeHub,
+    refine: ecclesia::sdk::refine::RefineHub,
+) -> axum::Router {
     let path = std::env::temp_dir().join(format!(
         "ecclesia-test-{}-{}.db",
         std::process::id(),
@@ -21,9 +24,17 @@ async fn app() -> axum::Router {
         secret: "test-secret".into(),
         demo: DemoSeat::Open,
         push: ecclesia::sdk::push::PushHub::silent(),
-        judge: ecclesia::sdk::judge::JudgeHub::word_gate(),
-        refine: ecclesia::sdk::refine::RefineHub::silent(),
+        judge,
+        refine,
     })
+}
+
+async fn app() -> axum::Router {
+    app_with(
+        ecclesia::sdk::judge::JudgeHub::word_gate(),
+        ecclesia::sdk::refine::RefineHub::silent(),
+    )
+    .await
 }
 
 fn cookie_from(response: &axum::http::Response<Body>) -> String {
@@ -505,6 +516,45 @@ async fn us_refine_01_silent_echoes_the_same_words() {
     assert!(member.contains(r#"data-kind="endorsement""#));
 }
 
+#[tokio::test]
+async fn us_refine_02_submit_shows_the_rewrite_before_publish() {
+    let app = app_with(
+        ecclesia::sdk::judge::JudgeHub::word_gate(),
+        ecclesia::sdk::refine::RefineHub::polish(),
+    )
+    .await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let (_page, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/needs/new").await;
+    let csrf = csrf.expect("need csrf");
+    let (status, html) = post_page(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/needs",
+        "church_id=church_grace&title=Need+five+dinners&body=Need+++five+++dinners&scope=church",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("Need five dinners"));
+    assert!(html.contains("Read this through."));
+    assert!(html.contains(">Publish<"));
+    assert!(html.contains(r#"name="pass" value="publish""#));
+
+    let location = post_location(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/needs",
+        "church_id=church_grace&title=Need+five+dinners&body=Need+five+dinners&scope=church&pass=publish",
+    )
+    .await;
+    assert!(location.contains("/needs/"));
+    assert!(location.contains("ok=need_posted"));
+
+    let home = get(app, &cookie, "/home").await;
+    assert!(home.contains("Need five dinners"));
+}
+
 async fn post_location(
     app: axum::Router,
     cookie: &str,
@@ -530,6 +580,27 @@ async fn post_location(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("")
         .to_string()
+}
+
+async fn post_page(
+    app: axum::Router,
+    cookie: &str,
+    csrf: &str,
+    uri: &str,
+    extra: &str,
+) -> (StatusCode, String) {
+    let body = format!("csrf={csrf}&{extra}");
+    let response = app
+        .oneshot(
+            Request::post(uri)
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    (response.status(), body_string(response).await)
 }
 
 async fn post_json(

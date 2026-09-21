@@ -1,12 +1,19 @@
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 use crate::leaf::{DemoSeat, User, VoiceKind};
 
 use super::cards::persona_grid;
+use super::draft::{RegisterDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{csrf_input, page, rewrite_row, Nav};
+use super::layout::{Nav, csrf_input, page, rewrite_row};
 
-pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat) -> Markup {
+pub fn landing(
+    users: &[User],
+    flash: Option<Flash>,
+    csrf: &str,
+    demo: DemoSeat,
+    draft: &RegisterDraft<'_>,
+) -> Markup {
     page(
         "Ecclesia",
         None,
@@ -37,17 +44,19 @@ pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat)
                 h2 { "Create an account" }
                 form class="stack" method="post" action="/register" {
                     (csrf_input(csrf))
-                    label { "Name" input name="name" required placeholder="Your name" maxlength="80"; }
-                    label { "Email" input type="email" name="email" required placeholder="you@church.org" maxlength="120"; }
+                    (voice_pass_input(draft.kind))
+                    (review_banner(draft.kind))
+                    label { "Name" input name="name" required placeholder="Your name" maxlength="80" value=(draft.name); }
+                    label { "Email" input type="email" name="email" required placeholder="you@church.org" maxlength="120" value=(draft.email); }
                     div class="split" {
-                        label { "City" input name="city" required placeholder="Cedar Falls" maxlength="80"; }
-                        label { "State or region" input name="region" required placeholder="Iowa" maxlength="80"; }
+                        label { "City" input name="city" required placeholder="Cedar Falls" maxlength="80" value=(draft.city); }
+                        label { "State or region" input name="region" required placeholder="Iowa" maxlength="80" value=(draft.region); }
                     }
                     label { "About you"
-                        textarea name="bio" rows="3" maxlength="800" placeholder="A line or two. What you do, what you're good at." {}
+                        textarea name="bio" rows="3" maxlength="800" placeholder="A line or two. What you do, what you're good at." { (draft.bio) }
                         (rewrite_row(VoiceKind::Bio))
                     }
-                    button class="btn" type="submit" { "Create account" }
+                    button class="btn" type="submit" { (draft.kind.submit_label("Create account")) }
                 }
             }
         },

@@ -58,8 +58,9 @@ Boolean *returns* are fine (`is_active`, `can_view_need`). Boolean *arguments* a
 
 HTTP may refuse a bad CSRF token or a missing session. It may not decide who joins, who sees a need, or who accepts an endorsement. Load values, call a leaf, `commit` the effect, render.
 
-Words are weighed in the skin (`JudgeHub`) and arrive as `Posture`. The leaf
-calls `require_uplifting`. It does not talk to Jev or a local model. See
+Words are weighed in the skin (`JudgeHub`) and arrive as `Posture`. The first
+submit is `VoicePass::Review`; the second is `Publish`. The leaf calls
+`require_uplifting`. It does not talk to Jev or OpenRouter. See
 [VOICE.md](VOICE.md).
 
 `Db::apply` takes `&Effect` and runs every write and notice on one SQLite transaction. `MemoryWorld::apply` takes the `Effect` by value and moves writes in. Push delivery happens after the transaction commits; a failed push does not roll back the write.
