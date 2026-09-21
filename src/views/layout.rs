@@ -98,7 +98,9 @@ pub fn page(
             body class=(site_class(nav)) {
                 a class="skip" href="#content" { "Skip to content" }
                 (atmosphere())
-                (install_bar())
+                @if nav == Nav::None {
+                    (install_bar())
+                }
                 @if nav != Nav::None {
                     (topbar(user))
                 }

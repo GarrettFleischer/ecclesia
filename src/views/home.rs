@@ -30,7 +30,7 @@ pub fn home(
             (pending_section(pending, csrf))
             (active_toolbar(viewer))
             section {
-                (needs_or_empty(needs, churches, viewer))
+                (needs_or_empty(needs, churches, viewer, pending))
             }
         },
     )
@@ -71,20 +71,29 @@ fn active_toolbar(viewer: &Viewer) -> Markup {
     }
 }
 
-fn needs_or_empty(needs: &[NeedCard], churches: &[Church], viewer: &Viewer) -> Markup {
+fn needs_or_empty(
+    needs: &[NeedCard],
+    churches: &[Church],
+    viewer: &Viewer,
+    pending: &[(&Church, &Membership)],
+) -> Markup {
     let mut visible = visible_need_cards(viewer, needs, churches).peekable();
     if visible.peek().is_none() {
-        return html! {
-            div class="empty" { p { (no_needs_line(viewer)) } }
-        };
+        return empty_needs(viewer, pending);
     }
     need_card_stack(visible, viewer, NeedCardPlace::Feed)
 }
 
-fn no_needs_line(viewer: &Viewer) -> &'static str {
+fn empty_needs(viewer: &Viewer, pending: &[(&Church, &Membership)]) -> Markup {
     if viewer.is_active_anywhere() {
-        "No open needs."
-    } else {
-        "Once you're in a church, its needs show up here."
+        return html! {
+            div class="empty" { p { "No open needs." } }
+        };
+    }
+    if !pending.is_empty() {
+        return html! {};
+    }
+    html! {
+        div class="empty" { p { "Once you're in a church, its needs show up here." } }
     }
 }

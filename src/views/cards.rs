@@ -334,7 +334,7 @@ pub fn member_gift_cards(gifts: &[MemberGift]) -> Markup {
 fn member_gift_card(gift: &MemberGift) -> Markup {
     html! {
         article class="card" {
-            p class="eyebrow" { (category_label(&gift.category)) }
+            p class="cat" { (category_label(&gift.category)) }
             h3 { (gift.gift_name) }
             @if !gift.note.is_empty() { p { (gift.note) } }
         }

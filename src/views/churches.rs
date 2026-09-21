@@ -33,7 +33,7 @@ pub fn churches_index(
                     h1 { "Churches" }
                     hr class="gold-rule";
                 }
-                a class="btn" href="/churches/new" { "Add your church" }
+                a class="btn btn-quiet" href="/churches/new" { "Add your church" }
             }
             form class="row-form invite-form" method="post" action="/invites/redeem" {
                 (csrf_input(csrf))

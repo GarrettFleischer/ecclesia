@@ -125,11 +125,11 @@ pub fn need_show(
                 @if let Some(gift) = &need.gift_name { " · " (gift) }
                 (closed_mark(need))
             }
+            (matching_gift_pill(viewer, need))
             div class="page-actions" {
                 (share_button("Share", &need.title, &need.body))
                 (close_form(need, steward, csrf))
             }
-            (matching_gift_pill(viewer, need))
             (offer_panel(need, can_help, offer, steward, csrf, draft))
             (already_offered(offer))
             section {
@@ -218,7 +218,7 @@ fn close_form(need: &NeedCard, steward: StewardView, csrf: &str) -> Markup {
     html! {
         form method="post" action={ "/needs/" (need.id) "/close" } {
             (csrf_input(csrf))
-            button class="btn btn-quiet" type="submit" { "Close need" }
+            button class="btn-text" type="submit" { "Close need" }
         }
     }
 }

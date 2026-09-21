@@ -63,7 +63,7 @@ function hookInstall(native) {
   if (!bar || native || isStandalone()) {
     return;
   }
-  if (window.sessionStorage && sessionStorage.getItem("ecclesia-install-dismissed")) {
+  if (window.localStorage && localStorage.getItem("ecclesia-install-dismissed")) {
     return;
   }
   const install = bar.querySelector("[data-install]");
@@ -93,8 +93,8 @@ function hookInstall(native) {
   });
   dismiss.addEventListener("click", () => {
     bar.hidden = true;
-    if (window.sessionStorage) {
-      sessionStorage.setItem("ecclesia-install-dismissed", "1");
+    if (window.localStorage) {
+      localStorage.setItem("ecclesia-install-dismissed", "1");
     }
   });
 }
