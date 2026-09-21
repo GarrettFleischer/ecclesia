@@ -70,6 +70,13 @@ impl NeedStatus {
             _ => None,
         }
     }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::Closed => "Closed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +102,14 @@ impl ApplicationStatus {
             "accepted" => Some(Self::Accepted),
             "declined" => Some(Self::Declined),
             _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "Waiting",
+            Self::Accepted => "Accepted",
+            Self::Declined => "Declined",
         }
     }
 }

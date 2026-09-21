@@ -43,6 +43,14 @@ impl MembershipRole {
     pub fn can_govern(self) -> bool {
         matches!(self, Self::Owner | Self::Steward)
     }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Owner => "Pastor",
+            Self::Steward => "Steward",
+            Self::Member => "Member",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +79,15 @@ impl MembershipStatus {
             "active" => Some(Self::Active),
             "declined" => Some(Self::Declined),
             _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PendingRequest => "Asked to join",
+            Self::PendingInvite => "Invited",
+            Self::Active => "Active",
+            Self::Declined => "Declined",
         }
     }
 }

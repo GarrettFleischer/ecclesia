@@ -1,8 +1,8 @@
 use maud::{Markup, html};
 
 use crate::leaf::{
-    ApplicationCard, Church, DomainError, Gift, NeedCard, OfferState, Viewer, VoiceKind,
-    is_need_steward,
+    ApplicationCard, Church, DomainError, Gift, NeedCard, NeedStatus, OfferState, Viewer,
+    VoiceKind, is_need_steward,
 };
 
 use super::cards::{StewardView, application_cards, church_options, gift_options, scope_label};
@@ -27,6 +27,7 @@ pub fn need_new(
         csrf,
         html! {
             h1 { "Post a need" }
+            hr class="gold-rule";
             (need_form_or_empty(viewer, gifts, csrf, draft))
         },
     )
@@ -58,11 +59,11 @@ fn need_form_or_empty(
                 }
             }
             label { "Title"
-                input name="title" required placeholder="Dinners for the Okonkwos this week" value=(draft.title);
+                input name="title" required maxlength="120" placeholder="Dinners for the Okonkwos this week" value=(draft.title);
                 (rewrite_row(VoiceKind::Need))
             }
             label { "Details"
-                textarea name="body" rows="5" required placeholder="What, when, and where. Anything that helps someone decide if they can do it." { (draft.body) }
+                textarea name="body" rows="5" required maxlength="2000" placeholder="Five nights this week. Side door after 5. Fridge on the porch." { (draft.body) }
                 (rewrite_row(VoiceKind::Need))
             }
             label { "Gift needed"
@@ -79,11 +80,11 @@ fn need_form_or_empty(
                 }
                 label class="choice" {
                     input type="radio" name="scope" value="neighboring" checked[draft.scope == "neighboring"];
-                    span { strong { "Churches nearby" } " Same city or region." }
+                    span { strong { "Nearby churches" } " Same city or region." }
                 }
                 label class="choice" {
                     input type="radio" name="scope" value="body" checked[draft.scope == "body"];
-                    span { strong { "Everyone on Ecclesia" } }
+                    span { strong { "Everyone" } }
                 }
             }
             button class="btn" type="submit" { (draft.kind.submit_label("Post need")) }
@@ -117,23 +118,34 @@ pub fn need_show(
                 a href={ "/churches/" (church.id) } { (church.name) }
             }
             h1 { (need.title) }
-            (share_button("Share", &need.title, &need.body))
+            hr class="gold-rule";
             p class="lede" { (need.body) }
             p class="meta" {
                 "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) }
                 @if let Some(gift) = &need.gift_name { " · " (gift) }
-                " · " (need.status)
+                (closed_mark(need))
+            }
+            div class="page-actions" {
+                (share_button("Share", &need.title, &need.body))
+                (close_form(need, steward, csrf))
             }
             (matching_gift_pill(viewer, need))
             (offer_panel(need, can_help, offer, steward, csrf, draft))
             (already_offered(offer))
-            (close_form(need, steward, csrf))
             section {
                 h2 { "Offers" }
                 (who_offered(applications, steward, csrf))
             }
         },
     )
+}
+
+fn closed_mark(need: &NeedCard) -> Markup {
+    if need.status() == Some(NeedStatus::Closed) {
+        html! { " · Closed" }
+    } else {
+        html! {}
+    }
 }
 
 fn steward_of(viewer: &Viewer, need: &NeedCard) -> StewardView {

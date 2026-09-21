@@ -141,9 +141,17 @@ pub async fn church_show(
         Err(response) => return Ok(response),
     };
     let Some(church) = state.db.church(&id).await? else {
+        let count = unread(&state.db, &signed.user.id).await?;
         return Ok(with_cookie(
             signed.jar,
-            html(views::error_page("We couldn't find that church.")),
+            html(views::sorry_page(
+                "We couldn't find that church.",
+                views::SorrySeat::Member {
+                    user: &signed.user,
+                    unread: count,
+                    csrf: &signed.session.csrf,
+                },
+            )),
         ));
     };
     let viewer = viewer_for(&state.db, signed.user).await?;

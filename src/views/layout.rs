@@ -77,17 +77,17 @@ pub fn page(
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
-                meta name="theme-color" content="#243126";
+                meta name="theme-color" content="#f4eee3";
                 meta name="mobile-web-app-capable" content="yes";
                 meta name="apple-mobile-web-app-capable" content="yes";
-                meta name="apple-mobile-web-app-status-bar-style" content="black-translucent";
+                meta name="apple-mobile-web-app-status-bar-style" content="default";
                 meta name="apple-mobile-web-app-title" content="Ecclesia";
                 meta name="application-name" content="Ecclesia";
                 link rel="manifest" href="/static/manifest.webmanifest";
                 link rel="icon" href="/static/favicon.svg" type="image/svg+xml";
                 link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192";
                 link rel="apple-touch-icon" href="/static/apple-touch-icon.png";
-                title { (title) " · Ecclesia" }
+                title { (document_title(title)) }
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
@@ -96,15 +96,16 @@ pub fn page(
                 meta name="unread" content=(unread);
             }
             body class=(site_class(nav)) {
+                a class="skip" href="#content" { "Skip to content" }
                 (atmosphere())
                 (install_bar())
                 @if nav != Nav::None {
                     (topbar(user))
                 }
                 @if let Some(flash) = flash {
-                    div class=(flash.class_name()) { (flash.text()) }
+                    div class=(flash.class_name()) role="status" { (flash.text()) }
                 }
-                main class={ "sheet page-rise" (sheet_extra(nav)) } {
+                main id="content" class={ "sheet page-rise" (sheet_extra(nav)) } {
                     (main)
                 }
                 @if nav != Nav::None {
@@ -193,7 +194,7 @@ fn dock_link(
     badge: Option<i64>,
 ) -> Markup {
     html! {
-        a class={ "dock-link" (dock_class(state)) } href=(href) {
+        a class={ "dock-link" (dock_class(state)) } href=(href) aria-current=[dock_current(state)] {
             span class="dock-icon" aria-hidden="true" { (dock_svg(icon)) }
             span { (label) }
             @if let Some(n) = badge {
@@ -207,6 +208,21 @@ fn dock_class(state: DockState) -> &'static str {
     match state {
         DockState::Current => " is-active",
         DockState::Idle => "",
+    }
+}
+
+fn dock_current(state: DockState) -> Option<&'static str> {
+    match state {
+        DockState::Current => Some("page"),
+        DockState::Idle => None,
+    }
+}
+
+fn document_title(title: &str) -> String {
+    if title == "Ecclesia" {
+        "Ecclesia".into()
+    } else {
+        format!("{title} · Ecclesia")
     }
 }
 
@@ -246,18 +262,47 @@ pub fn first_name(name: &str) -> &str {
     name.split_whitespace().next().unwrap_or(name)
 }
 
+pub enum SorrySeat<'a> {
+    Guest,
+    Member {
+        user: &'a User,
+        unread: i64,
+        csrf: &'a str,
+    },
+}
+
 pub fn error_page(message: &str) -> Markup {
-    page(
-        "Sorry",
-        None,
-        0,
-        Nav::None,
-        None,
-        "",
-        html! {
-            h1 { "Sorry" }
-            p { (message) }
-            a class="btn" href="/" { "Go home" }
-        },
-    )
+    sorry_page(message, SorrySeat::Guest)
+}
+
+pub fn sorry_page(message: &str, seat: SorrySeat<'_>) -> Markup {
+    match seat {
+        SorrySeat::Guest => page(
+            "Sorry",
+            None,
+            0,
+            Nav::None,
+            None,
+            "",
+            sorry_body(message, "/", "Go home"),
+        ),
+        SorrySeat::Member { user, unread, csrf } => page(
+            "Sorry",
+            Some(user),
+            unread,
+            Nav::Home,
+            None,
+            csrf,
+            sorry_body(message, "/home", "Open needs"),
+        ),
+    }
+}
+
+fn sorry_body(message: &str, href: &str, action: &str) -> Markup {
+    html! {
+        h1 { "Sorry" }
+        hr class="gold-rule";
+        p class="lede" { (message) }
+        a class="btn" href=(href) { (action) }
+    }
 }

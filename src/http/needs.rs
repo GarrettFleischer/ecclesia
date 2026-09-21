@@ -312,29 +312,50 @@ async fn paint_need(
     csrf: &str,
     draft: &views::OfferDraft<'_>,
 ) -> Result<Response, AppError> {
+    let count = unread(&state.db, &viewer.user.id).await?;
     let Some(card) = state.db.need_card(id).await? else {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("We couldn't find that need.")),
+            html(views::sorry_page(
+                "We couldn't find that need.",
+                views::SorrySeat::Member {
+                    user: &viewer.user,
+                    unread: count,
+                    csrf,
+                },
+            )),
         ));
     };
     let Some(church) = state.db.church(&card.church_id).await? else {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("We couldn't find that church.")),
+            html(views::sorry_page(
+                "We couldn't find that church.",
+                views::SorrySeat::Member {
+                    user: &viewer.user,
+                    unread: count,
+                    csrf,
+                },
+            )),
         ));
     };
     if let Err(error) = require_need_view(&viewer, card.sight(), &church) {
         return Ok(with_cookie(
             jar,
-            html(views::error_page(&error.to_string())),
+            html(views::sorry_page(
+                &error.to_string(),
+                views::SorrySeat::Member {
+                    user: &viewer.user,
+                    unread: count,
+                    csrf,
+                },
+            )),
         ));
     }
     let applications = state.db.applications_for_need(&card.id).await?;
     let offers: Vec<_> = visible_offers(&viewer, card.sight(), &applications).collect();
     let offer = OfferState::of_existing(applications.iter().find(|a| a.user_id == viewer.user.id));
     let help = crate::leaf::can_apply(&viewer, card.sight(), &church);
-    let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,
         html(views::need_show(

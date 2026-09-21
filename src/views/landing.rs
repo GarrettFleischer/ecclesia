@@ -30,13 +30,11 @@ pub fn landing(
                         path fill="#b1842c" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
                     }
                 }
-                p class="eyebrow" { "Ecclesia" }
                 h1 { "Ask for help. Offer yours." }
                 hr class="gold-rule";
                 p class="lede" {
-                    "Someone in your church needs five dinners this week, a ramp by Saturday, "
-                    "or a Spanish speaker on Thursday night. Post it here. "
-                    "People who can help say so, and churches in the same town see each other's needs too."
+                    "Someone needs five dinners this week, a ramp by Saturday, "
+                    "or a Spanish speaker on Thursday."
                 }
             }
             (demo_panel(users, csrf, demo))
@@ -46,14 +44,14 @@ pub fn landing(
                     (csrf_input(csrf))
                     (voice_pass_input(draft.kind))
                     (review_banner(draft.kind))
-                    label { "Name" input name="name" required placeholder="Your name" maxlength="80" value=(draft.name); }
-                    label { "Email" input type="email" name="email" required placeholder="you@church.org" maxlength="120" value=(draft.email); }
+                    label { "Name" input name="name" required autocomplete="name" autocapitalize="words" placeholder="Your name" maxlength="80" value=(draft.name); }
+                    label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" maxlength="120" value=(draft.email); }
                     div class="split" {
-                        label { "City" input name="city" required placeholder="Cedar Falls" maxlength="80" value=(draft.city); }
-                        label { "State or region" input name="region" required placeholder="Iowa" maxlength="80" value=(draft.region); }
+                        label { "City" input name="city" required autocomplete="address-level2" autocapitalize="words" placeholder="Cedar Falls" maxlength="80" value=(draft.city); }
+                        label { "State or region" input name="region" required autocomplete="address-level1" autocapitalize="words" placeholder="Iowa" maxlength="80" value=(draft.region); }
                     }
                     label { "About you"
-                        textarea name="bio" rows="3" maxlength="800" placeholder="A line or two. What you do, what you're good at." { (draft.bio) }
+                        textarea name="bio" rows="3" maxlength="800" placeholder="Two kids. I have a van on Saturdays." { (draft.bio) }
                         (rewrite_row(VoiceKind::Bio))
                     }
                     button class="btn" type="submit" { (draft.kind.submit_label("Create account")) }
@@ -68,8 +66,8 @@ fn demo_panel(users: &[User], csrf: &str, demo: DemoSeat) -> Markup {
         DemoSeat::Sealed => html! {},
         DemoSeat::Open => html! {
             section class="panel" {
-                h2 { "Or look around as someone in Cedar Falls" }
-                p class="muted" { "Pick a person. No password." }
+                h2 { "Cedar Falls" }
+                p class="muted" { "Pick a person." }
                 (persona_grid(users, csrf))
             }
         },

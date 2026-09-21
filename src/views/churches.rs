@@ -6,7 +6,7 @@ use crate::leaf::{
 };
 
 use super::cards::{
-    active_member_items, church_index_cards, has_active_member, need_card_stack,
+    NeedCardPlace, active_member_items, church_index_cards, has_active_member, need_card_stack,
     pending_member_cards, pending_people, place_sections,
 };
 use super::draft::{ChurchDraft, review_banner, voice_pass_input};
@@ -28,16 +28,19 @@ pub fn churches_index(
         flash,
         csrf,
         html! {
-            div class="toolbar" {
-                h1 { "Churches" }
+            div class="page-head" {
+                div {
+                    h1 { "Churches" }
+                    hr class="gold-rule";
+                }
                 a class="btn" href="/churches/new" { "Add your church" }
             }
-            form class="row-form" method="post" action="/invites/redeem" {
+            form class="row-form invite-form" method="post" action="/invites/redeem" {
                 (csrf_input(csrf))
-                label { "Have an invite code?"
-                    input name="code" placeholder="gracecov-k2m9p4r1" autocomplete="off";
+                label { "Invite code"
+                    input name="code" placeholder="a1b2c3d4" autocomplete="off" autocapitalize="none" spellcheck="false";
                 }
-                button class="btn btn-quiet" type="submit" { "Use it" }
+                button class="btn btn-quiet" type="submit" { "Join" }
             }
             (church_list(churches))
         },
@@ -73,17 +76,18 @@ pub fn church_new(
         csrf,
         html! {
             h1 { "Add your church" }
-            p class="muted" { "You'll be its pastor here, so you decide who joins." }
+            hr class="gold-rule";
+            p class="muted" { "You'll be the pastor." }
             form class="stack" method="post" action="/churches" {
                 (csrf_input(csrf))
                 (voice_pass_input(draft.kind))
                 (review_banner(draft.kind))
                 label { "Church name" input name="name" required placeholder="Grace Covenant Church" maxlength="120" value=(draft.name); }
                 div class="split" {
-                    label { "City" input name="city" required value=(draft.city); }
-                    label { "State or region" input name="region" required value=(draft.region); }
+                    label { "City" input name="city" required autocomplete="address-level2" maxlength="80" value=(draft.city); }
+                    label { "State or region" input name="region" required autocomplete="address-level1" maxlength="80" value=(draft.region); }
                 }
-                label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m." value=(draft.gathering); }
+                label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m." maxlength="120" value=(draft.gathering); }
                 label { "About the church"
                     textarea name="description" rows="4" required placeholder="A few sentences. Where you are, who comes, what you're about." { (draft.description) }
                     (rewrite_row(VoiceKind::Church))
@@ -115,6 +119,7 @@ pub fn church_show(
         html! {
             p class="eyebrow" { (church.city) ", " (church.region) }
             h1 { (church.name) }
+            hr class="gold-rule";
             p class="lede" { (church.description) }
             @if !church.gathering.is_empty() { p class="meta" { (church.gathering) } }
             (membership_status(mine, church, csrf))
@@ -183,7 +188,7 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
     html! {
         section class="panel" {
             h2 { "Invite people" }
-            p class="muted" { "Share this code, or send an invite by email." }
+            p class="muted" { "Share the code, or send it by email." }
             div class="share-row" {
                 p class="code" { (church.invite_code) }
                 (share_button(
@@ -195,7 +200,7 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
             form class="row-form" method="post" action={ "/churches/" (church.id) "/invite" } {
                 (csrf_input(csrf))
                 label { "Email"
-                    input type="email" name="email" required placeholder="james@stlukes.test";
+                    input type="email" name="email" required placeholder="name@church.org" maxlength="120";
                 }
                 button class="btn btn-quiet" type="submit" { "Send invite" }
             }
@@ -259,7 +264,7 @@ fn church_needs(needs: &[NeedCard], viewer: &Viewer, church: &Church) -> Markup 
             p class="muted" { "No open needs." }
         };
     }
-    need_card_stack(visible, viewer)
+    need_card_stack(visible, viewer, NeedCardPlace::Church)
 }
 
 pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64, csrf: &str) -> Markup {
@@ -273,7 +278,6 @@ pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64, csrf: &str)
         html! {
             h1 { "Churches nearby" }
             hr class="gold-rule";
-            p class="lede" { "Churches in the same city or region can see each other's needs." }
             (body_groups(groups))
         },
     )

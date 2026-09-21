@@ -63,6 +63,9 @@ function hookInstall(native) {
   if (!bar || native || isStandalone()) {
     return;
   }
+  if (window.sessionStorage && sessionStorage.getItem("ecclesia-install-dismissed")) {
+    return;
+  }
   const install = bar.querySelector("[data-install]");
   const dismiss = bar.querySelector("[data-install-dismiss]");
   let pending = null;
@@ -90,6 +93,9 @@ function hookInstall(native) {
   });
   dismiss.addEventListener("click", () => {
     bar.hidden = true;
+    if (window.sessionStorage) {
+      sessionStorage.setItem("ecclesia-install-dismissed", "1");
+    }
   });
 }
 
@@ -155,7 +161,7 @@ function hookRewrite(csrf) {
     } catch (_error) {
       if (status) {
         status.hidden = false;
-        status.textContent = "Couldn't rewrite. Try again.";
+        status.textContent = "Couldn't rewrite.";
         status.classList.remove("is-live");
       }
     } finally {
@@ -199,11 +205,11 @@ function finishRewrite(status, seat) {
     return;
   }
   if (seat === "echo") {
-    status.textContent = "No rewrite model is running. Your words are unchanged.";
+    status.textContent = "Left as you wrote it.";
     status.classList.remove("is-live");
     return;
   }
-  status.textContent = "Rewritten. Edit anything you want.";
+  status.textContent = "Rewritten.";
   status.classList.add("is-live");
 }
 
@@ -221,7 +227,7 @@ function hookReview(csrf) {
       return;
     }
     event.preventDefault();
-    form.classList.add("is-reviewing");
+    setReviewing(form, true);
     try {
       const live = await fillRefined(csrf, fields);
       if (!live) {
@@ -234,7 +240,7 @@ function hookReview(csrf) {
       markReviewed(form);
       form.submit();
     } finally {
-      form.classList.remove("is-reviewing");
+      setReviewing(form, false);
     }
   });
 }
@@ -258,6 +264,25 @@ async function fillRefined(csrf, fields) {
     }
   }
   return live;
+}
+
+function setReviewing(form, on) {
+  form.classList.toggle("is-reviewing", on);
+  form.setAttribute("aria-busy", on ? "true" : "false");
+  let note = form.querySelector(".review-wait");
+  if (on) {
+    if (!note) {
+      note = document.createElement("p");
+      note.className = "review-wait";
+      note.setAttribute("role", "status");
+      note.textContent = "Looking it over…";
+      form.prepend(note);
+    }
+    return;
+  }
+  if (note) {
+    note.remove();
+  }
 }
 
 function markReviewed(form) {
@@ -413,8 +438,8 @@ async function enableNativePush(csrf, native) {
 
 function bootNative(native) {
   if (native.StatusBar) {
-    native.StatusBar.setStyle({ style: "DARK" });
-    native.StatusBar.setBackgroundColor({ color: "#243126" });
+    native.StatusBar.setStyle({ style: "LIGHT" });
+    native.StatusBar.setBackgroundColor({ color: "#f4eee3" });
   }
   if (native.SplashScreen) {
     native.SplashScreen.hide();

@@ -30,9 +30,17 @@ pub async fn member_show(
     };
     let viewer = viewer_for(&state.db, signed.user).await?;
     let Some(person) = state.db.user(&id).await? else {
+        let count = unread(&state.db, &viewer.user.id).await?;
         return Ok(with_cookie(
             signed.jar,
-            html(views::error_page("We couldn't find that person.")),
+            html(views::sorry_page(
+                "We couldn't find that person.",
+                views::SorrySeat::Member {
+                    user: &viewer.user,
+                    unread: count,
+                    csrf: &signed.session.csrf,
+                },
+            )),
         ));
     };
     let memberships = state.db.memberships_for_user(&person.id).await?;

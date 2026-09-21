@@ -2,7 +2,7 @@ use maud::{Markup, html};
 
 use crate::leaf::{Church, Membership, NeedCard, Viewer, visible_need_cards};
 
-use super::cards::{need_card_stack, pending_door_cards};
+use super::cards::{NeedCardPlace, need_card_stack, pending_door_cards};
 use super::flash::Flash;
 use super::layout::{Nav, page};
 
@@ -67,7 +67,6 @@ fn active_toolbar(viewer: &Viewer) -> Markup {
     html! {
         div class="toolbar" {
             a class="btn" href="/needs/new" { "Post a need" }
-            a class="btn btn-quiet" href="/the-body" { "Churches nearby" }
         }
     }
 }
@@ -79,12 +78,12 @@ fn needs_or_empty(needs: &[NeedCard], churches: &[Church], viewer: &Viewer) -> M
             div class="empty" { p { (no_needs_line(viewer)) } }
         };
     }
-    need_card_stack(visible, viewer)
+    need_card_stack(visible, viewer, NeedCardPlace::Feed)
 }
 
 fn no_needs_line(viewer: &Viewer) -> &'static str {
     if viewer.is_active_anywhere() {
-        "Nothing open right now."
+        "No open needs."
     } else {
         "Once you're in a church, its needs show up here."
     }

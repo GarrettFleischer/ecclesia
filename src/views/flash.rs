@@ -51,7 +51,7 @@ fn flash_ok(code: &str) -> String {
         "gift_added" => "Added.".into(),
         "gift_removed" => "Removed.".into(),
         "saved" => "Saved.".into(),
-        "church_planted" => "Church added. Share the invite code to bring people in.".into(),
+        "church_planted" => "Church added.".into(),
         "invite_accepted" => "You're in.".into(),
         _ => "Done.".into(),
     }

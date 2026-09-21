@@ -157,6 +157,10 @@ impl Viewer {
 }
 
 impl ChurchMember {
+    pub fn role(&self) -> Option<super::household::MembershipRole> {
+        super::household::MembershipRole::parse(&self.role)
+    }
+
     pub fn status(&self) -> Option<super::household::MembershipStatus> {
         super::household::MembershipStatus::parse(&self.status)
     }

@@ -38,6 +38,7 @@ pub fn member_show(
         html! {
             p class="eyebrow" { (person.city) ", " (person.region) }
             h1 { (person.name) }
+            hr class="gold-rule";
             (bio_lede(person))
             section {
                 h2 { "Churches" }
@@ -274,17 +275,18 @@ pub fn me(
         csrf,
         html! {
             h1 { (viewer.user.name) }
+            hr class="gold-rule";
             form class="stack" method="post" action="/me" {
                 (csrf_input(csrf))
                 (voice_pass_input(profile.kind))
                 (review_banner(profile.kind))
-                label { "Name" input name="name" required value=(profile.name) maxlength="80"; }
+                label { "Name" input name="name" required autocomplete="name" autocapitalize="words" value=(profile.name) maxlength="80"; }
                 div class="split" {
-                    label { "City" input name="city" required value=(profile.city); }
-                    label { "State or region" input name="region" required value=(profile.region); }
+                    label { "City" input name="city" required autocomplete="address-level2" maxlength="80" value=(profile.city); }
+                    label { "State or region" input name="region" required autocomplete="address-level1" maxlength="80" value=(profile.region); }
                 }
                 label { "About you"
-                    textarea name="bio" rows="3" { (profile.bio) }
+                    textarea name="bio" rows="3" maxlength="800" { (profile.bio) }
                     (rewrite_row(VoiceKind::Bio))
                 }
                 button class="btn" type="submit" { (profile.kind.submit_label("Save")) }
@@ -302,7 +304,7 @@ pub fn me(
                         }
                     }
                     label { "Note (optional)"
-                        input name="note" placeholder="Thursday nights. Hospital visits. Spreadsheets." value=(gift.note);
+                        input name="note" maxlength="600" placeholder="Thursday nights. Hospital visits." value=(gift.note);
                         (rewrite_row(VoiceKind::GiftNote))
                     }
                     button class="btn btn-quiet" type="submit" { (gift.kind.submit_label("Add")) }
@@ -314,12 +316,12 @@ pub fn me(
             }
             section class="panel" {
                 h2 { "Alerts" }
-                p class="muted" { "A banner on this phone when someone endorses you or a need needs you." }
-                p class="muted" { "On iPhone, add the app to your home screen first. Then turn on alerts here." }
+                p class="muted" { "When someone endorses you, or a need matches a gift of yours." }
+                p class="muted" { "On iPhone, add the app to your home screen first." }
                 button type="button" class="btn" data-alerts { "Turn on alerts" }
                 p class="muted" data-alerts-status hidden {}
             }
-            form method="post" action="/session/logout" {
+            form class="account-end" method="post" action="/session/logout" {
                 (csrf_input(csrf))
                 button class="btn btn-quiet" type="submit" { "Sign out" }
             }

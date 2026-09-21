@@ -4,20 +4,24 @@ use maud::{Markup, html};
 
 use crate::leaf::{
     ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchMember, EndorsementCard, Gift,
-    MemberGift, Membership, MembershipStatus, NeedCard, NeedScope, Notification, PlaceGroup, User,
-    Viewer,
+    MemberGift, Membership, MembershipRole, MembershipStatus, NeedCard, NeedScope, Notification,
+    PlaceGroup, User, Viewer,
 };
 
 use super::layout::{csrf_input, initials};
 
-pub fn need_card(need: &NeedCard, viewer: &Viewer) -> Markup {
+#[derive(Clone, Copy)]
+pub enum NeedCardPlace {
+    Feed,
+    Church,
+}
+
+pub fn need_card(need: &NeedCard, viewer: &Viewer, place: NeedCardPlace) -> Markup {
     html! {
         a class="card card-link" href={ "/needs/" (need.id) } {
-            p class="eyebrow" {
-                (scope_label(&need.scope)) " · " (need.church_name) " · " (need.church_city)
-            }
+            p class="eyebrow" { (need_card_eyebrow(need, place)) }
             h3 { (need.title) }
-            p { (need.body) }
+            p class="clamp" { (need.body) }
             p class="meta" {
                 @if let Some(gift) = &need.gift_name { (gift) " · " }
                 (need.author_name)
@@ -26,6 +30,20 @@ pub fn need_card(need: &NeedCard, viewer: &Viewer) -> Markup {
                 }
             }
         }
+    }
+}
+
+fn need_card_eyebrow(need: &NeedCard, place: NeedCardPlace) -> String {
+    match place {
+        NeedCardPlace::Feed => {
+            format!(
+                "{} · {} · {}",
+                scope_label(&need.scope),
+                need.church_name,
+                need.church_city
+            )
+        }
+        NeedCardPlace::Church => scope_label(&need.scope).to_string(),
     }
 }
 
@@ -38,11 +56,12 @@ pub fn scope_label(scope: &str) -> &'static str {
 pub fn need_card_stack<'a>(
     needs: impl IntoIterator<Item = &'a NeedCard>,
     viewer: &Viewer,
+    place: NeedCardPlace,
 ) -> Markup {
     html! {
         div class="stack" {
             @for need in needs {
-                (need_card(need, viewer))
+                (need_card(need, viewer, place))
             }
         }
     }
@@ -105,7 +124,8 @@ fn pending_door_card(pair: &(&Church, &Membership), csrf: &str) -> Markup {
     html! {
         article class="card" {
             @if membership.status() == Some(MembershipStatus::PendingRequest) {
-                p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } ". The pastor will approve or decline." }
+                p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } }
+                p class="muted" { "Waiting on the pastor." }
             } @else {
                 p { (church.name) " invited you." }
                 form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
@@ -131,8 +151,8 @@ fn church_index_card(card: &ChurchCard) -> Markup {
         a class="card card-link" href={ "/churches/" (church.id) } {
             h3 { (church.name) }
             p class="muted" { (church.city) ", " (church.region) }
-            p { (church.description) }
-            p class="meta" { (members) " members · " (needs) " open needs" }
+            p class="clamp-2" { (church.description) }
+            p class="meta" { (census_line(*members, *needs)) }
         }
     }
 }
@@ -193,7 +213,7 @@ fn active_member_item(member: &ChurchMember) -> Markup {
     html! {
         li {
             a href={ "/members/" (member.user_id) } { (member.name) }
-            span class="muted" { " · " (member.role) }
+            span class="muted" { " · " (role_word(member.role())) }
         }
     }
 }
@@ -214,11 +234,7 @@ pub fn church_options<'a>(
 }
 
 pub fn gift_options(gifts: &[Gift], selected: &str) -> Markup {
-    html! {
-        @for gift in gifts {
-            option value=(gift.id) selected[selected == gift.id] { (gift.name) " · " (gift.category) }
-        }
-    }
+    gift_option_groups(gifts.iter(), selected)
 }
 
 pub fn catalog_name_options(catalog: &[Gift]) -> Markup {
@@ -230,13 +246,12 @@ pub fn catalog_name_options(catalog: &[Gift]) -> Markup {
 }
 
 pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift], selected: &str) -> Markup {
-    html! {
-        @for gift in catalog {
-            @if !held.iter().any(|owned| owned.gift_id == gift.id) {
-                option value=(gift.id) selected[selected == gift.id] { (gift.name) " · " (gift.category) }
-            }
-        }
-    }
+    gift_option_groups(
+        catalog
+            .iter()
+            .filter(|gift| !held.iter().any(|owned| owned.gift_id == gift.id)),
+        selected,
+    )
 }
 
 pub fn application_cards<'a>(
@@ -262,7 +277,7 @@ fn application_card(application: &ApplicationCard, steward: StewardView, csrf: &
         article class="card" {
             a href={ "/members/" (application.user_id) } { strong { (application.user_name) } }
             p { (application.message) }
-            p class="meta" { (application.status) }
+            p class="meta" { (offer_status_word(application.status())) }
             @if matches!(steward, StewardView::Steward)
                 && application.status() == Some(ApplicationStatus::Pending)
             {
@@ -300,7 +315,7 @@ fn household_item(pair: &(&Church, &Membership)) -> Markup {
     html! {
         li {
             a href={ "/churches/" (church.id) } { (church.name) }
-            span class="muted" { " · " (membership.role) " · " (membership.status) }
+            span class="muted" { " · " (household_line(membership)) }
         }
     }
 }
@@ -316,7 +331,7 @@ pub fn member_gift_cards(gifts: &[MemberGift]) -> Markup {
 fn member_gift_card(gift: &MemberGift) -> Markup {
     html! {
         article class="card" {
-            p class="eyebrow" { (gift.category) }
+            p class="eyebrow" { (category_label(&gift.category)) }
             h3 { (gift.gift_name) }
             @if !gift.note.is_empty() { p { (gift.note) } }
         }
@@ -433,7 +448,6 @@ fn notice_card(note: &Notification) -> Markup {
         a class="card card-link" href=(note.href) {
             h3 { (note.title) }
             p { (note.body) }
-            p class="meta" { (note.kind) }
         }
     }
 }
@@ -496,8 +510,72 @@ fn place_church_card(card: &ChurchCard) -> Markup {
     html! {
         a class="card card-link" href={ "/churches/" (church.id) } {
             h3 { (church.name) }
-            p { (church.description) }
-            p class="meta" { (members) " members · " (needs) " open needs" }
+            p class="clamp-2" { (church.description) }
+            p class="meta" { (census_line(*members, *needs)) }
         }
     }
+}
+
+fn census_line(members: i64, needs: i64) -> String {
+    format!(
+        "{} {} · {} {}",
+        members,
+        count_word(members, "member", "members"),
+        needs,
+        count_word(needs, "open need", "open needs")
+    )
+}
+
+fn count_word(count: i64, one: &'static str, many: &'static str) -> &'static str {
+    if count == 1 { one } else { many }
+}
+
+fn role_word(role: Option<MembershipRole>) -> &'static str {
+    role.map(MembershipRole::label).unwrap_or("Member")
+}
+
+fn household_line(membership: &Membership) -> &'static str {
+    match membership.status() {
+        Some(MembershipStatus::Active) => role_word(membership.role()),
+        Some(status) => status.label(),
+        None => role_word(membership.role()),
+    }
+}
+
+fn offer_status_word(status: Option<ApplicationStatus>) -> &'static str {
+    status.map(ApplicationStatus::label).unwrap_or("Offer")
+}
+
+fn category_label(category: &str) -> String {
+    let mut chars = category.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+fn gift_option_groups<'a>(gifts: impl Iterator<Item = &'a Gift>, selected: &str) -> Markup {
+    let gifts: Vec<&Gift> = gifts.collect();
+    html! {
+        @for (category, items) in gift_runs(&gifts) {
+            optgroup label=(category_label(category)) {
+                @for gift in items {
+                    option value=(gift.id) selected[selected == gift.id] { (gift.name) }
+                }
+            }
+        }
+    }
+}
+
+fn gift_runs<'a>(gifts: &[&'a Gift]) -> Vec<(&'a str, Vec<&'a Gift>)> {
+    let mut runs: Vec<(&'a str, Vec<&'a Gift>)> = Vec::new();
+    for gift in gifts {
+        match runs.last_mut() {
+            Some((category, items)) if *category == gift.category.as_str() => {
+                items.push(*gift);
+            }
+            _ => runs.push((gift.category.as_str(), vec![*gift])),
+        }
+    }
+    runs
 }
