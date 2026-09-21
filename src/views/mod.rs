@@ -18,7 +18,7 @@ pub use draft::{
 };
 pub use flash::{Flash, flash_from};
 pub use home::home;
-pub use landing::landing;
+pub use landing::{guest_home, landing};
 pub use layout::{Nav, SorrySeat, csrf_input, error_page, page, rewrite_row, sorry_page};
 pub use needs::{need_new, need_show};
 pub use people::{inbox, me, member_show};

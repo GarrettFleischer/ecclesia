@@ -9,7 +9,7 @@ use crate::views;
 
 use super::context::{
     ClientKey, bind_session, fail_csrf, html, leaf_err, load_user, redirect_err, redirect_ok,
-    signed_in, unread, viewer_for, with_cookie,
+    unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, FlashQuery, RegisterForm, SessionForm};
 use super::{AppError, AppState};
@@ -25,11 +25,9 @@ pub async fn landing(
     {
         return Ok(with_cookie(jar, Redirect::to("/home")));
     }
-    let users = demo_people(&state).await?;
     Ok(with_cookie(
         jar,
         html(views::landing(
-            &users,
             views::flash_from(flash.ok, flash.err),
             &session.csrf,
             state.demo,
@@ -53,18 +51,18 @@ pub async fn start_session(
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state);
     if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/")));
+        return Ok(with_cookie(jar, fail_csrf("/home")));
     }
     if let RateDecision::Refuse = state.decide_rate(RateKind::Session, &who.0) {
-        return Ok(with_cookie(jar, redirect_err("/", "rate")));
+        return Ok(with_cookie(jar, redirect_err("/home", "rate")));
     }
     if let Err(error) = may_impersonate(state.demo) {
-        return Ok(with_cookie(jar, leaf_err("/", error)));
+        return Ok(with_cookie(jar, leaf_err("/home", error)));
     }
     let Some(user) = state.db.user(form.user_id.trim()).await? else {
         return Ok(with_cookie(
             jar,
-            super::context::redirect_err("/", "not_found"),
+            super::context::redirect_err("/home", "not_found"),
         ));
     };
     let next = Session::signed_in(user.id, session::fresh_csrf());
@@ -94,17 +92,17 @@ pub async fn register_user(
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state);
     if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/")));
+        return Ok(with_cookie(jar, fail_csrf("/home")));
     }
     if let RateDecision::Refuse = state.decide_rate(RateKind::Register, &who.0) {
-        return Ok(with_cookie(jar, redirect_err("/", "rate")));
+        return Ok(with_cookie(jar, redirect_err("/home", "rate")));
     }
     if state.awaiting_review(&form.pass, &[&form.bio]) {
         let bio = state.polish(VoiceKind::Bio, &form.bio).await;
         let users = demo_people(&state).await?;
         return Ok(with_cookie(
             jar,
-            html(views::landing(
+            html(views::guest_home(
                 &users,
                 None,
                 &session.csrf,
@@ -134,12 +132,12 @@ pub async fn register_user(
         now_iso(),
     ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err("/", error))),
+        Err(error) => return Ok(with_cookie(jar, leaf_err("/home", error))),
     };
     let Some(user_id) = effect.inserted_user_id() else {
         return Ok(with_cookie(
             jar,
-            super::context::redirect_err("/", "missing"),
+            super::context::redirect_err("/home", "missing"),
         ));
     };
     let user_id = user_id.to_owned();
@@ -156,18 +154,40 @@ pub async fn home(
     jar: CookieJar,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let signed = match signed_in(&state, jar).await {
-        Ok(signed) => signed,
-        Err(response) => return Ok(response),
-    };
-    let viewer = viewer_for(&state.db, signed.user).await?;
+    let (session, jar) = bind_session(jar, &state);
+    match load_user(&state.db, &session).await? {
+        Some(user) => member_home(state, jar, session, user, flash).await,
+        None => {
+            let users = demo_people(&state).await?;
+            Ok(with_cookie(
+                jar,
+                html(views::guest_home(
+                    &users,
+                    views::flash_from(flash.ok, flash.err),
+                    &session.csrf,
+                    state.demo,
+                    &views::RegisterDraft::blank(),
+                )),
+            ))
+        }
+    }
+}
+
+async fn member_home(
+    state: AppState,
+    jar: CookieJar,
+    session: Session,
+    user: crate::leaf::User,
+    flash: FlashQuery,
+) -> Result<Response, AppError> {
+    let viewer = viewer_for(&state.db, user).await?;
     let pending: Vec<_> =
         pair_memberships(viewer.pending_memberships(), &viewer.churches).collect();
     let needs = state.db.open_need_cards().await?;
     let churches = state.db.churches().await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        signed.jar,
+        jar,
         html(views::home(
             &viewer,
             views::flash_from(flash.ok, flash.err),
@@ -175,7 +195,7 @@ pub async fn home(
             &needs,
             &churches,
             count,
-            &signed.session.csrf,
+            &session.csrf,
         )),
     ))
 }

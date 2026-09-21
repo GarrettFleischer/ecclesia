@@ -1,8 +1,8 @@
 # Prose
 
 How to write anything a person reads in Ecclesia: headings, buttons, labels,
-placeholders, flashes, errors, notifications, empty states, seed content, and
-the README.
+placeholders, flashes, errors, notifications, empty states, seed content, the
+public landing, and the README.
 
 This is drawn from sites whose copy reads like a person wrote it — Basecamp,
 Are.na, Buttondown, Planning Center — and from the GOV.UK and Apollo writing
@@ -13,8 +13,8 @@ guides. The common thread: say what is here, say what to do next, and stop.
 > If you find yourself explaining how the interface works, something has gone
 > wrong. Fix the interface. — GOV.UK
 
-Copy names things and actions. It does not describe the product, justify the
-product, or tell the reader what the product is not.
+Copy names things and actions. It does not justify the product or tell the
+reader what the product is not.
 
 ## Say it like this
 
@@ -50,6 +50,13 @@ endorsed you for Counseling`. Body: `Accept it from your inbox, or decline.`
 `Pastor at Grace Covenant since 2014. Two kids, one very old dog.` She does not
 write a mission statement.
 
+**On the public landing, write paragraphs.** The landing is an essay, not
+flashes. Keep the author's sentences. App chrome still follows the short forms
+below.
+
+**On the app's own pages, do not describe the product.** No lede that explains
+membership, visibility, or approval. The controls show it.
+
 ## Never
 
 - **Explain what it isn't.** `A people, not a campus.` `Not a marketplace.`
@@ -57,8 +64,6 @@ write a mission statement.
 - **Moralize or reassure.** `That is allowed.` `That is theirs to decide.`
   `Go be the hands.` `They have not learned to ask.` The reader did not ask
   for your opinion of them.
-- **Describe the product on its own pages.** No lede that explains membership,
-  visibility, or approval. The controls show it.
 - **Use metaphor as a noun.** Household, table, seat, door, hands, wear, valley.
   Use the plain word: church, member, pastor, need, offer, gift, profile.
 - **Pad.** `just`, `simply`, `actually`, `please`, `kindly`, `in order to`,
@@ -76,7 +81,7 @@ write a mission statement.
 | Before | After |
 | --- | --- |
 | `Peace, Miriam.` | `Open needs` |
-| `The ecclesia is a people, not a campus.` | `Ask for help. Offer yours.` |
+| `Ask for help. Offer yours.` | `We are the ecclesia, one body called together, bound by a shared inheritance.` |
 | `You have a place at the table.` | `Account created.` |
 | `Your request is with the pastor. They will let you in.` | `Request sent. The pastor will approve or decline.` |
 | `No needs posted. Either they are between crises, or they have not learned to ask.` | `No open needs.` |
@@ -90,6 +95,7 @@ write a mission statement.
 Read the line out loud. Then:
 
 1. Does it name a thing or an action? If it describes or persuades, cut it.
+   The public landing is the exception: it may be paragraphs. App pages may not.
 2. Is there a `not`, `isn't`, or `rather than` contrasting with something the
    reader never mentioned? Cut the contrast.
 3. Is there a second sentence that comments on the first? Cut it.
@@ -98,4 +104,6 @@ Read the line out loud. Then:
 6. Would a person say this to a friend across a table? If not, rewrite.
 
 `us_prose_01` in `src/style.rs` fails the build when user-facing source
-contains a word from the pad or sell lists or a `, not a` contrast.
+contains a word from the pad or sell lists or a `, not a` contrast. It walks
+`src/views` and the other paths listed in `prose_paths()`, and it skips
+`landing.rs` so the public essay can keep its own words.

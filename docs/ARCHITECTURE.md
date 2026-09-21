@@ -83,7 +83,7 @@ siblings of `sdk`, not inside it.
 | `memory` | `sdk/memory.rs` | process RAM | apply effects in tests |
 | `db` | `db/{schema,seed,users,churches,needs,gifts,notices,push,apply}.rs` | SQLite | persist effects |
 | `http` | `http/{auth,churches,needs,people,push,voice,context,forms}.rs` | Axum | load, call a leaf, apply, render |
-| `views` | `views/{layout,flash,cards,landing,home,churches,needs,people}.rs` | Maud | HTML; loops live in `cards` |
+| `views` | `views/{layout,flash,cards,landing,home,churches,needs,people}.rs` | Maud | HTML; loops live in `cards`; public `/` is the landing, `/home` is the app |
 
 HTTP is not allowed to decide who may join, see a need, or accept an endorsement.
 It may only refuse a bad CSRF token or a missing session, then call the leaf.

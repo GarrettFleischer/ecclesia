@@ -1,4 +1,4 @@
-const CACHE = "ecclesia-shell-v1";
+const CACHE = "ecclesia-shell-v2";
 const SHELL = [
   "/static/app.css",
   "/static/app.js",

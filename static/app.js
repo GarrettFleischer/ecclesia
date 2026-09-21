@@ -4,6 +4,9 @@
   const native = capacitorPlugins();
 
   markShell(native);
+  if (sendInstalledToHome(native)) {
+    return;
+  }
   registerShell();
   paintBadge(unread);
   hookInstall(native);
@@ -97,6 +100,17 @@ function hookInstall(native) {
       localStorage.setItem("ecclesia-install-dismissed", "1");
     }
   });
+}
+
+function sendInstalledToHome(native) {
+  if (window.location.pathname !== "/") {
+    return false;
+  }
+  if (!native && !isStandalone()) {
+    return false;
+  }
+  window.location.replace("/home" + window.location.search + window.location.hash);
+  return true;
 }
 
 function isStandalone() {

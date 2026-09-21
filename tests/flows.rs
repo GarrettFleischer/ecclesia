@@ -425,6 +425,7 @@ async fn us_app_01_manifest_is_installable() {
     let app = app().await;
     let manifest = get_public(app.clone(), "/static/manifest.webmanifest").await;
     assert!(manifest.contains(r#""display": "standalone""#));
+    assert!(manifest.contains(r#""start_url": "/home""#));
     assert!(manifest.contains("/static/icon-192.png"));
     assert!(manifest.contains("/inbox"));
 
@@ -689,6 +690,53 @@ async fn us_sec_03_forged_flash_stays_generic() {
 }
 
 #[tokio::test]
+async fn us_app_03_website_landing_and_guest_home() {
+    let app = app().await;
+    let (landing, _, _) = get_page(app.clone(), None, "/").await;
+    assert!(landing.contains("The Body of Christ"));
+    assert!(landing.contains("We are the ecclesia"));
+    assert!(landing.contains("His kingdom"));
+    assert!(landing.contains("Needs and Gifts"));
+    assert!(landing.contains("simply because it was unseen"));
+    assert!(landing.contains("Create an account"));
+    assert!(landing.contains("Open the demo"));
+    assert!(!landing.contains("Ask for help"));
+    assert!(!landing.contains("People in Cedar Falls"));
+    assert!(landing.contains("href=\"#account\""));
+
+    let (guest, _, _) = get_page(app.clone(), None, "/home").await;
+    assert!(guest.contains("Create an account"));
+    assert!(guest.contains("People in Cedar Falls"));
+    assert!(!guest.contains("His kingdom"));
+    assert!(!guest.contains("Open needs"));
+
+    let response = app
+        .clone()
+        .oneshot(Request::get("/home").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let (app, cookie) = login(app, "user_miriam").await;
+    let signed = app
+        .oneshot(
+            Request::get("/")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(signed.status(), StatusCode::SEE_OTHER);
+    let location = signed
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(location, "/home");
+}
+
+#[tokio::test]
 async fn us_sec_01_forged_cookie_cannot_sit_as_miriam() {
     let app = app().await;
     let response = app
@@ -703,13 +751,11 @@ async fn us_sec_01_forged_cookie_cannot_sit_as_miriam() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let location = response
-        .headers()
-        .get(header::LOCATION)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
-    assert!(location.contains("err=auth"), "got {location}");
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = body_string(response).await;
+    assert!(html.contains("Create an account"));
+    assert!(!html.contains("Open needs"));
+    assert!(!html.contains("class=\"who-name\""));
 }
 
 #[tokio::test]

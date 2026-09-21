@@ -52,6 +52,7 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 | --- | --- | --- | --- |
 | US-APP-01 | The site is installable on a phone: standalone display, icons, offline shell, share, alerts. | manifest, service worker, `/me` | `us_app_01_*` |
 | US-APP-02 | A Capacitor shell embeds the same server on iOS and Android with status bar, splash, keyboard, share, haptics, back, and `ecclesia://` links. | `mobile/` | docs |
+| US-APP-03 | The public site opens on the ecclesia landing. An installed app opens on Home, which shows the account screen until you sign in. | landing, home, manifest | `us_app_03_*` |
 | US-PUSH-01 | A signed-in person can subscribe for Web Push or register a native device token. Notices fan out to stored subscriptions. | `sdk/push`, `/push/*` | `us_push_01_*` |
 
 ## Validation, prose, and security skins

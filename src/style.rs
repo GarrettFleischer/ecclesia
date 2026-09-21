@@ -122,7 +122,7 @@ mod tests {
         if trimmed.starts_with("//") || trimmed.starts_with("///") || trimmed.starts_with("//!") {
             return None;
         }
-        if path.ends_with("style.rs") {
+        if path.ends_with("style.rs") || path.ends_with("landing.rs") {
             return None;
         }
         let hay = line.to_ascii_lowercase();

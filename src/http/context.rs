@@ -147,7 +147,7 @@ pub async fn load_user(db: &Db, session: &Session) -> Result<Option<User>, AppEr
 pub async fn require_user(db: &Db, session: &Session) -> Result<User, Response> {
     match load_user(db, session).await {
         Ok(Some(user)) => Ok(user),
-        Ok(None) => Err(Redirect::to("/?err=auth").into_response()),
+        Ok(None) => Err(Redirect::to("/home?err=auth").into_response()),
         Err(error) => Err(error.into_response()),
     }
 }

@@ -292,6 +292,34 @@ body.standalone .install-bar { display: none !important; }
 
 .hero-illum { padding-top: 2rem; }
 
+.landing-story,
+.landing-ways {
+  max-width: 40rem;
+}
+
+.landing-story {
+  margin: 0.35rem 0 0.4rem;
+}
+
+.landing-story p,
+.landing-ways p {
+  font-size: 1.08rem;
+  line-height: 1.65;
+  margin: 0 0 1.15rem;
+}
+
+.landing-ways { margin: 1.8rem 0 0.4rem; }
+
+.landing-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+  margin: 1.35rem 0 0.25rem;
+}
+
+#account { scroll-margin-top: 1.25rem; }
+
 .vesica {
   width: 5.2rem;
   height: 5.2rem;
