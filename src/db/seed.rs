@@ -239,7 +239,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_daniel",
         "gift_counseling",
         "Counseling",
-        "Daniel sat with my cousin after surgery and didn't try to fill the silence. I don't think he knows that's a gift.",
+        "Daniel sat with my cousin after surgery and didn't try to fill the silence.",
         "pending",
         now,
     )

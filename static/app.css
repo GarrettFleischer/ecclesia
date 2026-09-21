@@ -47,6 +47,9 @@ body.site {
 
 body.site-guest { padding-bottom: 3rem; }
 body.site-app { padding-bottom: calc(5.8rem + env(safe-area-inset-bottom)); }
+body.site { overscroll-behavior-y: none; }
+body.native-shell,
+body.standalone { padding-top: env(safe-area-inset-top); }
 
 ::selection {
   background: rgba(177, 132, 44, 0.28);
@@ -178,6 +181,47 @@ p { margin: 0 0 0.8rem; }
 }
 
 .who-name { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.install-bar {
+  position: sticky;
+  top: calc(3.4rem + env(safe-area-inset-top));
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0.6rem 1rem 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.install-bar[hidden] { display: none; }
+
+.install-bar p { margin: 0; flex: 1 1 10rem; }
+
+.install-bar .btn { min-height: 40px; padding: 0.5rem 0.9rem; }
+
+body.native-shell .install-bar,
+body.standalone .install-bar { display: none !important; }
+
+@media (display-mode: standalone) {
+  .install-bar { display: none !important; }
+}
+
+.share-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.share-row .code { margin: 0; }
+
+.share-row .btn { width: auto; }
 
 .avatar {
   width: 1.75rem;

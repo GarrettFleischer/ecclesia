@@ -5,6 +5,7 @@ mod churches;
 mod gifts;
 mod needs;
 mod notices;
+mod push;
 mod schema;
 mod seed;
 mod seed_data;
@@ -17,6 +18,8 @@ use sqlx::{
 use std::str::FromStr;
 
 use crate::leaf::Effect;
+
+pub use push::{PushDevice, PushSubscription};
 
 #[derive(Clone)]
 pub struct Db {

@@ -98,7 +98,7 @@ pub async fn endorse_member(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "endorsed")))
 }
 
@@ -113,7 +113,7 @@ pub async fn accept_endorsement_http(
         Err(response) => return Ok(response),
     };
     apply_leaf_redirect(
-        &state.db,
+        &state,
         loaded.jar,
         "/inbox",
         accept_endorsement(&loaded.user, &loaded.endorsement, loaded.held),
@@ -133,7 +133,7 @@ pub async fn decline_endorsement_http(
         Err(response) => return Ok(response),
     };
     apply_leaf_redirect(
-        &state.db,
+        &state,
         loaded.jar,
         "/inbox",
         decline_endorsement(&loaded.user, &loaded.endorsement),
@@ -258,7 +258,7 @@ pub async fn update_me(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err("/me", error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok("/me", "saved")))
 }
 
@@ -280,7 +280,7 @@ pub async fn add_gift_http(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err("/me", error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok("/me", "gift_added")))
 }
 
@@ -302,7 +302,7 @@ pub async fn remove_gift_http(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err("/me", error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok("/me", "gift_removed")))
 }
 
@@ -317,7 +317,7 @@ pub async fn the_body(State(state): State<AppState>, jar: CookieJar) -> Result<R
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,
-        html(views::the_body(&viewer, &groups, count)),
+        html(views::the_body(&viewer, &groups, count, &session.csrf)),
     ))
 }
 

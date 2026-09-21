@@ -96,7 +96,7 @@ pub async fn create_church(
         return Ok(with_cookie(jar, redirect_err("/churches/new", "missing")));
     };
     let dest = format!("/churches/{church_id}");
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "church_planted")))
 }
 
@@ -166,7 +166,7 @@ pub async fn join_church(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "joined_request")))
 }
 
@@ -208,7 +208,7 @@ pub async fn invite(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "invited")))
 }
 
@@ -235,7 +235,7 @@ pub async fn redeem(
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
     if !effect.writes.is_empty() {
-        state.db.apply(&effect).await?;
+        state.commit(&effect).await?;
     }
     Ok(with_cookie(jar, redirect_ok(&dest, "redeemed")))
 }
@@ -251,7 +251,7 @@ pub async fn approve_membership_http(
         Err(response) => return Ok(response),
     };
     apply_leaf_redirect(
-        &state.db,
+        &state,
         loaded.jar,
         &loaded.dest,
         approve_membership(&loaded.viewer, &loaded.target, &loaded.church),
@@ -271,7 +271,7 @@ pub async fn decline_membership_http(
         Err(response) => return Ok(response),
     };
     apply_leaf_redirect(
-        &state.db,
+        &state,
         loaded.jar,
         &loaded.dest,
         decline_membership(&loaded.viewer, &loaded.target, &loaded.church),
@@ -353,6 +353,6 @@ pub async fn accept_invite_http(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "invite_accepted")))
 }

@@ -45,12 +45,21 @@ pub fn csrf_input(csrf: &str) -> Markup {
     html! { input type="hidden" name="csrf" value=(csrf); }
 }
 
+pub fn share_button(label: &str, title: &str, text: &str) -> Markup {
+    html! {
+        button type="button" class="btn btn-quiet" data-share data-share-title=(title) data-share-text=(text) {
+            (label)
+        }
+    }
+}
+
 pub fn page(
     title: &str,
     user: Option<&User>,
     unread: i64,
     nav: Nav,
     flash: Option<Flash>,
+    csrf: &str,
     main: Markup,
 ) -> Markup {
     html! {
@@ -59,20 +68,27 @@ pub fn page(
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
-                meta name="theme-color" content="#2a3729";
+                meta name="theme-color" content="#243126";
+                meta name="mobile-web-app-capable" content="yes";
                 meta name="apple-mobile-web-app-capable" content="yes";
                 meta name="apple-mobile-web-app-status-bar-style" content="black-translucent";
                 meta name="apple-mobile-web-app-title" content="Ecclesia";
+                meta name="application-name" content="Ecclesia";
                 link rel="manifest" href="/static/manifest.webmanifest";
                 link rel="icon" href="/static/favicon.svg" type="image/svg+xml";
+                link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192";
+                link rel="apple-touch-icon" href="/static/apple-touch-icon.png";
                 title { (title) " · Ecclesia" }
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
                 link rel="stylesheet" href="/static/app.css";
+                meta name="csrf" content=(csrf);
+                meta name="unread" content=(unread);
             }
             body class=(site_class(nav)) {
                 (atmosphere())
+                (install_bar())
                 @if nav != Nav::None {
                     (topbar(user))
                 }
@@ -85,7 +101,18 @@ pub fn page(
                 @if nav != Nav::None {
                     (dock(nav, unread))
                 }
+                script src="/static/app.js" defer {}
             }
+        }
+    }
+}
+
+fn install_bar() -> Markup {
+    html! {
+        div class="install-bar" hidden {
+            p { "Add Ecclesia to your home screen." }
+            button class="btn" type="button" data-install { "Install" }
+            button class="btn btn-quiet" type="button" data-install-dismiss { "Not now" }
         }
     }
 }
@@ -221,6 +248,7 @@ pub fn error_page(message: &str) -> Markup {
         0,
         Nav::None,
         None,
+        "",
         html! {
             h1 { "Sorry" }
             p { (message) }

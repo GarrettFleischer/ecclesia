@@ -97,3 +97,24 @@ pub struct GiftForm {
     #[serde(default)]
     pub note: String,
 }
+
+#[derive(Deserialize)]
+pub struct PushSubscribeForm {
+    pub csrf: String,
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+}
+
+#[derive(Deserialize)]
+pub struct PushUnsubscribeForm {
+    pub csrf: String,
+    pub endpoint: String,
+}
+
+#[derive(Deserialize)]
+pub struct PushDeviceForm {
+    pub csrf: String,
+    pub token: String,
+    pub platform: String,
+}

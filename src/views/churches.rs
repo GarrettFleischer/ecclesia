@@ -9,7 +9,7 @@ use super::cards::{
     pending_member_cards, pending_people, place_sections,
 };
 use super::flash::Flash;
-use super::layout::{csrf_input, page, Nav};
+use super::layout::{csrf_input, page, share_button, Nav};
 
 pub fn churches_index(
     viewer: &Viewer,
@@ -24,6 +24,7 @@ pub fn churches_index(
         unread,
         Nav::Churches,
         flash,
+        csrf,
         html! {
             div class="toolbar" {
                 h1 { "Churches" }
@@ -61,6 +62,7 @@ pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<Flash>, csrf: &str
         unread,
         Nav::Churches,
         flash,
+        csrf,
         html! {
             h1 { "Add your church" }
             p class="muted" { "You'll be its pastor here, so you decide who joins." }
@@ -98,6 +100,7 @@ pub fn church_show(
         unread,
         Nav::Churches,
         flash,
+        csrf,
         html! {
             p class="eyebrow" { (church.city) ", " (church.region) }
             h1 { (church.name) }
@@ -170,7 +173,14 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
         section class="panel" {
             h2 { "Invite people" }
             p class="muted" { "Share this code, or send an invite by email." }
-            p class="code" { (church.invite_code) }
+            div class="share-row" {
+                p class="code" { (church.invite_code) }
+                (share_button(
+                    "Share code",
+                    &church.name,
+                    &format!("Join {} on Ecclesia. Code: {}", church.name, church.invite_code),
+                ))
+            }
             form class="row-form" method="post" action={ "/churches/" (church.id) "/invite" } {
                 (csrf_input(csrf))
                 label { "Email"
@@ -241,13 +251,14 @@ fn church_needs(needs: &[NeedCard], viewer: &Viewer, church: &Church) -> Markup 
     need_card_stack(visible, viewer)
 }
 
-pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64) -> Markup {
+pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64, csrf: &str) -> Markup {
     page(
         "Churches nearby",
         Some(&viewer.user),
         unread,
         Nav::Body,
         None,
+        csrf,
         html! {
             h1 { "Churches nearby" }
             hr class="gold-rule";

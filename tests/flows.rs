@@ -20,6 +20,7 @@ async fn app() -> axum::Router {
         db,
         secret: "test-secret".into(),
         demo: DemoSeat::Open,
+        push: ecclesia::sdk::push::PushHub::silent(),
     })
 }
 
@@ -223,7 +224,6 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
     assert!(inbox.contains("Hospitality"));
 
     let before = get(app.clone(), &cookie, "/members/user_ruth").await;
-    assert!(!before.contains("From others"));
     assert!(!before.contains("flood cleanup"));
 
     let status = post(
@@ -237,7 +237,7 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
     assert_eq!(status, StatusCode::SEE_OTHER);
 
     let after = get(app, &cookie, "/members/user_ruth").await;
-    assert!(after.contains("From others"));
+    assert!(after.contains("Endorsements"));
     assert!(after.contains("James Whitaker"));
     assert!(after.contains("flood cleanup"));
 }
@@ -306,9 +306,92 @@ async fn us_end_01_spoken_skill_is_not_limited_to_the_catalog() {
     assert_eq!(status, StatusCode::SEE_OTHER);
 
     let profile = get(app, &cookie, "/members/user_ruth").await;
-    assert!(profile.contains("From others"));
+    assert!(profile.contains("Endorsements"));
     assert!(profile.contains("Staying until the last parent left"));
     assert!(profile.contains("washed the trays"));
+}
+
+#[tokio::test]
+async fn us_app_01_manifest_is_installable() {
+    let app = app().await;
+    let manifest = get_public(app.clone(), "/static/manifest.webmanifest").await;
+    assert!(manifest.contains(r#""display": "standalone""#));
+    assert!(manifest.contains("/static/icon-192.png"));
+    assert!(manifest.contains("/inbox"));
+
+    let (sw, headers) = get_public_with_headers(app.clone(), "/sw.js").await;
+    assert!(sw.contains("showNotification"));
+    assert_eq!(
+        headers
+            .get("service-worker-allowed")
+            .and_then(|value| value.to_str().ok()),
+        Some("/")
+    );
+
+    let (landing, _, _) = get_page(app.clone(), None, "/").await;
+    assert!(landing.contains("apple-touch-icon"));
+    assert!(landing.contains("install-bar"));
+    assert!(landing.contains("/static/app.js"));
+}
+
+#[tokio::test]
+async fn us_app_01_you_page_offers_alerts_and_share() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let me = get(app.clone(), &cookie, "/me").await;
+    assert!(me.contains("data-alerts"));
+    assert!(me.contains("Turn on alerts"));
+
+    let church = get(app.clone(), &cookie, "/churches/church_grace").await;
+    assert!(church.contains("data-share"));
+    assert!(church.contains("Share code"));
+
+    let need = get(app, &cookie, "/needs/need_meals").await;
+    assert!(need.contains("data-share"));
+}
+
+#[tokio::test]
+async fn us_push_01_signed_in_person_can_subscribe() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let (_page, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/me").await;
+    let csrf = csrf.expect("me csrf");
+    let status = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/push/subscribe",
+        "endpoint=https://push.example/m1&p256dh=abc&auth=def",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let device = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/push/device",
+        "token=fcm-test-token&platform=android",
+    )
+    .await;
+    assert_eq!(device, StatusCode::NO_CONTENT);
+
+    let vapid = get_public(app, "/push/vapid").await;
+    assert!(vapid.is_empty() || vapid.starts_with("B"));
+}
+
+async fn get_public(app: axum::Router, uri: &str) -> String {
+    get_public_with_headers(app, uri).await.0
+}
+
+async fn get_public_with_headers(app: axum::Router, uri: &str) -> (String, axum::http::HeaderMap) {
+    let response = app
+        .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK, "GET {uri}");
+    let headers = response.headers().clone();
+    (body_string(response).await, headers)
 }
 
 fn endorsement_id_near(html: &str, marker: &str) -> Option<String> {

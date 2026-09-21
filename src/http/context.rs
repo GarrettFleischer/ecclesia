@@ -39,7 +39,7 @@ pub fn leaf_err(path: &str, error: DomainError) -> Redirect {
 }
 
 pub async fn apply_leaf_redirect(
-    db: &Db,
+    state: &super::AppState,
     jar: CookieJar,
     dest: &str,
     effect: Result<Effect, DomainError>,
@@ -47,7 +47,7 @@ pub async fn apply_leaf_redirect(
 ) -> Result<Response, AppError> {
     match effect {
         Ok(effect) => {
-            db.apply(&effect).await?;
+            state.commit(&effect).await?;
             Ok(with_cookie(jar, redirect_ok(dest, ok)))
         }
         Err(error) => Ok(with_cookie(jar, leaf_err(dest, error))),
@@ -172,7 +172,7 @@ fn attach_security_headers(headers: &mut axum::http::HeaderMap) {
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
         HeaderValue::from_static(
-            "default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
+            "default-src 'self'; img-src 'self' data:; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
         ),
     );
 }

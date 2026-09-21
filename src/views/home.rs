@@ -21,6 +21,7 @@ pub fn home(
         unread,
         Nav::Home,
         flash,
+        csrf,
         html! {
             p class="eyebrow" { (viewer.user.city) ", " (viewer.user.region) }
             h1 { "Open needs" }

@@ -1,0 +1,21 @@
+---
+description: How to write any text a person reads in Ecclesia (UI copy, notifications, seed content, docs)
+globs: src/views/**,src/leaf/**,src/http/**,src/db/seed*.rs,docs/**,README.md,static/**/*.js
+alwaysApply: true
+---
+
+Read and follow `docs/PROSE.md` before writing or changing any user-facing text.
+
+Short version:
+
+- Headings name what is on the page. Buttons name the action and its object.
+- One idea per sentence. Plain words. Contractions are fine.
+- Errors: what happened, then the next step. No blame, no apology.
+- Flashes are one to four words.
+- Never explain what something *isn't*. Never moralize or reassure.
+- Never use household / table / seat / door / hands / valley as nouns. Say church, member, pastor, need, offer, gift.
+- No `just`, `simply`, `actually`, `please`, `in order to`, `Oops`, `seamless`, `empower`.
+- Placeholders are example values, not instructions.
+- Seed content sounds like the person typing into the form.
+
+`us_prose_01` in `src/style.rs` enforces the word list. Run `cargo test style` after changing copy.

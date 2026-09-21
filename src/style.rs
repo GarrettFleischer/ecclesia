@@ -21,6 +21,29 @@ mod tests {
     }
 
     #[test]
+    fn us_prose_01_user_facing_copy_follows_the_guide() {
+        let mut offenders = Vec::new();
+        for path in prose_paths() {
+            let src = fs::read_to_string(&path).expect("read rust");
+            for (index, line) in src.lines().enumerate() {
+                if let Some(reason) = prose_offense(&path, line) {
+                    offenders.push(format!(
+                        "{}:{}: {} ({reason})",
+                        path.display(),
+                        index + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "user-facing copy must follow docs/PROSE.md:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    #[test]
     fn us_perf_01_src_does_not_clone_collections_to_reiterate() {
         let mut offenders = Vec::new();
         each_src_line(|path, index, line| {
@@ -40,6 +63,71 @@ mod tests {
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             &mut visit,
         );
+    }
+
+    fn prose_paths() -> Vec<std::path::PathBuf> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut paths = Vec::new();
+        collect_rust_files(&root.join("src/views"), &mut paths);
+        for rel in [
+            "src/db/seed.rs",
+            "src/db/seed_data.rs",
+            "src/leaf/effect.rs",
+            "src/leaf/gifts.rs",
+            "src/leaf/membership.rs",
+            "src/leaf/needs.rs",
+            "src/http/mod.rs",
+            "src/http/churches.rs",
+            "src/http/needs.rs",
+            "src/http/people.rs",
+        ] {
+            paths.push(root.join(rel));
+        }
+        paths
+    }
+
+    fn collect_rust_files(path: &Path, paths: &mut Vec<std::path::PathBuf>) {
+        if path.is_dir() {
+            for entry in fs::read_dir(path).expect("read dir") {
+                collect_rust_files(&entry.expect("dir entry").path(), paths);
+            }
+            return;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            paths.push(path.to_path_buf());
+        }
+    }
+
+    fn prose_offense(path: &Path, line: &str) -> Option<&'static str> {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.starts_with("///") || trimmed.starts_with("//!") {
+            return None;
+        }
+        if path.ends_with("style.rs") {
+            return None;
+        }
+        let hay = line.to_ascii_lowercase();
+        if hay.contains(", not a ") || hay.contains(" not a ") {
+            return Some("do not explain what something is not");
+        }
+        for word in [
+            "simply",
+            "obviously",
+            "kindly",
+            "seamless",
+            "empower",
+            "leverage",
+            "delightful",
+            "oops",
+            "unfortunately",
+            "looks like",
+            "in order to",
+        ] {
+            if hay.contains(word) {
+                return Some("pad or sell word");
+            }
+        }
+        None
     }
 
     fn walk(path: &Path, visit: &mut impl FnMut(&Path, usize, &str)) {

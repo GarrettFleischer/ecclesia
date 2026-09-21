@@ -6,8 +6,8 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 
 | ID | Story | Leaf | Tests |
 | --- | --- | --- | --- |
-| US-AUTH-01 | I can take a seat with name, email, city, region, and how I serve. A used email is refused. | `register` | `us_auth_01_*` |
-| US-AUTH-02 | In demo mode I may sit as a seeded person. When demo is off, that door is closed. | `may_impersonate` | `us_auth_02_*` |
+| US-AUTH-01 | I can create an account with name, email, city, region, and how I serve. A used email is refused. | `register` | `us_auth_01_*` |
+| US-AUTH-02 | In demo mode I may sign in as a seeded person. When demo is off, that sign-in is closed. | `may_impersonate` | `us_auth_02_*` |
 | US-PROF-01 | I can change how I am known. | `update_profile` | leaf + `/me` |
 
 ## Membership
@@ -25,7 +25,7 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 
 | ID | Story | Leaf | Tests |
 | --- | --- | --- | --- |
-| US-NEED-01 | An approved member can post a need for their church, scoped to the household, the valley, or the body. | `post_need` | `us_need_01_*` |
+| US-NEED-01 | An approved member can post a need for their church, scoped to the church, churches nearby, or everyone. | `post_need` | `us_need_01_*` |
 | US-NEED-02 | I can apply to a need I am allowed to see. The author is notified. I cannot apply to my own. | `apply_to_need` | `us_need_02_*`, HTTP |
 | US-NEED-03 | The author or a governor can close a need. | `close_need` | leaf |
 | US-NEED-04 | The author or a governor can receive or decline an offer. | `decide_application` | leaf |
@@ -45,10 +45,19 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 | --- | --- | --- | --- |
 | US-BODY-01 | Churches in the same city or region are neighbors. | `churches_are_neighbors` | `us_body_01_*` |
 
-## Validation and security skins
+## App shell
+
+| ID | Story | Where | Tests |
+| --- | --- | --- | --- |
+| US-APP-01 | The site is installable on a phone: standalone display, icons, offline shell, share, alerts. | manifest, service worker, `/me` | `us_app_01_*` |
+| US-APP-02 | A Capacitor shell embeds the same server on iOS and Android with status bar, splash, keyboard, share, haptics, back, and `ecclesia://` links. | `mobile/` | docs |
+| US-PUSH-01 | A signed-in person can subscribe for Web Push or register a native device token. Notices fan out to stored subscriptions. | `sdk/push`, `/push/*` | `us_push_01_*` |
+
+## Validation, prose, and security skins
 
 | ID | Story | Where | Tests |
 | --- | --- | --- | --- |
 | US-VAL-01 | Empty, overlong, and malformed email values are refused. | `validate` | `us_val_01_*` |
 | US-SEC-01 | A session cookie is HMAC-signed. Tampering is rejected. | `sdk::session` | `us_sec_01_*` |
 | US-SEC-02 | Every POST carries a CSRF token bound to the session. | session + HTTP | `us_sec_02_*` |
+| US-PROSE-01 | User-facing copy follows [PROSE.md](PROSE.md). | `style` | `us_prose_01` |

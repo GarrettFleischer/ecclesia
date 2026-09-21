@@ -110,7 +110,7 @@ pub async fn register_user(
         ));
     };
     let user_id = user_id.to_owned();
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     let next = Session::signed_in(user_id, session::fresh_csrf());
     Ok(with_cookie(
         session::put(jar, &state.secret, &next),

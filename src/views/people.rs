@@ -29,6 +29,7 @@ pub fn member_show(
         unread,
         nav,
         flash,
+        csrf,
         html! {
             p class="eyebrow" { (person.city) ", " (person.region) }
             h1 { (person.name) }
@@ -41,7 +42,7 @@ pub fn member_show(
                 h2 { "Gifts" }
                 (gift_section(gifts))
             }
-            (from_others(endorsements))
+            (endorsement_section(endorsements))
             (endorse_panel(viewer, person, catalog, csrf))
         },
     )
@@ -75,7 +76,7 @@ fn households(churches: &[(Church, &Membership)]) -> Markup {
 
 fn gift_section(gifts: &[MemberGift]) -> Markup {
     if gifts.is_empty() {
-        return html! { p class="muted" { "None listed yet." } };
+        return html! { p class="muted" { "None yet." } };
     }
     html! {
         div class="stack" {
@@ -84,13 +85,13 @@ fn gift_section(gifts: &[MemberGift]) -> Markup {
     }
 }
 
-fn from_others(endorsements: &[EndorsementCard]) -> Markup {
+fn endorsement_section(endorsements: &[EndorsementCard]) -> Markup {
     if endorsements.is_empty() {
         return html! {};
     }
     html! {
         section {
-            h2 { "From others" }
+            h2 { "Endorsements" }
             div class="stack" {
                 (published_endorsement_cards(endorsements))
             }
@@ -105,17 +106,16 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
     html! {
         section class="panel" {
             h2 { "Endorse " (first_name(&person.name)) }
-            p class="muted" { "They'll get a notification. They decide whether it goes on their profile." }
             form class="stack" method="post" action={ "/members/" (person.id) "/endorse" } {
                 (csrf_input(csrf))
                 label { "Skill"
-                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality, or something you've seen";
+                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality";
                     datalist id="catalog-skills" {
                         (catalog_name_options(catalog))
                     }
                 }
                 label { "Why"
-                    textarea name="note" rows="5" required maxlength="600" placeholder="What you saw. Be specific." {}
+                    textarea name="note" rows="5" required maxlength="600" placeholder="She stayed until the last parent came." {}
                 }
                 button class="btn" type="submit" { "Send" }
             }
@@ -137,6 +137,7 @@ pub fn inbox(
         unread,
         Nav::Inbox,
         flash,
+        csrf,
         html! {
             h1 { "Inbox" }
             hr class="gold-rule";
@@ -201,6 +202,7 @@ pub fn me(
         unread,
         Nav::You,
         flash,
+        csrf,
         html! {
             h1 { (viewer.user.name) }
             form class="stack" method="post" action="/me" {
@@ -235,6 +237,13 @@ pub fn me(
                 h2 { "Your churches" }
                 (my_churches(memberships))
             }
+            section class="panel" {
+                h2 { "Alerts" }
+                p class="muted" { "A banner on this phone when someone endorses you or a need needs you." }
+                p class="muted" { "On iPhone, add the app to your home screen first. Then turn on alerts here." }
+                button type="button" class="btn" data-alerts { "Turn on alerts" }
+                p class="muted" data-alerts-status hidden {}
+            }
             form method="post" action="/session/logout" {
                 (csrf_input(csrf))
                 button class="btn btn-quiet" type="submit" { "Sign out" }
@@ -246,7 +255,7 @@ pub fn me(
 fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
     if gifts.is_empty() {
         return html! {
-            p class="muted" { "Add what you're good at. Needs that match will show it." }
+            p class="muted" { "None yet." }
         };
     }
     html! {

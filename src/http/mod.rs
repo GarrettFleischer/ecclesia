@@ -6,6 +6,7 @@ mod context;
 mod forms;
 mod needs;
 mod people;
+mod push;
 
 use axum::http::StatusCode;
 use axum::middleware;
@@ -18,7 +19,8 @@ use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
 use crate::db::Db;
-use crate::leaf::DemoSeat;
+use crate::leaf::{DemoSeat, Effect};
+use crate::sdk::push::PushHub;
 use crate::views;
 
 pub use context::security_headers;
@@ -28,6 +30,15 @@ pub struct AppState {
     pub db: Db,
     pub secret: String,
     pub demo: DemoSeat,
+    pub push: PushHub,
+}
+
+impl AppState {
+    pub(crate) async fn commit(&self, effect: &Effect) -> Result<(), AppError> {
+        self.db.apply(effect).await?;
+        self.push.dispatch(&self.db, &effect.notices).await;
+        Ok(())
+    }
 }
 
 struct AppError(anyhow::Error);
@@ -68,10 +79,15 @@ pub async fn serve() -> anyhow::Result<()> {
     let secret = session_secret();
     let demo = DemoSeat::from_env_value(std::env::var("ECCLESIA_DEMO").ok().as_deref());
     let db = Db::connect(&database_url).await?;
-    let state = AppState { db, secret, demo };
+    let push = PushHub::load();
+    let state = AppState {
+        db,
+        secret,
+        demo,
+        push,
+    };
 
-    let static_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static");
-    let app = router(state).nest_service("/static", ServeDir::new(static_dir));
+    let app = router(state);
 
     let addr = listen_addr();
     tracing::info!("ecclesia listening on http://{addr}");
@@ -151,6 +167,15 @@ pub fn router(state: AppState) -> Router {
         .route("/me/gifts", post(people::add_gift_http))
         .route("/me/gifts/{id}/remove", post(people::remove_gift_http))
         .route("/the-body", get(people::the_body))
+        .route("/push/vapid", get(push::vapid_public))
+        .route("/push/subscribe", post(push::subscribe))
+        .route("/push/unsubscribe", post(push::unsubscribe))
+        .route("/push/device", post(push::register_device))
+        .route("/sw.js", get(push::service_worker))
+        .nest_service(
+            "/static",
+            ServeDir::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")),
+        )
         .fallback(people::fallback)
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())

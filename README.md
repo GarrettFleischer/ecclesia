@@ -1,26 +1,8 @@
 # Ecclesia
 
-A church is a household. The ecclesia is the households, together.
+Ask for help. Offer yours.
 
-Ecclesia is a **phone-first web app** (installable as a standalone page) for churches that refuse to be islands. Each church is a group. People **request** or receive an **invite**; a pastor or steward **approves**. Members name **gifts**. Needs can stay in the household, open to the **valley**, or go to the **whole body**. People **apply** to help. Endorsements are **proposals** — the named person is notified and must accept.
-
-The Cedar Falls / Waterloo seed is still the way to walk it.
-
-## Honest structure
-
-Rules are **leaves**: pure functions that take values and return an `Effect`. The **SDK skin** loads those values from SQLite and cookies, then writes the effect. HTTP does not invent a second set of household laws.
-
-```
-src/leaf/    auth, membership, needs, gifts, rules, flags
-src/sdk/     clock, HMAC session, memory world
-src/db/      schema, seed, reads, apply(effect)
-src/http/    Axum skin (auth, churches, needs, people)
-src/views/   Maud pages; loops live in cards.rs
-```
-
-- Specs and user stories: [docs/SPEC.md](docs/SPEC.md)
-- Leaf / SDK split: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Sessions, CSRF, demo seats: [docs/SECURITY.md](docs/SECURITY.md)
+A church posts a need. People who can help say so. Nearby churches see those needs too. Pastors approve who joins. Anyone can endorse a skill they have seen, even one the person never claimed. The note stays private until they publish it.
 
 ## Run it
 
@@ -31,7 +13,7 @@ cargo test
 cargo run
 ```
 
-Open [http://127.0.0.1:43781](http://127.0.0.1:43781).
+Open [http://127.0.0.1:43781](http://127.0.0.1:43781). On a phone, add it to the home screen, then turn on alerts under You. Store builds live in `mobile/`. See [docs/MOBILE.md](docs/MOBILE.md).
 
 ```bash
 PORT=43781 \
@@ -41,17 +23,25 @@ ECCLESIA_DEMO=1 \
 cargo run
 ```
 
-Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the valley.
+Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the demo.
 
-For anything shared: `ECCLESIA_DEMO=0` and a long random `ECCLESIA_SECRET`. Demo seats let anyone become Miriam.
+For a shared host: `ECCLESIA_DEMO=0`, a long random `ECCLESIA_SECRET`, and your own VAPID keys. See [docs/MOBILE.md](docs/MOBILE.md).
 
-## Walk the valley
+## Walk the demo
 
-1. **Peter Lang** — still in the doorway at Grace Covenant.
-2. **Miriam Cole** — approve Peter. See what she opened to neighbors.
+1. **Peter Lang** — asked to join Grace Covenant.
+2. **Miriam Cole** — approve Peter. See the needs she posted.
 3. **Ruth Alvarez** — Inbox: James endorsed her hospitality. Publish it or decline.
-4. **Daniel Okonkwo** — Inbox: Elena endorsed him for counseling, a gift he never claimed.
-5. **Elena Vasquez** — New Mercy. She can see Grace’s neighboring interpreter need and apply.
-6. **James Whitaker** — the ramp need is open to the valley.
+4. **Daniel Okonkwo** — Inbox: Elena endorsed him for counseling. He never listed it.
+5. **Elena Vasquez** — can see Grace's interpreter need and apply.
+6. **James Whitaker** — the ramp need is open to nearby churches.
 
 Invite codes: `grace-k2m9`, `luke-p4r1`, `mercy-n8q2`.
+
+## Docs
+
+- How to write copy: [docs/PROSE.md](docs/PROSE.md)
+- User stories: [docs/SPEC.md](docs/SPEC.md)
+- Leaves and SDK: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Sessions and CSRF: [docs/SECURITY.md](docs/SECURITY.md)
+- iOS and Android: [docs/MOBILE.md](docs/MOBILE.md)

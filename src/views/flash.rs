@@ -45,7 +45,7 @@ fn flash_ok(code: &str) -> String {
         "applied" => "Sent. They'll see your offer.".into(),
         "application_accepted" => "Accepted.".into(),
         "need_closed" => "Closed.".into(),
-        "endorsed" => "Sent. They'll decide whether to publish it.".into(),
+        "endorsed" => "Sent.".into(),
         "endorsement_accepted" => "Published.".into(),
         "endorsement_declined" => "Declined.".into(),
         "gift_added" => "Added.".into(),

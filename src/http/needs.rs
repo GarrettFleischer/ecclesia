@@ -77,7 +77,7 @@ pub async fn create_need(
         return Ok(with_cookie(jar, redirect_err("/needs/new", "missing")));
     };
     let dest = format!("/needs/{need_id}");
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "need_posted")))
 }
 
@@ -176,7 +176,7 @@ pub async fn apply_need(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "applied")))
 }
 
@@ -203,7 +203,7 @@ pub async fn close_need_http(
         Ok(effect) => effect,
         Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
     };
-    state.db.apply(&effect).await?;
+    state.commit(&effect).await?;
     Ok(with_cookie(jar, redirect_ok(&dest, "need_closed")))
 }
 
@@ -218,7 +218,7 @@ pub async fn accept_application_http(
         Err(response) => return Ok(response),
     };
     apply_leaf_redirect(
-        &state.db,
+        &state,
         loaded.jar,
         &loaded.dest,
         accept_application(&loaded.viewer, &loaded.need, &loaded.application),
@@ -238,7 +238,7 @@ pub async fn decline_application_http(
         Err(response) => return Ok(response),
     };
     apply_leaf_redirect(
-        &state.db,
+        &state,
         loaded.jar,
         &loaded.dest,
         decline_application(&loaded.viewer, &loaded.need, &loaded.application),

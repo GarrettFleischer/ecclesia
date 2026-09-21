@@ -28,7 +28,7 @@ Leaves do not:
 - generate UUIDs
 - look at cookies
 
-If a test can construct the inputs in memory, the household rule is testable.
+If a test can construct the inputs in memory, the church rule is testable.
 
 Boolean function arguments are not used. A caller names the situation
 (`CatalogPresence::Listed`, `PriorOffer::Fresh`) or calls a dedicated
@@ -67,13 +67,14 @@ Status fields on `Write` and notice kind/body stay `&'static str`.
 | Skin | Files | External | Role |
 | --- | --- | --- | --- |
 | `clock` | `sdk/clock.rs` | OS time, UUID | ids and timestamps leaves receive |
-| `session` | `sdk/session.rs` | HMAC cookies | who is seated, CSRF |
+| `session` | `sdk/session.rs` | HMAC cookies | who is signed in, CSRF |
+| `push` | `sdk/push.rs`, `sdk/web_push.rs` | Web Push, optional FCM | deliver notices to an installed phone |
 | `memory` | `sdk/memory.rs` | process RAM | apply effects in tests |
-| `db` | `db/{schema,seed,users,churches,needs,gifts,notices,apply}.rs` | SQLite | persist effects |
-| `http` | `http/{auth,churches,needs,people,context,forms}.rs` | Axum | load, call a leaf, apply, render |
+| `db` | `db/{schema,seed,users,churches,needs,gifts,notices,push,apply}.rs` | SQLite | persist effects |
+| `http` | `http/{auth,churches,needs,people,push,context,forms}.rs` | Axum | load, call a leaf, apply, render |
 | `views` | `views/{layout,flash,cards,landing,home,churches,needs,people}.rs` | Maud | HTML; loops live in `cards` |
 
-HTTP is not allowed to decide who may join, see a need, or wear an endorsement.
+HTTP is not allowed to decide who may join, see a need, or publish an endorsement.
 It may only refuse a bad CSRF token or a missing session, then call the leaf.
 
 Loops that walk a collection live in a named function (`insert_gift_rows`,
@@ -86,5 +87,6 @@ those functions; they do not embed `for` in the middle of a story.
 - **SDK** — `MemoryWorld::apply` after a leaf (`src/sdk/memory.rs`).
 - **Integration** — Axum + SQLite (`tests/flows.rs`), including CSRF.
 
-See [SPEC.md](SPEC.md) for the story list and [SECURITY.md](SECURITY.md) for the
-skin’s duties.
+See [SPEC.md](SPEC.md) for the story list, [PROSE.md](PROSE.md) for copy,
+[MOBILE.md](MOBILE.md) for iOS and Android, and [SECURITY.md](SECURITY.md) for
+the skin’s duties.

@@ -13,6 +13,7 @@ pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat)
         0,
         Nav::None,
         flash,
+        csrf,
         html! {
             section class="hero hero-illum" {
                 div class="vesica" aria-hidden="true" {

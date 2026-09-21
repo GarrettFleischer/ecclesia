@@ -4,7 +4,7 @@ use crate::leaf::{ApplicationCard, Church, DomainError, Gift, NeedCard, OfferSta
 
 use super::cards::{application_cards, church_options, gift_options, scope_label, StewardView};
 use super::flash::Flash;
-use super::layout::{csrf_input, page, Nav};
+use super::layout::{csrf_input, page, share_button, Nav};
 
 pub fn need_new(
     viewer: &Viewer,
@@ -20,6 +20,7 @@ pub fn need_new(
         unread,
         Nav::Home,
         flash,
+        csrf,
         html! {
             h1 { "Post a need" }
             (need_form_or_empty(viewer, gifts, selected_church, csrf))
@@ -98,12 +99,14 @@ pub fn need_show(
         unread,
         Nav::Home,
         flash,
+        csrf,
         html! {
             p class="eyebrow" {
                 (scope_label(&need.scope)) " · "
                 a href={ "/churches/" (church.id) } { (church.name) }
             }
             h1 { (need.title) }
+            (share_button("Share", &need.title, &need.body))
             p class="lede" { (need.body) }
             p class="meta" {
                 "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) }

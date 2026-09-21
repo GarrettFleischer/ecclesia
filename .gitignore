@@ -4,3 +4,7 @@
 *.db-shm
 .DS_Store
 .env
+ecclesia-vapid.pem
+mobile/node_modules
+mobile/ios
+mobile/android
