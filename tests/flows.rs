@@ -2,6 +2,7 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use ecclesia::db::Db;
 use ecclesia::http::{router, AppState};
+use ecclesia::leaf::DemoSeat;
 use tower::ServiceExt;
 
 async fn app() -> axum::Router {
@@ -18,7 +19,7 @@ async fn app() -> axum::Router {
     router(AppState {
         db,
         secret: "test-secret".into(),
-        demo: true,
+        demo: DemoSeat::Open,
     })
 }
 

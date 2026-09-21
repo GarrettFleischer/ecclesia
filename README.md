@@ -11,10 +11,11 @@ The Cedar Falls / Waterloo seed is still the way to walk it.
 Rules are **leaves**: pure functions that take values and return an `Effect`. The **SDK skin** loads those values from SQLite and cookies, then writes the effect. HTTP does not invent a second set of household laws.
 
 ```
-src/leaf     stories, rules, validation   (unit tested)
-src/sdk      clock, HMAC session, memory  (SDK tested)
-src/db.rs    SQLite apply(effect)
-src/http.rs  Axum skin
+src/leaf/    auth, membership, needs, gifts, rules, flags
+src/sdk/     clock, HMAC session, memory world
+src/db/      schema, seed, reads, apply(effect)
+src/http/    Axum skin (auth, churches, needs, people)
+src/views/   Maud pages; loops live in cards.rs
 ```
 
 - Specs and user stories: [docs/SPEC.md](docs/SPEC.md)

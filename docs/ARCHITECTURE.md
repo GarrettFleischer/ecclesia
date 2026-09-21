@@ -17,7 +17,9 @@ HTTP / Maud / cookies     ← SDK skin (externals)
 
 ## Leaves
 
-A leaf is a function in `src/leaf`. It takes values — a viewer, a church, a flag that an email is taken, an id and a timestamp the SDK already minted — and returns `Result<Effect, DomainError>`.
+A leaf is a function in `src/leaf`. It takes values — a viewer, a church, an
+`EmailAvailability`, an id and a timestamp the SDK already minted — and returns
+`Result<Effect, DomainError>`.
 
 Leaves do not:
 
@@ -28,21 +30,42 @@ Leaves do not:
 
 If a test can construct the inputs in memory, the household rule is testable.
 
-Stories live in `src/leaf/stories.rs`. Visibility math lives in `src/leaf/rules.rs`. Field limits live in `src/leaf/validate.rs`.
+Boolean arguments are not used. A caller names the situation
+(`MembershipDoor::Open`, `CatalogPresence::Listed`) or calls a dedicated
+function (`approve_membership`, `decline_membership`).
+
+| Module | Responsibility |
+| --- | --- |
+| `leaf/auth.rs` | register, demo-seat impersonation |
+| `leaf/membership.rs` | join, invite, redeem, approve/decline, plant |
+| `leaf/needs.rs` | post, apply, close, receive/pass an offer |
+| `leaf/gifts.rs` | endorse, wear/decline, name a gift, profile |
+| `leaf/rules.rs` | visibility, neighbors, invite codes |
+| `leaf/validate.rs` | field limits |
+| `leaf/directory.rs` | church counts and place grouping |
+| `leaf/flags.rs` | named states that used to be booleans |
+| `leaf/notice.rs` | notice drafts, including governor fan-out |
+| `leaf/model.rs` | records, `Write`, `Effect`, `DomainError` |
 
 ## SDK skin
 
 `src/sdk` maps the outside world onto those values and applies the effect.
 
-| Skin | External | Role |
-| --- | --- | --- |
-| `clock` | OS time, UUID | ids and timestamps leaves receive |
-| `session` | HMAC cookies | who is seated, CSRF |
-| `memory` | process RAM | apply effects in tests |
-| `db` | SQLite | apply effects for the running app |
-| `http` | Axum | load values, call a leaf, apply, render |
+| Skin | Files | External | Role |
+| --- | --- | --- | --- |
+| `clock` | `sdk/clock.rs` | OS time, UUID | ids and timestamps leaves receive |
+| `session` | `sdk/session.rs` | HMAC cookies | who is seated, CSRF |
+| `memory` | `sdk/memory.rs` | process RAM | apply effects in tests |
+| `db` | `db/{schema,seed,users,churches,needs,gifts,notices,apply}.rs` | SQLite | persist effects |
+| `http` | `http/{auth,churches,needs,people,context,forms}.rs` | Axum | load, call a leaf, apply, render |
+| `views` | `views/{layout,flash,cards,landing,home,churches,needs,people}.rs` | Maud | HTML; loops live in `cards` |
 
-HTTP is not allowed to decide who may join, see a need, or wear an endorsement. It may only refuse a bad CSRF token or a missing session, then call the leaf.
+HTTP is not allowed to decide who may join, see a need, or wear an endorsement.
+It may only refuse a bad CSRF token or a missing session, then call the leaf.
+
+Loops that walk a collection live in a named function (`insert_gift_rows`,
+`notice_each_governor`, `apply_writes`, `persona_forms`). Page bodies compose
+those functions; they do not embed `for` in the middle of a story.
 
 ## Tests
 
@@ -50,4 +73,5 @@ HTTP is not allowed to decide who may join, see a need, or wear an endorsement. 
 - **SDK** — `MemoryWorld::apply` after a leaf (`src/sdk/memory.rs`).
 - **Integration** — Axum + SQLite (`tests/flows.rs`), including CSRF.
 
-See [SPEC.md](SPEC.md) for the story list and [SECURITY.md](SECURITY.md) for the skin’s duties.
+See [SPEC.md](SPEC.md) for the story list and [SECURITY.md](SECURITY.md) for the
+skin’s duties.

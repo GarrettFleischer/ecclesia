@@ -356,6 +356,15 @@ impl Viewer {
     pub fn has_gift(&self, gift_id: &str) -> bool {
         self.gift_ids.iter().any(|id| id == gift_id)
     }
+
+    pub fn pending_memberships(&self) -> impl Iterator<Item = &Membership> {
+        self.memberships.iter().filter(|membership| {
+            matches!(
+                membership.status.as_str(),
+                "pending_request" | "pending_invite"
+            )
+        })
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -494,6 +503,27 @@ impl Effect {
     pub fn memberships(&self) -> impl Iterator<Item = &Membership> {
         self.writes.iter().filter_map(|write| match write {
             Write::InsertMembership(membership) => Some(membership),
+            _ => None,
+        })
+    }
+
+    pub fn inserted_user_id(&self) -> Option<String> {
+        self.writes.iter().find_map(|write| match write {
+            Write::InsertUser(user) => Some(user.id.clone()),
+            _ => None,
+        })
+    }
+
+    pub fn inserted_church_id(&self) -> Option<String> {
+        self.writes.iter().find_map(|write| match write {
+            Write::InsertChurch(church) => Some(church.id.clone()),
+            _ => None,
+        })
+    }
+
+    pub fn inserted_need_id(&self) -> Option<String> {
+        self.writes.iter().find_map(|write| match write {
+            Write::InsertNeed(need) => Some(need.id.clone()),
             _ => None,
         })
     }

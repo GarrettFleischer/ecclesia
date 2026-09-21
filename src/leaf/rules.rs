@@ -1,3 +1,4 @@
+use super::flags::MembershipDoor;
 use super::model::{
     Church, DomainError, Membership, MembershipStatus, Need, NeedCard, NeedScope, Viewer,
 };
@@ -60,18 +61,39 @@ pub fn can_decide_membership(actor: &Membership) -> Result<(), DomainError> {
     }
 }
 
-pub fn next_membership_after_decision(
+pub fn membership_after_approval(
     current: MembershipStatus,
-    approve: bool,
 ) -> Result<MembershipStatus, DomainError> {
-    match (current, approve) {
-        (MembershipStatus::PendingRequest | MembershipStatus::PendingInvite, true) => {
-            Ok(MembershipStatus::Active)
-        }
-        (MembershipStatus::PendingRequest | MembershipStatus::PendingInvite, false) => {
-            Ok(MembershipStatus::Declined)
-        }
-        _ => Err(DomainError::NothingPending),
+    membership_after_door(current, MembershipDoor::Open)
+}
+
+pub fn membership_after_decline(
+    current: MembershipStatus,
+) -> Result<MembershipStatus, DomainError> {
+    membership_after_door(current, MembershipDoor::Shut)
+}
+
+pub fn membership_after_door(
+    current: MembershipStatus,
+    door: MembershipDoor,
+) -> Result<MembershipStatus, DomainError> {
+    if !is_pending_membership(current) {
+        return Err(DomainError::NothingPending);
+    }
+    Ok(status_for_door(door))
+}
+
+fn is_pending_membership(current: MembershipStatus) -> bool {
+    matches!(
+        current,
+        MembershipStatus::PendingRequest | MembershipStatus::PendingInvite
+    )
+}
+
+fn status_for_door(door: MembershipDoor) -> MembershipStatus {
+    match door {
+        MembershipDoor::Open => MembershipStatus::Active,
+        MembershipDoor::Shut => MembershipStatus::Declined,
     }
 }
 
@@ -82,28 +104,39 @@ pub fn visible_need_cards<'a>(
 ) -> Vec<&'a NeedCard> {
     cards
         .iter()
-        .filter(|card| {
-            let Some(church) = churches.iter().find(|church| church.id == card.church_id) else {
-                return false;
-            };
-            card.is_open() && can_view_need(viewer, &Need::from_card(card), church)
-        })
+        .filter(|card| card_is_visible(viewer, card, churches))
         .collect()
 }
 
+fn card_is_visible(viewer: &Viewer, card: &NeedCard, churches: &[Church]) -> bool {
+    let Some(church) = church_for_card(card, churches) else {
+        return false;
+    };
+    card.is_open() && can_view_need(viewer, &Need::from_card(card), church)
+}
+
+fn church_for_card<'a>(card: &NeedCard, churches: &'a [Church]) -> Option<&'a Church> {
+    churches.iter().find(|church| church.id == card.church_id)
+}
+
 pub fn invite_code_for(name: &str, nonce4: &str) -> String {
-    let slug: String = name
-        .chars()
+    format!("{}-{}", slug_from(name, 8), nonce_from(nonce4, 4))
+}
+
+fn slug_from(name: &str, take: usize) -> String {
+    name.chars()
         .flat_map(|c| c.to_lowercase())
         .filter(|c| c.is_ascii_alphanumeric())
-        .take(8)
-        .collect();
-    let nonce: String = nonce4
+        .take(take)
+        .collect()
+}
+
+fn nonce_from(nonce4: &str, take: usize) -> String {
+    nonce4
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
-        .take(4)
-        .collect();
-    format!("{slug}-{nonce}")
+        .take(take)
+        .collect()
 }
 
 #[cfg(test)]
@@ -252,11 +285,11 @@ mod tests {
     #[test]
     fn us_mem_04_only_pending_memberships_can_be_decided() {
         assert_eq!(
-            next_membership_after_decision(MembershipStatus::PendingRequest, true),
+            membership_after_approval(MembershipStatus::PendingRequest),
             Ok(MembershipStatus::Active)
         );
         assert_eq!(
-            next_membership_after_decision(MembershipStatus::Active, true),
+            membership_after_approval(MembershipStatus::Active),
             Err(DomainError::NothingPending)
         );
     }

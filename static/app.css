@@ -55,7 +55,7 @@ p { margin: 0 0 0.8rem; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.85rem 1.1rem;
+  padding: calc(0.7rem + env(safe-area-inset-top)) 1.1rem 0.85rem;
   background: rgba(243, 238, 228, 0.92);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
@@ -200,6 +200,11 @@ input, textarea, select {
   font: inherit;
 }
 
+input:focus, textarea:focus, select:focus, .btn:focus-visible, .persona:focus-visible {
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+}
+
 textarea { resize: vertical; }
 
 .btn {
@@ -216,7 +221,10 @@ textarea { resize: vertical; }
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  justify-self: start;
 }
+
+form.stack > .btn { width: 100%; }
 
 .btn:hover { background: var(--olive-deep); color: #fff; }
 

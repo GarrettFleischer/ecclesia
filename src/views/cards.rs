@@ -1,0 +1,480 @@
+//! Repeated cards and option lists. Loops live here, not inside page bodies.
+
+use maud::{html, Markup};
+
+use crate::leaf::{
+    ApplicationCard, Church, ChurchMember, EndorsementCard, Gift, MemberGift, Membership, NeedCard,
+    NeedScope, Notification, User, Viewer,
+};
+
+use super::layout::{csrf_input, initials};
+
+pub fn need_card(need: &NeedCard, viewer: &Viewer) -> Markup {
+    html! {
+        a class="card card-link" href={ "/needs/" (need.id) } {
+            p class="eyebrow" {
+                (scope_label(&need.scope)) " · " (need.church_name) " · " (need.church_city)
+            }
+            h3 { (need.title) }
+            p { (need.body) }
+            p class="meta" {
+                @if let Some(gift) = &need.gift_name { (gift) " · " }
+                (need.author_name)
+                @if let Some(gift_id) = &need.gift_id {
+                    @if viewer.has_gift(gift_id) { " · you have this gift" }
+                }
+            }
+        }
+    }
+}
+
+pub fn scope_label(scope: &str) -> &'static str {
+    NeedScope::parse(scope)
+        .map(NeedScope::label)
+        .unwrap_or("Need")
+}
+
+pub fn need_card_stack(needs: &[NeedCard], viewer: &Viewer) -> Markup {
+    html! {
+        div class="stack" {
+            (need_cards(needs, viewer))
+        }
+    }
+}
+
+fn need_cards(needs: &[NeedCard], viewer: &Viewer) -> Markup {
+    html! {
+        @for need in needs {
+            (need_card(need, viewer))
+        }
+    }
+}
+
+pub fn persona_grid(users: &[User], csrf: &str) -> Markup {
+    html! {
+        div class="persona-grid" {
+            (persona_forms(users, csrf))
+        }
+    }
+}
+
+fn persona_forms(users: &[User], csrf: &str) -> Markup {
+    html! {
+        @for user in users {
+            (persona_form(user, csrf))
+        }
+    }
+}
+
+fn persona_form(user: &User, csrf: &str) -> Markup {
+    html! {
+        form method="post" action="/session" {
+            (csrf_input(csrf))
+            input type="hidden" name="user_id" value=(user.id);
+            button class="persona" type="submit" {
+                span class="avatar avatar-lg" { (initials(&user.name)) }
+                strong { (user.name) }
+                span { (persona_line(user)) }
+            }
+        }
+    }
+}
+
+fn persona_line(user: &User) -> &'static str {
+    match user.id.as_str() {
+        "user_miriam" => "Pastor · Grace Covenant · approves members",
+        "user_daniel" => "Member · posted a neighboring repair need",
+        "user_ruth" => "Member · has a hospitality endorsement waiting",
+        "user_samuel" => "Rector · St. Luke's · asking neighbors for worship",
+        "user_james" => "Steward · carpenter from St. Luke's",
+        "user_keisha" => "Pastor · New Mercy · Waterloo, same valley",
+        "user_elena" => "Member · translator who can cross the river",
+        "user_peter" => "Still waiting · requested Grace Covenant",
+        _ => "Member of the body",
+    }
+}
+
+pub fn pending_door_cards(pending: &[(Membership, Church)], csrf: &str) -> Markup {
+    html! {
+        @for pair in pending {
+            (pending_door_card(pair, csrf))
+        }
+    }
+}
+
+fn pending_door_card(pair: &(Membership, Church), csrf: &str) -> Markup {
+    let (membership, church) = pair;
+    html! {
+        article class="card" {
+            @if membership.status == "pending_request" {
+                p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } ". A pastor still has to open the door." }
+            } @else {
+                p { (church.name) " invited you." }
+                form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
+                    (csrf_input(csrf))
+                    button class="btn" type="submit" { "Accept and come in" }
+                }
+            }
+        }
+    }
+}
+
+pub fn church_index_cards(churches: &[(Church, i64, i64)]) -> Markup {
+    html! {
+        @for card in churches {
+            (church_index_card(card))
+        }
+    }
+}
+
+fn church_index_card(card: &(Church, i64, i64)) -> Markup {
+    let (church, members, needs) = card;
+    html! {
+        a class="card card-link" href={ "/churches/" (church.id) } {
+            h3 { (church.name) }
+            p class="muted" { (church.city) ", " (church.region) }
+            p { (church.description) }
+            p class="meta" { (members) " members · " (needs) " open needs" }
+        }
+    }
+}
+
+pub fn pending_member_cards(members: &[&ChurchMember], csrf: &str) -> Markup {
+    html! {
+        @for member in members {
+            (pending_member_card(member, csrf))
+        }
+    }
+}
+
+fn pending_member_card(member: &ChurchMember, csrf: &str) -> Markup {
+    html! {
+        article class="card" {
+            a href={ "/members/" (member.user_id) } { strong { (member.name) } }
+            p class="muted" { (pending_member_line(member)) }
+            @if member.status == "pending_request" {
+                div class="row" {
+                    form method="post" action={ "/memberships/" (member.membership_id) "/approve" } {
+                        (csrf_input(csrf))
+                        button class="btn" type="submit" { "Approve" }
+                    }
+                    form method="post" action={ "/memberships/" (member.membership_id) "/decline" } {
+                        (csrf_input(csrf))
+                        button class="btn btn-quiet" type="submit" { "Decline" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn pending_member_line(member: &ChurchMember) -> &'static str {
+    if member.status == "pending_request" {
+        "Asked to join"
+    } else {
+        "Invited — waiting on them"
+    }
+}
+
+pub fn pending_people<'a>(members: &'a [ChurchMember]) -> Vec<&'a ChurchMember> {
+    members
+        .iter()
+        .filter(|member| is_pending_member(member))
+        .collect()
+}
+
+fn is_pending_member(member: &ChurchMember) -> bool {
+    matches!(member.status.as_str(), "pending_request" | "pending_invite")
+}
+
+pub fn active_member_items(members: &[ChurchMember]) -> Markup {
+    html! {
+        @for member in members.iter().filter(|member| member.status == "active") {
+            (active_member_item(member))
+        }
+    }
+}
+
+fn active_member_item(member: &ChurchMember) -> Markup {
+    html! {
+        li {
+            a href={ "/members/" (member.user_id) } { (member.name) }
+            span class="muted" { " · " (member.role) }
+        }
+    }
+}
+
+pub fn has_active_member(members: &[ChurchMember]) -> bool {
+    members.iter().any(|member| member.status == "active")
+}
+
+pub fn church_options(churches: &[Church], selected: Option<&str>) -> Markup {
+    html! {
+        @for church in churches {
+            option value=(church.id) selected[selected == Some(church.id.as_str())] { (church.name) }
+        }
+    }
+}
+
+pub fn gift_options(gifts: &[Gift]) -> Markup {
+    html! {
+        @for gift in gifts {
+            option value=(gift.id) { (gift.name) " · " (gift.category) }
+        }
+    }
+}
+
+pub fn catalog_name_options(catalog: &[Gift]) -> Markup {
+    html! {
+        @for gift in catalog {
+            option value=(gift.id) { (gift.name) }
+        }
+    }
+}
+
+pub fn unused_gift_options(catalog: &[Gift], used: &[&str]) -> Markup {
+    html! {
+        @for gift in catalog {
+            @if !used.contains(&gift.id.as_str()) {
+                option value=(gift.id) { (gift.name) " · " (gift.category) }
+            }
+        }
+    }
+}
+
+pub fn application_cards(
+    applications: &[ApplicationCard],
+    steward: StewardView,
+    csrf: &str,
+) -> Markup {
+    html! {
+        @for application in applications {
+            (application_card(application, steward, csrf))
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum StewardView {
+    Steward,
+    Guest,
+}
+
+fn application_card(application: &ApplicationCard, steward: StewardView, csrf: &str) -> Markup {
+    html! {
+        article class="card" {
+            a href={ "/members/" (application.user_id) } { strong { (application.user_name) } }
+            p { (application.message) }
+            p class="meta" { (application.status) }
+            @if matches!(steward, StewardView::Steward) && application.status == "pending" {
+                (application_verdict_row(application, csrf))
+            }
+        }
+    }
+}
+
+fn application_verdict_row(application: &ApplicationCard, csrf: &str) -> Markup {
+    html! {
+        div class="row" {
+            form method="post" action={ "/applications/" (application.id) "/accept" } {
+                (csrf_input(csrf))
+                button class="btn" type="submit" { "Receive them" }
+            }
+            form method="post" action={ "/applications/" (application.id) "/decline" } {
+                (csrf_input(csrf))
+                button class="btn btn-quiet" type="submit" { "Not this time" }
+            }
+        }
+    }
+}
+
+pub fn household_items(churches: &[(Church, Membership)]) -> Markup {
+    html! {
+        @for pair in churches {
+            (household_item(pair))
+        }
+    }
+}
+
+fn household_item(pair: &(Church, Membership)) -> Markup {
+    let (church, membership) = pair;
+    html! {
+        li {
+            a href={ "/churches/" (church.id) } { (church.name) }
+            span class="muted" { " · " (membership.role) " · " (membership.status) }
+        }
+    }
+}
+
+pub fn member_gift_cards(gifts: &[MemberGift], endorsements: &[EndorsementCard]) -> Markup {
+    html! {
+        @for gift in gifts {
+            (member_gift_card(gift, endorsements))
+        }
+    }
+}
+
+fn member_gift_card(gift: &MemberGift, endorsements: &[EndorsementCard]) -> Markup {
+    html! {
+        article class="card" {
+            p class="eyebrow" { (gift.category) }
+            h3 { (gift.gift_name) }
+            @if !gift.note.is_empty() { p { (gift.note) } }
+            (endorsement_byline(endorsements_for_gift(endorsements, &gift.gift_id)))
+        }
+    }
+}
+
+fn endorsements_for_gift<'a>(
+    endorsements: &'a [EndorsementCard],
+    gift_id: &str,
+) -> Vec<&'a EndorsementCard> {
+    endorsements
+        .iter()
+        .filter(|endorsement| endorsement.gift_id == gift_id)
+        .collect()
+}
+
+fn endorsement_byline(names: Vec<&EndorsementCard>) -> Markup {
+    if names.is_empty() {
+        return html! {};
+    }
+    html! {
+        p class="meta" {
+            "Endorsed by "
+            (endorsement_name_list(&names))
+        }
+    }
+}
+
+fn endorsement_name_list(names: &[&EndorsementCard]) -> Markup {
+    html! {
+        @for (i, endorsement) in names.iter().enumerate() {
+            @if i > 0 { ", " }
+            a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+        }
+    }
+}
+
+pub fn pending_endorsement_cards(pending: &[EndorsementCard], csrf: &str) -> Markup {
+    html! {
+        @for endorsement in pending {
+            (pending_endorsement_card(endorsement, csrf))
+        }
+    }
+}
+
+fn pending_endorsement_card(endorsement: &EndorsementCard, csrf: &str) -> Markup {
+    html! {
+        article class="card" {
+            p {
+                a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+                " named you for " strong { (endorsement.gift_name) } "."
+            }
+            p { (endorsement.note) }
+            div class="row" {
+                form method="post" action={ "/endorsements/" (endorsement.id) "/accept" } {
+                    (csrf_input(csrf))
+                    button class="btn" type="submit" { "Accept onto my profile" }
+                }
+                form method="post" action={ "/endorsements/" (endorsement.id) "/decline" } {
+                    (csrf_input(csrf))
+                    button class="btn btn-quiet" type="submit" { "Decline" }
+                }
+            }
+        }
+    }
+}
+
+pub fn notice_cards(notes: &[Notification]) -> Markup {
+    html! {
+        @for note in notes {
+            (notice_card(note))
+        }
+    }
+}
+
+fn notice_card(note: &Notification) -> Markup {
+    html! {
+        a class="card card-link" href=(note.href) {
+            h3 { (note.title) }
+            p { (note.body) }
+            p class="meta" { (note.kind) }
+        }
+    }
+}
+
+pub fn my_gift_cards(gifts: &[MemberGift], csrf: &str) -> Markup {
+    html! {
+        @for gift in gifts {
+            (my_gift_card(gift, csrf))
+        }
+    }
+}
+
+fn my_gift_card(gift: &MemberGift, csrf: &str) -> Markup {
+    html! {
+        article class="card row-between" {
+            div {
+                strong { (gift.gift_name) }
+                @if !gift.note.is_empty() { p class="muted" { (gift.note) } }
+            }
+            form method="post" action={ "/me/gifts/" (gift.gift_id) "/remove" } {
+                (csrf_input(csrf))
+                button class="btn btn-quiet" type="submit" { "Remove" }
+            }
+        }
+    }
+}
+
+pub fn used_gift_ids(gifts: &[MemberGift]) -> Vec<&str> {
+    gifts.iter().map(|gift| gift.gift_id.as_str()).collect()
+}
+
+pub fn place_sections(groups: &[(String, Vec<(Church, i64, i64)>)]) -> Markup {
+    html! {
+        @for group in groups {
+            (place_section(group))
+        }
+    }
+}
+
+fn place_section(group: &(String, Vec<(Church, i64, i64)>)) -> Markup {
+    let (place, churches) = group;
+    html! {
+        section class="panel" {
+            h2 { (place) }
+            p class="muted" { (neighbor_line(churches.len())) }
+            div class="stack" {
+                (place_church_cards(churches))
+            }
+        }
+    }
+}
+
+fn neighbor_line(count: usize) -> &'static str {
+    if count > 1 {
+        "These households can already carry neighboring needs for each other."
+    } else {
+        "One household here so far. A neighbor in this city or region would end the island."
+    }
+}
+
+fn place_church_cards(churches: &[(Church, i64, i64)]) -> Markup {
+    html! {
+        @for card in churches {
+            (place_church_card(card))
+        }
+    }
+}
+
+fn place_church_card(card: &(Church, i64, i64)) -> Markup {
+    let (church, members, needs) = card;
+    html! {
+        a class="card card-link" href={ "/churches/" (church.id) } {
+            h3 { (church.name) }
+            p { (church.description) }
+            p class="meta" { (members) " members · " (needs) " open needs" }
+        }
+    }
+}
