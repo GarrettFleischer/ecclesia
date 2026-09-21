@@ -17,9 +17,9 @@ pub struct MemoryWorld {
 }
 
 impl MemoryWorld {
-    pub fn apply(&mut self, effect: &Effect, now: &str) {
-        apply_writes(self, &effect.writes);
-        apply_notices(self, &effect.notices, now);
+    pub fn apply(&mut self, effect: Effect, now: &str) {
+        apply_writes(self, effect.writes);
+        apply_notices(self, effect.notices, now);
     }
 
     pub fn membership(&self, church_id: &str, user_id: &str) -> Option<&Membership> {
@@ -32,23 +32,25 @@ impl MemoryWorld {
         self.users.iter().find(|user| user.id == id)
     }
 
-    pub fn gifts_for(&self, user_id: &str) -> Vec<&(String, String, String)> {
+    pub fn gifts_for<'a>(
+        &'a self,
+        user_id: &'a str,
+    ) -> impl Iterator<Item = &'a (String, String, String)> + 'a {
         self.member_gifts
             .iter()
-            .filter(|(id, _, _)| id == user_id)
-            .collect()
+            .filter(move |(id, _, _)| id == user_id)
     }
 }
 
-fn apply_writes(world: &mut MemoryWorld, writes: &[Write]) {
+fn apply_writes(world: &mut MemoryWorld, writes: Vec<Write>) {
     for write in writes {
         apply_write(world, write);
     }
 }
 
-fn apply_write(world: &mut MemoryWorld, write: &Write) {
+fn apply_write(world: &mut MemoryWorld, write: Write) {
     match write {
-        Write::InsertUser(user) => world.users.push(user.clone()),
+        Write::InsertUser(user) => world.users.push(user),
         Write::UpdateUser {
             id,
             name,
@@ -56,14 +58,14 @@ fn apply_write(world: &mut MemoryWorld, write: &Write) {
             region,
             bio,
         } => update_user(world, id, name, city, region, bio),
-        Write::InsertChurch(church) => world.churches.push(church.clone()),
-        Write::InsertMembership(membership) => world.memberships.push(membership.clone()),
+        Write::InsertChurch(church) => world.churches.push(church),
+        Write::InsertMembership(membership) => world.memberships.push(membership),
         Write::SetMembershipStatus { id, status } => set_membership_status(world, id, status),
-        Write::InsertNeed(need) => world.needs.push(need.clone()),
+        Write::InsertNeed(need) => world.needs.push(need),
         Write::SetNeedStatus { id, status } => set_need_status(world, id, status),
-        Write::InsertApplication(application) => world.applications.push(application.clone()),
+        Write::InsertApplication(application) => world.applications.push(application),
         Write::SetApplicationStatus { id, status } => set_application_status(world, id, status),
-        Write::InsertEndorsement(endorsement) => world.endorsements.push(endorsement.clone()),
+        Write::InsertEndorsement(endorsement) => world.endorsements.push(endorsement),
         Write::SetEndorsementStatus { id, status } => set_endorsement_status(world, id, status),
         Write::UpsertMemberGift {
             user_id,
@@ -74,73 +76,78 @@ fn apply_write(world: &mut MemoryWorld, write: &Write) {
     }
 }
 
-fn update_user(world: &mut MemoryWorld, id: &str, name: &str, city: &str, region: &str, bio: &str) {
+fn update_user(
+    world: &mut MemoryWorld,
+    id: String,
+    name: String,
+    city: String,
+    region: String,
+    bio: String,
+) {
     if let Some(user) = world.users.iter_mut().find(|user| user.id == id) {
-        user.name = name.into();
-        user.city = city.into();
-        user.region = region.into();
-        user.bio = bio.into();
+        user.name = name;
+        user.city = city;
+        user.region = region;
+        user.bio = bio;
     }
 }
 
-fn set_membership_status(world: &mut MemoryWorld, id: &str, status: &str) {
+fn set_membership_status(world: &mut MemoryWorld, id: String, status: &'static str) {
     if let Some(membership) = world.memberships.iter_mut().find(|m| m.id == id) {
         membership.status = status.into();
     }
 }
 
-fn set_need_status(world: &mut MemoryWorld, id: &str, status: &str) {
+fn set_need_status(world: &mut MemoryWorld, id: String, status: &'static str) {
     if let Some(need) = world.needs.iter_mut().find(|need| need.id == id) {
         need.status = status.into();
     }
 }
 
-fn set_application_status(world: &mut MemoryWorld, id: &str, status: &str) {
+fn set_application_status(world: &mut MemoryWorld, id: String, status: &'static str) {
     if let Some(application) = world.applications.iter_mut().find(|a| a.id == id) {
         application.status = status.into();
     }
 }
 
-fn set_endorsement_status(world: &mut MemoryWorld, id: &str, status: &str) {
+fn set_endorsement_status(world: &mut MemoryWorld, id: String, status: &'static str) {
     if let Some(endorsement) = world.endorsements.iter_mut().find(|e| e.id == id) {
         endorsement.status = status.into();
     }
 }
 
-fn upsert_member_gift(world: &mut MemoryWorld, user_id: &str, gift_id: &str, note: &str) {
+fn upsert_member_gift(world: &mut MemoryWorld, user_id: String, gift_id: String, note: String) {
     if let Some(existing) = world
         .member_gifts
         .iter_mut()
-        .find(|(u, g, _)| u == user_id && g == gift_id)
+        .find(|(u, g, _)| *u == user_id && *g == gift_id)
     {
-        existing.2 = note.into();
+        existing.2 = note;
         return;
     }
-    world
-        .member_gifts
-        .push((user_id.into(), gift_id.into(), note.into()));
+    world.member_gifts.push((user_id, gift_id, note));
 }
 
-fn remove_member_gift(world: &mut MemoryWorld, user_id: &str, gift_id: &str) {
+fn remove_member_gift(world: &mut MemoryWorld, user_id: String, gift_id: String) {
     world
         .member_gifts
-        .retain(|(u, g, _)| !(u == user_id && g == gift_id));
+        .retain(|(u, g, _)| !(u == &user_id && g == &gift_id));
 }
 
-fn apply_notices(world: &mut MemoryWorld, notices: &[crate::leaf::NoticeDraft], now: &str) {
+fn apply_notices(world: &mut MemoryWorld, notices: Vec<crate::leaf::NoticeDraft>, now: &str) {
     for notice in notices {
         push_notice(world, notice, now);
     }
 }
 
-fn push_notice(world: &mut MemoryWorld, notice: &crate::leaf::NoticeDraft, now: &str) {
+fn push_notice(world: &mut MemoryWorld, notice: crate::leaf::NoticeDraft, now: &str) {
     world.notifications.push(Notification {
         id: format!("n-{}", world.notifications.len()),
-        user_id: notice.user_id.clone(),
-        kind: notice.kind.clone(),
-        title: notice.title.clone(),
-        body: notice.body.clone(),
-        href: notice.href.clone(),
+        user_id: notice.user_id,
+        kind: notice.kind.into(),
+        title: notice.title,
+        body: notice.body.into(),
+        href: notice.href,
         read: 0,
         created_at: now.into(),
     });
@@ -183,7 +190,7 @@ mod tests {
             "t1".into(),
         )
         .unwrap();
-        world.apply(&effect, "t1");
+        world.apply(effect, "t1");
         let membership = world.membership("grace", "peter").unwrap();
         assert_eq!(membership.status, "pending_request");
         assert_eq!(world.notifications[0].user_id, "miriam");
@@ -210,7 +217,7 @@ mod tests {
         });
         let peter = user("peter", "Peter");
         let effect = accept_invite(&peter, world.membership("grace", "peter").unwrap()).unwrap();
-        world.apply(&effect, "t1");
+        world.apply(effect, "t1");
         assert_eq!(world.membership("grace", "peter").unwrap().status, "active");
     }
 
@@ -228,9 +235,9 @@ mod tests {
         });
         let ruth = user("ruth", "Ruth");
         let effect = accept_endorsement(&ruth, &world.endorsements[0], "Hospitality").unwrap();
-        world.apply(&effect, "t1");
+        world.apply(effect, "t1");
         assert_eq!(world.endorsements[0].status, "accepted");
-        assert_eq!(world.gifts_for("ruth").len(), 1);
+        assert_eq!(world.gifts_for("ruth").count(), 1);
         assert_eq!(world.notifications[0].user_id, "james");
     }
 

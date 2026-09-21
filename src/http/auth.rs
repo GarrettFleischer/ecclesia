@@ -9,7 +9,7 @@ use crate::views;
 
 use super::context::{
     bind_session, fail_csrf, html, leaf_err, load_user, memberships_with_churches, redirect_ok,
-    require_user, unread, viewer_for, visible_needs_for, with_cookie,
+    require_user, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, FlashQuery, RegisterForm, SessionForm};
 use super::{AppError, AppState};
@@ -109,6 +109,7 @@ pub async fn register_user(
             super::context::redirect_err("/", "missing"),
         ));
     };
+    let user_id = user_id.to_owned();
     state.db.apply(&effect).await?;
     let next = Session::signed_in(user_id, session::fresh_csrf());
     Ok(with_cookie(
@@ -129,7 +130,8 @@ pub async fn home(
     };
     let viewer = viewer_for(&state.db, user).await?;
     let pending = memberships_with_churches(&state.db, viewer.pending_memberships()).await?;
-    let visible = visible_needs_for(&state.db, &viewer).await?;
+    let needs = state.db.all_need_cards().await?;
+    let churches = state.db.churches().await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,
@@ -137,7 +139,8 @@ pub async fn home(
             &viewer,
             views::flash_from(flash.ok, flash.err),
             &pending,
-            &visible,
+            &needs,
+            &churches,
             count,
             &session.csrf,
         )),

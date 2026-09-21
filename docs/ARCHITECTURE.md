@@ -35,6 +35,14 @@ Boolean function arguments are not used. A caller names the situation
 function (`approve_membership`, `decline_membership`) instead of switching
 on a flag.
 
+Do not clone a collection to walk it again. Directory grouping, need
+visibility, and card stacks take slices or iterators. Visibility reads a
+`NeedSight` (borrowed fields) instead of allocating a `Need` from a card.
+`MemoryWorld::apply` takes the `Effect` by value and moves writes in.
+Status fields on `Write` and notice kind/body stay `&'static str`.
+`us_perf_01` fails the build if source grows `.cloned().collect()`,
+`.to_vec()`, or `Need::from_card`.
+
 | Module | Responsibility |
 | --- | --- |
 | `leaf/auth.rs` | register, demo-seat impersonation |
@@ -48,7 +56,7 @@ on a flag.
 | `leaf/notice.rs` | notice drafts, including governor fan-out |
 | `leaf/household.rs` | church and membership records |
 | `leaf/person.rs` | people, gifts, endorsements, `Viewer` |
-| `leaf/need.rs` | needs and applications |
+| `leaf/need.rs` | needs, applications, borrowed `NeedSight` |
 | `leaf/effect.rs` | `Write`, `Effect`, `DomainError` |
 | `leaf/model.rs` | re-exports the record modules |
 

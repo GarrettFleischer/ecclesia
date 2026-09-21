@@ -3,8 +3,7 @@ use sqlx::SqlitePool;
 use crate::leaf::{
     Application, Church, Effect, Endorsement, Membership, Need, NoticeDraft, User, Write,
 };
-
-use super::Db;
+use crate::sdk::clock::{new_id, now_iso};
 
 pub async fn apply(pool: &SqlitePool, effect: &Effect) -> anyhow::Result<()> {
     apply_writes(pool, &effect.writes).await?;
@@ -63,15 +62,20 @@ async fn apply_write(pool: &SqlitePool, write: &Write) -> anyhow::Result<()> {
 }
 
 async fn apply_notice(pool: &SqlitePool, notice: &NoticeDraft) -> anyhow::Result<()> {
-    let db = Db { pool: pool.clone() };
-    db.notify(
-        &notice.user_id,
-        &notice.kind,
-        &notice.title,
-        &notice.body,
-        &notice.href,
+    sqlx::query(
+        "INSERT INTO notifications (id, user_id, kind, title, body, href, read, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
     )
-    .await
+    .bind(new_id())
+    .bind(&notice.user_id)
+    .bind(notice.kind)
+    .bind(&notice.title)
+    .bind(notice.body)
+    .bind(&notice.href)
+    .bind(now_iso())
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn insert_user(pool: &SqlitePool, user: &User) -> anyhow::Result<()> {
@@ -98,8 +102,15 @@ async fn update_user(
     region: &str,
     bio: &str,
 ) -> anyhow::Result<()> {
-    let db = Db { pool: pool.clone() };
-    db.update_user(id, name, city, region, bio).await
+    sqlx::query("UPDATE users SET name = ?, city = ?, region = ?, bio = ? WHERE id = ?")
+        .bind(name.trim())
+        .bind(city.trim())
+        .bind(region.trim())
+        .bind(bio.trim())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 async fn insert_church(pool: &SqlitePool, church: &Church) -> anyhow::Result<()> {
@@ -206,11 +217,23 @@ async fn upsert_member_gift(
     gift_id: &str,
     note: &str,
 ) -> anyhow::Result<()> {
-    let db = Db { pool: pool.clone() };
-    db.add_member_gift(user_id, gift_id, note).await
+    sqlx::query(
+        "INSERT INTO member_gifts (user_id, gift_id, note) VALUES (?, ?, ?)
+         ON CONFLICT(user_id, gift_id) DO UPDATE SET note = excluded.note",
+    )
+    .bind(user_id)
+    .bind(gift_id)
+    .bind(note.trim())
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn remove_member_gift(pool: &SqlitePool, user_id: &str, gift_id: &str) -> anyhow::Result<()> {
-    let db = Db { pool: pool.clone() };
-    db.remove_member_gift(user_id, gift_id).await
+    sqlx::query("DELETE FROM member_gifts WHERE user_id = ? AND gift_id = ?")
+        .bind(user_id)
+        .bind(gift_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }

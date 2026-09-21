@@ -1,6 +1,6 @@
 use maud::{html, Markup};
 
-use crate::leaf::{Church, Membership, NeedCard, Viewer};
+use crate::leaf::{visible_need_cards, Church, Membership, NeedCard, Viewer};
 
 use super::cards::{need_card_stack, pending_door_cards};
 use super::flash::Flash;
@@ -9,8 +9,9 @@ use super::layout::{first_name, page, Nav};
 pub fn home(
     viewer: &Viewer,
     flash: Option<Flash>,
-    pending: &[(Membership, Church)],
+    pending: &[(&Membership, Church)],
     needs: &[NeedCard],
+    churches: &[Church],
     unread: i64,
     csrf: &str,
 ) -> Markup {
@@ -28,13 +29,13 @@ pub fn home(
             (active_toolbar(viewer))
             section {
                 h2 { "Needs the body can carry" }
-                (needs_or_empty(needs, viewer))
+                (needs_or_empty(needs, churches, viewer))
             }
         },
     )
 }
 
-fn empty_household(viewer: &Viewer, pending: &[(Membership, Church)]) -> Markup {
+fn empty_household(viewer: &Viewer, pending: &[(&Membership, Church)]) -> Markup {
     if viewer.is_active_anywhere() || !pending.is_empty() {
         return html! {};
     }
@@ -46,7 +47,7 @@ fn empty_household(viewer: &Viewer, pending: &[(Membership, Church)]) -> Markup 
     }
 }
 
-fn door_section(pending: &[(Membership, Church)], csrf: &str) -> Markup {
+fn door_section(pending: &[(&Membership, Church)], csrf: &str) -> Markup {
     if pending.is_empty() {
         return html! {};
     }
@@ -70,13 +71,14 @@ fn active_toolbar(viewer: &Viewer) -> Markup {
     }
 }
 
-fn needs_or_empty(needs: &[NeedCard], viewer: &Viewer) -> Markup {
-    if needs.is_empty() {
+fn needs_or_empty(needs: &[NeedCard], churches: &[Church], viewer: &Viewer) -> Markup {
+    let mut visible = visible_need_cards(viewer, needs, churches).peekable();
+    if visible.peek().is_none() {
         return html! {
             div class="empty" {
                 p { "No open needs you can see. That can mean rest — or that a church is still trying to carry everything alone." }
             }
         };
     }
-    need_card_stack(needs, viewer)
+    need_card_stack(visible, viewer)
 }

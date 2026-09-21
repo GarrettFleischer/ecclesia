@@ -57,18 +57,28 @@ impl Need {
         self.status == "open"
     }
 
-    pub fn from_card(card: &NeedCard) -> Self {
-        Self {
-            id: card.id.clone(),
-            church_id: card.church_id.clone(),
-            author_id: card.author_id.clone(),
-            title: card.title.clone(),
-            body: card.body.clone(),
-            gift_id: card.gift_id.clone(),
-            scope: card.scope.clone(),
-            status: card.status.clone(),
-            created_at: card.created_at.clone(),
+    pub fn sight(&self) -> NeedSight<'_> {
+        NeedSight {
+            church_id: &self.church_id,
+            author_id: &self.author_id,
+            scope: self.scope(),
+            status: &self.status,
         }
+    }
+}
+
+/// Borrowed fields a visibility or apply rule actually reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NeedSight<'a> {
+    pub church_id: &'a str,
+    pub author_id: &'a str,
+    pub scope: Option<NeedScope>,
+    pub status: &'a str,
+}
+
+impl NeedSight<'_> {
+    pub fn is_open(self) -> bool {
+        self.status == "open"
     }
 }
 
@@ -97,6 +107,15 @@ impl NeedCard {
 
     pub fn is_open(&self) -> bool {
         self.status == "open"
+    }
+
+    pub fn sight(&self) -> NeedSight<'_> {
+        NeedSight {
+            church_id: &self.church_id,
+            author_id: &self.author_id,
+            scope: self.scope(),
+            status: &self.status,
+        }
     }
 }
 

@@ -144,7 +144,7 @@ fn pending_status(target: &Membership) -> Result<MembershipStatus, DomainError> 
 fn set_membership(target: &Membership, next: MembershipStatus) -> Effect {
     Effect::write(Write::SetMembershipStatus {
         id: target.id.clone(),
-        status: next.as_str().into(),
+        status: next.as_str(),
     })
 }
 
@@ -175,7 +175,7 @@ pub fn accept_invite(actor: &User, target: &Membership) -> Result<Effect, Domain
     }
     Ok(Effect::write(Write::SetMembershipStatus {
         id: target.id.clone(),
-        status: MembershipStatus::Active.as_str().into(),
+        status: MembershipStatus::Active.as_str(),
     }))
 }
 
@@ -327,7 +327,7 @@ mod tests {
         let peter = membership("m1", "grace", "peter", "member", "pending_request");
         let effect = approve_membership(&miriam, &peter, &church("grace")).unwrap();
         match &effect.writes[0] {
-            Write::SetMembershipStatus { status, .. } => assert_eq!(status, "active"),
+            Write::SetMembershipStatus { status, .. } => assert_eq!(*status, "active"),
             other => panic!("{other:?}"),
         }
         assert_eq!(effect.notices[0].user_id, "peter");
@@ -342,7 +342,7 @@ mod tests {
         );
         let effect = accept_invite(&user("peter"), &target).unwrap();
         match effect.writes[0] {
-            Write::SetMembershipStatus { ref status, .. } => assert_eq!(status, "active"),
+            Write::SetMembershipStatus { status, .. } => assert_eq!(status, "active"),
             _ => panic!(),
         }
     }

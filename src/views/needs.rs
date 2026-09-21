@@ -8,7 +8,6 @@ use super::layout::{csrf_input, page, Nav};
 
 pub fn need_new(
     viewer: &Viewer,
-    churches: &[Church],
     gifts: &[Gift],
     selected_church: Option<&str>,
     unread: i64,
@@ -26,18 +25,19 @@ pub fn need_new(
             p class="muted" {
                 "Keep it inside your church, open it to neighboring households in the same city or region, or ask the whole ecclesia."
             }
-            (need_form_or_empty(churches, gifts, selected_church, csrf))
+            (need_form_or_empty(viewer, gifts, selected_church, csrf))
         },
     )
 }
 
 fn need_form_or_empty(
-    churches: &[Church],
+    viewer: &Viewer,
     gifts: &[Gift],
     selected_church: Option<&str>,
     csrf: &str,
 ) -> Markup {
-    if churches.is_empty() {
+    let mut churches = viewer.active_churches().peekable();
+    if churches.peek().is_none() {
         return html! {
             div class="empty" {
                 p { "You can only post from a church where you are an approved member." }

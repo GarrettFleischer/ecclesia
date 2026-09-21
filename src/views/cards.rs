@@ -3,8 +3,8 @@
 use maud::{html, Markup};
 
 use crate::leaf::{
-    ApplicationCard, Church, ChurchMember, EndorsementCard, Gift, MemberGift, Membership, NeedCard,
-    NeedScope, Notification, User, Viewer,
+    ApplicationCard, Church, ChurchCard, ChurchMember, EndorsementCard, Gift, MemberGift,
+    Membership, NeedCard, NeedScope, Notification, PlaceGroup, User, Viewer,
 };
 
 use super::layout::{csrf_input, initials};
@@ -34,18 +34,15 @@ pub fn scope_label(scope: &str) -> &'static str {
         .unwrap_or("Need")
 }
 
-pub fn need_card_stack(needs: &[NeedCard], viewer: &Viewer) -> Markup {
+pub fn need_card_stack<'a>(
+    needs: impl IntoIterator<Item = &'a NeedCard>,
+    viewer: &Viewer,
+) -> Markup {
     html! {
         div class="stack" {
-            (need_cards(needs, viewer))
-        }
-    }
-}
-
-fn need_cards(needs: &[NeedCard], viewer: &Viewer) -> Markup {
-    html! {
-        @for need in needs {
-            (need_card(need, viewer))
+            @for need in needs {
+                (need_card(need, viewer))
+            }
         }
     }
 }
@@ -94,7 +91,7 @@ fn persona_line(user: &User) -> &'static str {
     }
 }
 
-pub fn pending_door_cards(pending: &[(Membership, Church)], csrf: &str) -> Markup {
+pub fn pending_door_cards(pending: &[(&Membership, Church)], csrf: &str) -> Markup {
     html! {
         @for pair in pending {
             (pending_door_card(pair, csrf))
@@ -102,7 +99,7 @@ pub fn pending_door_cards(pending: &[(Membership, Church)], csrf: &str) -> Marku
     }
 }
 
-fn pending_door_card(pair: &(Membership, Church), csrf: &str) -> Markup {
+fn pending_door_card(pair: &(&Membership, Church), csrf: &str) -> Markup {
     let (membership, church) = pair;
     html! {
         article class="card" {
@@ -119,7 +116,7 @@ fn pending_door_card(pair: &(Membership, Church), csrf: &str) -> Markup {
     }
 }
 
-pub fn church_index_cards(churches: &[(Church, i64, i64)]) -> Markup {
+pub fn church_index_cards(churches: &[ChurchCard]) -> Markup {
     html! {
         @for card in churches {
             (church_index_card(card))
@@ -127,7 +124,7 @@ pub fn church_index_cards(churches: &[(Church, i64, i64)]) -> Markup {
     }
 }
 
-fn church_index_card(card: &(Church, i64, i64)) -> Markup {
+fn church_index_card(card: &ChurchCard) -> Markup {
     let (church, members, needs) = card;
     html! {
         a class="card card-link" href={ "/churches/" (church.id) } {
@@ -139,7 +136,10 @@ fn church_index_card(card: &(Church, i64, i64)) -> Markup {
     }
 }
 
-pub fn pending_member_cards(members: &[&ChurchMember], csrf: &str) -> Markup {
+pub fn pending_member_cards<'a>(
+    members: impl IntoIterator<Item = &'a ChurchMember>,
+    csrf: &str,
+) -> Markup {
     html! {
         @for member in members {
             (pending_member_card(member, csrf))
@@ -176,11 +176,8 @@ fn pending_member_line(member: &ChurchMember) -> &'static str {
     }
 }
 
-pub fn pending_people<'a>(members: &'a [ChurchMember]) -> Vec<&'a ChurchMember> {
-    members
-        .iter()
-        .filter(|member| is_pending_member(member))
-        .collect()
+pub fn pending_people(members: &[ChurchMember]) -> impl Iterator<Item = &ChurchMember> {
+    members.iter().filter(|member| is_pending_member(member))
 }
 
 fn is_pending_member(member: &ChurchMember) -> bool {
@@ -208,7 +205,10 @@ pub fn has_active_member(members: &[ChurchMember]) -> bool {
     members.iter().any(|member| member.status == "active")
 }
 
-pub fn church_options(churches: &[Church], selected: Option<&str>) -> Markup {
+pub fn church_options<'a>(
+    churches: impl IntoIterator<Item = &'a Church>,
+    selected: Option<&str>,
+) -> Markup {
     html! {
         @for church in churches {
             option value=(church.id) selected[selected == Some(church.id.as_str())] { (church.name) }
@@ -232,10 +232,10 @@ pub fn catalog_name_options(catalog: &[Gift]) -> Markup {
     }
 }
 
-pub fn unused_gift_options(catalog: &[Gift], used: &[&str]) -> Markup {
+pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift]) -> Markup {
     html! {
         @for gift in catalog {
-            @if !used.contains(&gift.id.as_str()) {
+            @if !held.iter().any(|owned| owned.gift_id == gift.id) {
                 option value=(gift.id) { (gift.name) " · " (gift.category) }
             }
         }
@@ -288,7 +288,7 @@ fn application_verdict_row(application: &ApplicationCard, csrf: &str) -> Markup 
     }
 }
 
-pub fn household_items(churches: &[(Church, Membership)]) -> Markup {
+pub fn household_items(churches: &[(Church, &Membership)]) -> Markup {
     html! {
         @for pair in churches {
             (household_item(pair))
@@ -296,7 +296,7 @@ pub fn household_items(churches: &[(Church, Membership)]) -> Markup {
     }
 }
 
-fn household_item(pair: &(Church, Membership)) -> Markup {
+fn household_item(pair: &(Church, &Membership)) -> Markup {
     let (church, membership) = pair;
     html! {
         li {
@@ -320,38 +320,26 @@ fn member_gift_card(gift: &MemberGift, endorsements: &[EndorsementCard]) -> Mark
             p class="eyebrow" { (gift.category) }
             h3 { (gift.gift_name) }
             @if !gift.note.is_empty() { p { (gift.note) } }
-            (endorsement_byline(endorsements_for_gift(endorsements, &gift.gift_id)))
+            (endorsement_byline(endorsements, &gift.gift_id))
         }
     }
 }
 
-fn endorsements_for_gift<'a>(
-    endorsements: &'a [EndorsementCard],
-    gift_id: &str,
-) -> Vec<&'a EndorsementCard> {
-    endorsements
+fn endorsement_byline(endorsements: &[EndorsementCard], gift_id: &str) -> Markup {
+    let mut matching = endorsements
         .iter()
         .filter(|endorsement| endorsement.gift_id == gift_id)
-        .collect()
-}
-
-fn endorsement_byline(names: Vec<&EndorsementCard>) -> Markup {
-    if names.is_empty() {
+        .peekable();
+    if matching.peek().is_none() {
         return html! {};
     }
     html! {
         p class="meta" {
             "Endorsed by "
-            (endorsement_name_list(&names))
-        }
-    }
-}
-
-fn endorsement_name_list(names: &[&EndorsementCard]) -> Markup {
-    html! {
-        @for (i, endorsement) in names.iter().enumerate() {
-            @if i > 0 { ", " }
-            a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+            @for (i, endorsement) in matching.enumerate() {
+                @if i > 0 { ", " }
+                a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+            }
         }
     }
 }
@@ -427,11 +415,7 @@ fn my_gift_card(gift: &MemberGift, csrf: &str) -> Markup {
     }
 }
 
-pub fn used_gift_ids(gifts: &[MemberGift]) -> Vec<&str> {
-    gifts.iter().map(|gift| gift.gift_id.as_str()).collect()
-}
-
-pub fn place_sections(groups: &[(String, Vec<(Church, i64, i64)>)]) -> Markup {
+pub fn place_sections(groups: &[PlaceGroup]) -> Markup {
     html! {
         @for group in groups {
             (place_section(group))
@@ -439,14 +423,16 @@ pub fn place_sections(groups: &[(String, Vec<(Church, i64, i64)>)]) -> Markup {
     }
 }
 
-fn place_section(group: &(String, Vec<(Church, i64, i64)>)) -> Markup {
-    let (place, churches) = group;
+fn place_section(group: &PlaceGroup) -> Markup {
+    let Some((church, _, _)) = group.first() else {
+        return html! {};
+    };
     html! {
         section class="panel" {
-            h2 { (place) }
-            p class="muted" { (neighbor_line(churches.len())) }
+            h2 { (church.city) ", " (church.region) }
+            p class="muted" { (neighbor_line(group.len())) }
             div class="stack" {
-                (place_church_cards(churches))
+                (place_church_cards(group))
             }
         }
     }
@@ -460,7 +446,7 @@ fn neighbor_line(count: usize) -> &'static str {
     }
 }
 
-fn place_church_cards(churches: &[(Church, i64, i64)]) -> Markup {
+fn place_church_cards(churches: &[ChurchCard]) -> Markup {
     html! {
         @for card in churches {
             (place_church_card(card))
@@ -468,7 +454,7 @@ fn place_church_cards(churches: &[(Church, i64, i64)]) -> Markup {
     }
 }
 
-fn place_church_card(card: &(Church, i64, i64)) -> Markup {
+fn place_church_card(card: &ChurchCard) -> Markup {
     let (church, members, needs) = card;
     html! {
         a class="card card-link" href={ "/churches/" (church.id) } {

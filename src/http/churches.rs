@@ -4,7 +4,7 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
     accept_invite, approve_membership, decline_membership, invite_member, parse_invite_email,
-    plant_church, redeem_invite, request_join, visible_need_cards, Church, Viewer,
+    plant_church, redeem_invite, request_join, Church, Viewer,
 };
 use crate::sdk::clock::{new_id, nonce4, now_iso};
 use crate::views;
@@ -95,11 +95,9 @@ pub async fn create_church(
     let Some(church_id) = effect.inserted_church_id() else {
         return Ok(with_cookie(jar, redirect_err("/churches/new", "missing")));
     };
+    let dest = format!("/churches/{church_id}");
     state.db.apply(&effect).await?;
-    Ok(with_cookie(
-        jar,
-        redirect_ok(&format!("/churches/{church_id}"), "church_planted"),
-    ))
+    Ok(with_cookie(jar, redirect_ok(&dest, "church_planted")))
 }
 
 pub async fn church_show(
@@ -122,7 +120,6 @@ pub async fn church_show(
     let viewer = viewer_for(&state.db, user).await?;
     let members = state.db.church_members(&church.id).await?;
     let needs = state.db.church_need_cards(&church.id).await?;
-    let visible = owned_church_needs(&viewer, &needs, &church);
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,
@@ -130,23 +127,12 @@ pub async fn church_show(
             &viewer,
             &church,
             &members,
-            &visible,
+            &needs,
             views::flash_from(flash.ok, flash.err),
             count,
             &session.csrf,
         )),
     ))
-}
-
-fn owned_church_needs(
-    viewer: &crate::leaf::Viewer,
-    needs: &[crate::leaf::NeedCard],
-    church: &Church,
-) -> Vec<crate::leaf::NeedCard> {
-    visible_need_cards(viewer, needs, std::slice::from_ref(church))
-        .into_iter()
-        .cloned()
-        .collect()
 }
 
 pub async fn join_church(

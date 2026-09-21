@@ -5,8 +5,8 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::db::Db;
 use crate::leaf::{
-    churches_with_counts, group_churches_by_place, visible_need_cards, Church, DomainError, Effect,
-    Membership, NeedCard, User, Viewer,
+    churches_with_counts, group_churches_by_place, Church, ChurchCard, DomainError, Effect,
+    Membership, PlaceGroup, User, Viewer,
 };
 use crate::sdk::session::{self, Session};
 
@@ -89,10 +89,10 @@ pub async fn unread(db: &Db, user_id: &str) -> Result<i64, AppError> {
     Ok(db.unread_count(user_id).await?)
 }
 
-pub async fn memberships_with_churches(
+pub async fn memberships_with_churches<'a>(
     db: &Db,
-    memberships: impl IntoIterator<Item = &Membership>,
-) -> Result<Vec<(Membership, Church)>, AppError> {
+    memberships: impl IntoIterator<Item = &'a Membership>,
+) -> Result<Vec<(&'a Membership, Church)>, AppError> {
     let mut rows = Vec::new();
     for membership in memberships {
         append_church_if_present(db, membership, &mut rows).await?;
@@ -100,68 +100,45 @@ pub async fn memberships_with_churches(
     Ok(rows)
 }
 
-async fn append_church_if_present(
+async fn append_church_if_present<'a>(
     db: &Db,
-    membership: &Membership,
-    rows: &mut Vec<(Membership, Church)>,
+    membership: &'a Membership,
+    rows: &mut Vec<(&'a Membership, Church)>,
 ) -> Result<(), AppError> {
     let Some(church) = db.church(&membership.church_id).await? else {
         return Ok(());
     };
-    rows.push((membership.clone(), church));
+    rows.push((membership, church));
     Ok(())
 }
 
-pub async fn churches_paired_with(
+pub async fn churches_paired_with<'a>(
     db: &Db,
-    memberships: impl IntoIterator<Item = &Membership>,
-) -> Result<Vec<(Church, Membership)>, AppError> {
+    memberships: impl IntoIterator<Item = &'a Membership>,
+) -> Result<Vec<(Church, &'a Membership)>, AppError> {
     let rows = memberships_with_churches(db, memberships).await?;
     Ok(swap_membership_pairs(rows))
 }
 
-fn swap_membership_pairs(rows: Vec<(Membership, Church)>) -> Vec<(Church, Membership)> {
+fn swap_membership_pairs<'a>(rows: Vec<(&'a Membership, Church)>) -> Vec<(Church, &'a Membership)> {
     rows.into_iter()
         .map(|(membership, church)| (church, membership))
         .collect()
 }
 
-pub async fn visible_needs_for(db: &Db, viewer: &Viewer) -> Result<Vec<NeedCard>, AppError> {
-    let cards = db.all_need_cards().await?;
-    let churches = db.churches().await?;
-    Ok(owned_visible_cards(viewer, &cards, &churches))
-}
-
-pub fn owned_visible_cards(
-    viewer: &Viewer,
-    cards: &[NeedCard],
-    churches: &[Church],
-) -> Vec<NeedCard> {
-    visible_need_cards(viewer, cards, churches)
-        .into_iter()
-        .cloned()
-        .collect()
-}
-
-pub async fn church_directory(db: &Db) -> Result<Vec<(Church, i64, i64)>, AppError> {
+pub async fn church_directory(db: &Db) -> Result<Vec<ChurchCard>, AppError> {
     let churches = db.churches().await?;
     let counts = db.counts_for_churches().await?;
     Ok(churches_with_counts(churches, &counts))
 }
 
-pub async fn churches_by_place(
-    db: &Db,
-) -> Result<Vec<(String, Vec<(Church, i64, i64)>)>, AppError> {
+pub async fn churches_by_place(db: &Db) -> Result<Vec<PlaceGroup>, AppError> {
     let cards = church_directory(db).await?;
     Ok(group_churches_by_place(cards))
 }
 
 pub async fn governor_ids(db: &Db, church_id: &str) -> Result<Vec<String>, AppError> {
-    Ok(ids_of(db.governors(church_id).await?))
-}
-
-fn ids_of(users: Vec<User>) -> Vec<String> {
-    users.into_iter().map(|user| user.id).collect()
+    Ok(db.governor_ids(church_id).await?)
 }
 
 pub fn optional_gift_id(value: &str) -> Option<&str> {

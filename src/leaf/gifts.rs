@@ -97,10 +97,10 @@ fn require_pending_recipient(actor: &User, endorsement: &Endorsement) -> Result<
     }
 }
 
-fn set_endorsement(endorsement: &Endorsement, status: &str) -> Effect {
+fn set_endorsement(endorsement: &Endorsement, status: &'static str) -> Effect {
     Effect::write(Write::SetEndorsementStatus {
         id: endorsement.id.clone(),
-        status: status.into(),
+        status,
     })
 }
 

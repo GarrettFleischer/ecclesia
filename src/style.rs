@@ -7,9 +7,12 @@ mod tests {
 
     #[test]
     fn us_clean_01_functions_do_not_take_boolean_arguments() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut offenders = Vec::new();
-        visit(&root, &mut offenders);
+        each_src_line(|path, index, line| {
+            if line_has_bool_argument(line) {
+                offenders.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+            }
+        });
         assert!(
             offenders.is_empty(),
             "boolean function arguments are forbidden; use a named enum or two functions:\n{}",
@@ -17,28 +20,41 @@ mod tests {
         );
     }
 
-    fn visit(path: &Path, offenders: &mut Vec<String>) {
+    #[test]
+    fn us_perf_01_src_does_not_clone_collections_to_reiterate() {
+        let mut offenders = Vec::new();
+        each_src_line(|path, index, line| {
+            if line_clones_a_collection(path, line) {
+                offenders.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+            }
+        });
+        assert!(
+            offenders.is_empty(),
+            "iterate or move; do not clone a collection or rebuild a Need from a card:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    fn each_src_line(mut visit: impl FnMut(&Path, usize, &str)) {
+        walk(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut visit,
+        );
+    }
+
+    fn walk(path: &Path, visit: &mut impl FnMut(&Path, usize, &str)) {
         if path.is_dir() {
             for entry in fs::read_dir(path).expect("read dir") {
-                visit(&entry.expect("dir entry").path(), offenders);
+                walk(&entry.expect("dir entry").path(), visit);
             }
             return;
         }
         if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
             return;
         }
-        collect_bool_args(
-            path,
-            &fs::read_to_string(path).expect("read rust"),
-            offenders,
-        );
-    }
-
-    fn collect_bool_args(path: &Path, src: &str, offenders: &mut Vec<String>) {
+        let src = fs::read_to_string(path).expect("read rust");
         for (index, line) in src.lines().enumerate() {
-            if line_has_bool_argument(line) {
-                offenders.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
-            }
+            visit(path, index, line);
         }
     }
 
@@ -48,6 +64,20 @@ mod tests {
             return false;
         }
         named_bool_argument(trimmed)
+    }
+
+    fn line_clones_a_collection(path: &Path, line: &str) -> bool {
+        if path.ends_with("style.rs") {
+            return false;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            return false;
+        }
+        trimmed.contains(".cloned().collect(")
+            || trimmed.contains(".into_iter().cloned()")
+            || trimmed.contains(".to_vec()")
+            || trimmed.contains("Need::from_card")
     }
 
     fn named_bool_argument(line: &str) -> bool {

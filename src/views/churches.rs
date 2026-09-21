@@ -1,6 +1,8 @@
 use maud::{html, Markup};
 
-use crate::leaf::{Church, ChurchMember, Membership, NeedCard, Viewer};
+use crate::leaf::{
+    visible_need_cards, Church, ChurchCard, ChurchMember, Membership, NeedCard, PlaceGroup, Viewer,
+};
 
 use super::cards::{
     active_member_items, church_index_cards, has_active_member, need_card_stack,
@@ -12,7 +14,7 @@ use super::layout::{csrf_input, page, Nav};
 pub fn churches_index(
     viewer: &Viewer,
     flash: Option<Flash>,
-    churches: &[(Church, i64, i64)],
+    churches: &[ChurchCard],
     unread: i64,
     csrf: &str,
 ) -> Markup {
@@ -40,7 +42,7 @@ pub fn churches_index(
     )
 }
 
-fn church_list(churches: &[(Church, i64, i64)]) -> Markup {
+fn church_list(churches: &[ChurchCard]) -> Markup {
     if churches.is_empty() {
         return html! {
             div class="empty" { p { "No churches yet. The first pastor has to plant one." } }
@@ -177,11 +179,10 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
 }
 
 fn people_section(members: &[ChurchMember], door: DoorKeep, csrf: &str) -> Markup {
-    let pending = pending_people(members);
     html! {
         section {
             h2 { "People" }
-            (pending_people_block(&pending, door, csrf))
+            (pending_people_block(members, door, csrf))
             ul class="people" {
                 (active_member_items(members))
             }
@@ -190,8 +191,12 @@ fn people_section(members: &[ChurchMember], door: DoorKeep, csrf: &str) -> Marku
     }
 }
 
-fn pending_people_block(pending: &[&ChurchMember], door: DoorKeep, csrf: &str) -> Markup {
-    if !matches!(door, DoorKeep::Keeps) || pending.is_empty() {
+fn pending_people_block(members: &[ChurchMember], door: DoorKeep, csrf: &str) -> Markup {
+    if !matches!(door, DoorKeep::Keeps) {
+        return html! {};
+    }
+    let mut pending = pending_people(members).peekable();
+    if pending.peek().is_none() {
         return html! {};
     }
     html! {
@@ -217,25 +222,22 @@ fn needs_section(viewer: &Viewer, church: &Church, needs: &[NeedCard]) -> Markup
                     a class="btn btn-quiet" href={ "/needs/new?church_id=" (church.id) } { "Post a need" }
                 }
             }
-            (church_needs(needs, viewer))
+            (church_needs(needs, viewer, church))
         }
     }
 }
 
-fn church_needs(needs: &[NeedCard], viewer: &Viewer) -> Markup {
-    if needs.is_empty() {
+fn church_needs(needs: &[NeedCard], viewer: &Viewer, church: &Church) -> Markup {
+    let mut visible = visible_need_cards(viewer, needs, std::slice::from_ref(church)).peekable();
+    if visible.peek().is_none() {
         return html! {
             p class="muted" { "No needs posted. Either they are between crises, or they have not learned to ask." }
         };
     }
-    need_card_stack(needs, viewer)
+    need_card_stack(visible, viewer)
 }
 
-pub fn the_body(
-    viewer: &Viewer,
-    groups: &[(String, Vec<(Church, i64, i64)>)],
-    unread: i64,
-) -> Markup {
+pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64) -> Markup {
     page(
         "The body",
         Some(&viewer.user),
@@ -254,7 +256,7 @@ pub fn the_body(
     )
 }
 
-fn body_groups(groups: &[(String, Vec<(Church, i64, i64)>)]) -> Markup {
+fn body_groups(groups: &[PlaceGroup]) -> Markup {
     if groups.is_empty() {
         return html! {
             div class="empty" { p { "No churches have been planted yet." } }

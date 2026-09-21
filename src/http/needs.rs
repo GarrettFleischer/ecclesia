@@ -28,14 +28,12 @@ pub async fn need_new(
         Err(response) => return Ok(with_cookie(jar, response)),
     };
     let viewer = viewer_for(&state.db, user).await?;
-    let churches: Vec<_> = viewer.active_churches().cloned().collect();
     let gifts = state.db.gifts().await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,
         html(views::need_new(
             &viewer,
-            &churches,
             &gifts,
             query.church_id.as_deref(),
             count,
@@ -78,11 +76,9 @@ pub async fn create_need(
     let Some(need_id) = effect.inserted_need_id() else {
         return Ok(with_cookie(jar, redirect_err("/needs/new", "missing")));
     };
+    let dest = format!("/needs/{need_id}");
     state.db.apply(&effect).await?;
-    Ok(with_cookie(
-        jar,
-        redirect_ok(&format!("/needs/{need_id}"), "need_posted"),
-    ))
+    Ok(with_cookie(jar, redirect_ok(&dest, "need_posted")))
 }
 
 async fn gift_presence(state: &AppState, gift: Option<&str>) -> Result<CatalogPresence, AppError> {
@@ -116,16 +112,15 @@ pub async fn need_show(
             html(views::error_page("That church is not here.")),
         ));
     };
-    let need = Need::from_card(&card);
-    if !crate::leaf::can_view_need(&viewer, &need, &church) {
+    if !crate::leaf::can_view_need(&viewer, card.sight(), &church) {
         return Ok(with_cookie(
             jar,
             html(views::error_page("This need stays with another household.")),
         ));
     }
-    let applications = state.db.applications_for_need(&need.id).await?;
+    let applications = state.db.applications_for_need(&card.id).await?;
     let offer = OfferState::of_existing(applications.iter().find(|a| a.user_id == viewer.user.id));
-    let help = crate::leaf::can_apply(&viewer, &need, &church);
+    let help = crate::leaf::can_apply(&viewer, card.sight(), &church);
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,

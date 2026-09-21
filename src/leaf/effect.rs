@@ -64,9 +64,9 @@ impl DomainError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoticeDraft {
     pub user_id: String,
-    pub kind: String,
+    pub kind: &'static str,
     pub title: String,
-    pub body: String,
+    pub body: &'static str,
     pub href: String,
 }
 
@@ -84,22 +84,22 @@ pub enum Write {
     InsertMembership(Membership),
     SetMembershipStatus {
         id: String,
-        status: String,
+        status: &'static str,
     },
     InsertNeed(Need),
     SetNeedStatus {
         id: String,
-        status: String,
+        status: &'static str,
     },
     InsertApplication(Application),
     SetApplicationStatus {
         id: String,
-        status: String,
+        status: &'static str,
     },
     InsertEndorsement(Endorsement),
     SetEndorsementStatus {
         id: String,
-        status: String,
+        status: &'static str,
     },
     UpsertMemberGift {
         user_id: String,
@@ -142,23 +142,23 @@ impl Effect {
         })
     }
 
-    pub fn inserted_user_id(&self) -> Option<String> {
+    pub fn inserted_user_id(&self) -> Option<&str> {
         self.writes.iter().find_map(|write| match write {
-            Write::InsertUser(user) => Some(user.id.clone()),
+            Write::InsertUser(user) => Some(user.id.as_str()),
             _ => None,
         })
     }
 
-    pub fn inserted_church_id(&self) -> Option<String> {
+    pub fn inserted_church_id(&self) -> Option<&str> {
         self.writes.iter().find_map(|write| match write {
-            Write::InsertChurch(church) => Some(church.id.clone()),
+            Write::InsertChurch(church) => Some(church.id.as_str()),
             _ => None,
         })
     }
 
-    pub fn inserted_need_id(&self) -> Option<String> {
+    pub fn inserted_need_id(&self) -> Option<&str> {
         self.writes.iter().find_map(|write| match write {
-            Write::InsertNeed(need) => Some(need.id.clone()),
+            Write::InsertNeed(need) => Some(need.id.as_str()),
             _ => None,
         })
     }

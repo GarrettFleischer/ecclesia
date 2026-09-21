@@ -6,7 +6,7 @@ use crate::leaf::{
 
 use super::cards::{
     catalog_name_options, household_items, member_gift_cards, my_gift_cards, notice_cards,
-    pending_endorsement_cards, unused_gift_options, used_gift_ids,
+    pending_endorsement_cards, unused_gift_options,
 };
 use super::flash::Flash;
 use super::layout::{csrf_input, page, Nav};
@@ -14,7 +14,7 @@ use super::layout::{csrf_input, page, Nav};
 pub fn member_show(
     viewer: &Viewer,
     person: &User,
-    churches: &[(Church, Membership)],
+    churches: &[(Church, &Membership)],
     gifts: &[MemberGift],
     endorsements: &[EndorsementCard],
     catalog: &[Gift],
@@ -61,7 +61,7 @@ fn bio_lede(person: &User) -> Markup {
     html! { p class="lede" { (person.bio) } }
 }
 
-fn households(churches: &[(Church, Membership)]) -> Markup {
+fn households(churches: &[(Church, &Membership)]) -> Markup {
     if churches.is_empty() {
         return html! { p class="muted" { "Not yet approved in a church." } };
     }
@@ -173,12 +173,11 @@ pub fn me(
     viewer: &Viewer,
     gifts: &[MemberGift],
     catalog: &[Gift],
-    memberships: &[(Church, Membership)],
+    memberships: &[(Church, &Membership)],
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
 ) -> Markup {
-    let used = used_gift_ids(gifts);
     page(
         "You",
         Some(&viewer.user),
@@ -206,7 +205,7 @@ pub fn me(
                     (csrf_input(csrf))
                     label { "Add a gift"
                         select name="gift_id" required {
-                            (unused_gift_options(catalog, &used))
+                            (unused_gift_options(catalog, gifts))
                         }
                     }
                     label { "How you practice it"
@@ -240,7 +239,7 @@ fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
     }
 }
 
-fn my_churches(memberships: &[(Church, Membership)]) -> Markup {
+fn my_churches(memberships: &[(Church, &Membership)]) -> Markup {
     if memberships.is_empty() {
         return html! {
             p class="muted" { "None yet." }

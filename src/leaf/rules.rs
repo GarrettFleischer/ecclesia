@@ -1,5 +1,5 @@
 use super::model::{
-    Church, DomainError, Membership, MembershipStatus, Need, NeedCard, NeedScope, Viewer,
+    Church, DomainError, Membership, MembershipStatus, NeedCard, NeedScope, NeedSight, Viewer,
 };
 
 pub fn churches_are_neighbors(a: &Church, b: &Church) -> bool {
@@ -7,15 +7,15 @@ pub fn churches_are_neighbors(a: &Church, b: &Church) -> bool {
         && (a.city.eq_ignore_ascii_case(&b.city) || a.region.eq_ignore_ascii_case(&b.region))
 }
 
-pub fn can_view_need(viewer: &Viewer, need: &Need, church: &Church) -> bool {
-    if viewer.user.id == need.author_id || viewer.can_govern(&need.church_id) {
+pub fn can_view_need(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> bool {
+    if viewer.user.id == need.author_id || viewer.can_govern(need.church_id) {
         return true;
     }
-    match need.scope() {
+    match need.scope {
         Some(NeedScope::Body) => viewer.is_active_anywhere(),
-        Some(NeedScope::Church) => viewer.is_active_in(&need.church_id),
+        Some(NeedScope::Church) => viewer.is_active_in(need.church_id),
         Some(NeedScope::Neighboring) => {
-            viewer.is_active_in(&need.church_id)
+            viewer.is_active_in(need.church_id)
                 || viewer
                     .active_churches()
                     .any(|mine| churches_are_neighbors(mine, church))
@@ -24,7 +24,7 @@ pub fn can_view_need(viewer: &Viewer, need: &Need, church: &Church) -> bool {
     }
 }
 
-pub fn can_apply(viewer: &Viewer, need: &Need, church: &Church) -> Result<(), DomainError> {
+pub fn can_apply(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> Result<(), DomainError> {
     if !need.is_open() {
         return Err(DomainError::NeedClosed);
     }
@@ -32,7 +32,7 @@ pub fn can_apply(viewer: &Viewer, need: &Need, church: &Church) -> Result<(), Do
         return Err(DomainError::OwnNeed);
     }
     if !can_view_need(viewer, need, church) {
-        return match need.scope() {
+        return match need.scope {
             Some(NeedScope::Church) => Err(DomainError::OutsideChurch),
             Some(NeedScope::Neighboring) => Err(DomainError::OutsideNeighborhood),
             _ => Err(DomainError::NotInTheBody),
@@ -82,21 +82,18 @@ fn require_pending_membership(current: MembershipStatus) -> Result<(), DomainErr
 }
 
 pub fn visible_need_cards<'a>(
-    viewer: &Viewer,
+    viewer: &'a Viewer,
     cards: &'a [NeedCard],
-    churches: &[Church],
-) -> Vec<&'a NeedCard> {
+    churches: &'a [Church],
+) -> impl Iterator<Item = &'a NeedCard> + 'a {
     cards
         .iter()
-        .filter(|card| card_is_visible(viewer, card, churches))
-        .collect()
+        .filter(move |card| card_is_visible(viewer, card, churches))
 }
 
 fn card_is_visible(viewer: &Viewer, card: &NeedCard, churches: &[Church]) -> bool {
-    let Some(church) = church_for_card(card, churches) else {
-        return false;
-    };
-    card.is_open() && can_view_need(viewer, &Need::from_card(card), church)
+    church_for_card(card, churches)
+        .is_some_and(|church| card.is_open() && can_view_need(viewer, card.sight(), church))
 }
 
 fn church_for_card<'a>(card: &NeedCard, churches: &'a [Church]) -> Option<&'a Church> {
@@ -126,7 +123,7 @@ fn nonce_from(nonce4: &str, take: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::leaf::model::{Membership, Need, User};
+    use crate::leaf::model::{Membership, Need, NeedCard, User};
 
     fn user(id: &str, city: &str, region: &str) -> User {
         User {
@@ -211,9 +208,9 @@ mod tests {
             vec![membership("luke", "james", "active")],
         );
         let n = need(NeedScope::Church, "grace", "miriam");
-        assert!(!can_view_need(&james, &n, &grace));
+        assert!(!can_view_need(&james, n.sight(), &grace));
         assert_eq!(
-            can_apply(&james, &n, &grace),
+            can_apply(&james, n.sight(), &grace),
             Err(DomainError::OutsideChurch)
         );
     }
@@ -228,8 +225,8 @@ mod tests {
             vec![membership("mercy", "elena", "active")],
         );
         let n = need(NeedScope::Neighboring, "grace", "miriam");
-        assert!(can_view_need(&elena, &n, &grace));
-        assert_eq!(can_apply(&elena, &n, &grace), Ok(()));
+        assert!(can_view_need(&elena, n.sight(), &grace));
+        assert_eq!(can_apply(&elena, n.sight(), &grace), Ok(()));
     }
 
     #[test]
@@ -241,9 +238,9 @@ mod tests {
             vec![membership("grace", "peter", "pending_request")],
         );
         let n = need(NeedScope::Body, "grace", "miriam");
-        assert!(!can_view_need(&peter, &n, &grace));
+        assert!(!can_view_need(&peter, n.sight(), &grace));
         assert_eq!(
-            can_apply(&peter, &n, &grace),
+            can_apply(&peter, n.sight(), &grace),
             Err(DomainError::NotInTheBody)
         );
     }
@@ -257,7 +254,10 @@ mod tests {
             vec![membership("grace", "miriam", "active")],
         );
         let n = need(NeedScope::Church, "grace", "miriam");
-        assert_eq!(can_apply(&miriam, &n, &grace), Err(DomainError::OwnNeed));
+        assert_eq!(
+            can_apply(&miriam, n.sight(), &grace),
+            Err(DomainError::OwnNeed)
+        );
     }
 
     #[test]
@@ -281,5 +281,54 @@ mod tests {
     #[test]
     fn invite_code_is_pure_given_a_nonce() {
         assert_eq!(invite_code_for("Grace Covenant", "k2m9"), "gracecov-k2m9");
+    }
+
+    #[test]
+    fn us_need_05_visible_cards_are_borrowed_not_cloned() {
+        let grace = church("grace", "Cedar Falls", "Iowa");
+        let luke = church("luke", "Cedar Falls", "Iowa");
+        let james = viewer(
+            user("james", "Cedar Falls", "Iowa"),
+            vec![luke],
+            vec![membership("luke", "james", "active")],
+        );
+        let hidden = NeedCard {
+            id: "n1".into(),
+            church_id: "grace".into(),
+            church_name: "Grace".into(),
+            church_city: "Cedar Falls".into(),
+            church_region: "Iowa".into(),
+            author_id: "miriam".into(),
+            author_name: "Miriam".into(),
+            title: "Meals".into(),
+            body: "Tuesday".into(),
+            gift_id: None,
+            gift_name: None,
+            scope: NeedScope::Church.as_str().into(),
+            status: "open".into(),
+            created_at: "t0".into(),
+        };
+        let open = NeedCard {
+            id: "n2".into(),
+            church_id: "grace".into(),
+            church_name: "Grace".into(),
+            church_city: "Cedar Falls".into(),
+            church_region: "Iowa".into(),
+            author_id: "miriam".into(),
+            author_name: "Miriam".into(),
+            title: "Spanish".into(),
+            body: "Thursday".into(),
+            gift_id: None,
+            gift_name: None,
+            scope: NeedScope::Neighboring.as_str().into(),
+            status: "open".into(),
+            created_at: "t0".into(),
+        };
+        let cards = [hidden, open];
+        let churches = [grace];
+        let visible: Vec<&NeedCard> = visible_need_cards(&james, &cards, &churches).collect();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, "n2");
+        assert!(std::ptr::eq(visible[0], &cards[1]));
     }
 }

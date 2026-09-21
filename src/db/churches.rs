@@ -1,7 +1,7 @@
 use sqlx::Row;
 
 use super::Db;
-use crate::leaf::{Church, ChurchMember, Membership, User};
+use crate::leaf::{Church, ChurchMember, Membership};
 
 impl Db {
     pub async fn churches(&self) -> anyhow::Result<Vec<Church>> {
@@ -103,10 +103,10 @@ impl Db {
         .await?)
     }
 
-    pub async fn governors(&self, church_id: &str) -> anyhow::Result<Vec<User>> {
-        Ok(sqlx::query_as::<_, User>(
+    pub async fn governor_ids(&self, church_id: &str) -> anyhow::Result<Vec<String>> {
+        Ok(sqlx::query_scalar(
             r#"
-            SELECT u.* FROM users u
+            SELECT u.id FROM users u
             JOIN memberships m ON m.user_id = u.id
             WHERE m.church_id = ? AND m.status = 'active' AND m.role IN ('owner', 'steward')
             "#,

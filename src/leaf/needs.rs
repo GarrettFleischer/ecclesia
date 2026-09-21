@@ -56,7 +56,7 @@ pub fn apply_to_need(
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
-    can_apply(viewer, need, church)?;
+    can_apply(viewer, need.sight(), church)?;
     refuse_duplicate_offer(prior)?;
     let message = note_field(message)?;
     Ok(Effect::write(Write::InsertApplication(Application {
@@ -91,7 +91,7 @@ pub fn close_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> {
     }
     Ok(Effect::write(Write::SetNeedStatus {
         id: need.id.clone(),
-        status: "closed".into(),
+        status: "closed",
     }))
 }
 
@@ -135,10 +135,10 @@ fn require_pending_application(application: &Application) -> Result<(), DomainEr
     }
 }
 
-fn set_application(application: &Application, status: &str) -> Effect {
+fn set_application(application: &Application, status: &'static str) -> Effect {
     Effect::write(Write::SetApplicationStatus {
         id: application.id.clone(),
-        status: status.into(),
+        status,
     })
 }
 
