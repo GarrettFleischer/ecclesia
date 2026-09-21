@@ -202,7 +202,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
     .bind("app_ruth_meals")
     .bind("need_meals")
     .bind("user_ruth")
-    .bind("I can cover Tuesday and Friday. Chicken and rice, nothing fancy.")
+    .bind("I can do Tuesday and Friday. Chicken and rice, and I'll bring bread.")
     .bind("accepted")
     .bind(now)
     .execute(&db.pool)
@@ -214,7 +214,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_james",
         "user_ruth",
         "gift_hospitality",
-        "Ruth fed our youth after the flood cleanup and stayed until the last parent came. That is the gift.",
+        "Ruth fed 40 of our teenagers after the flood cleanup in May and stayed until the last parent showed up.",
         "pending",
         now,
     )
@@ -225,7 +225,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_miriam",
         "user_elena",
         "gift_counseling",
-        "Elena sat with a family we could not reach. She did not make them become us first.",
+        "Elena met with a family from our neighborhood every week for two months when nobody else could get through to them.",
         "accepted",
         now,
     )
@@ -235,7 +235,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_miriam",
         "join_request",
         "Peter Lang asked to join Grace Covenant",
-        "He is new in Cedar Falls. He named transportation and childcare as how he can serve.",
+        "Approve or decline from the church page.",
         "/churches/church_grace",
     )
     .await?;
@@ -243,7 +243,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_ruth",
         "endorsement",
         "James Whitaker endorsed you for Hospitality",
-        "You can accept this onto your profile, or let it go.",
+        "Add it to your profile, or decline, from your inbox.",
         "/inbox",
     )
     .await?;
@@ -251,15 +251,15 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_elena",
         "endorsement",
         "Miriam Cole endorsed you for Counseling",
-        "You accepted this. It now lives on your profile.",
+        "You added it to your profile.",
         "/members/user_elena",
     )
     .await?;
     db.notify(
         "user_miriam",
         "application",
-        "Ruth Alvarez offered meals",
-        "Tuesday and Friday. You already received her into this need.",
+        "Ruth Alvarez offered to help with Dinners for the Okonkwo family",
+        "You accepted. She's bringing Tuesday and Friday.",
         "/needs/need_meals",
     )
     .await?;

@@ -9,7 +9,7 @@ use super::cards::{
     pending_endorsement_cards, unused_gift_options,
 };
 use super::flash::Flash;
-use super::layout::{csrf_input, page, Nav};
+use super::layout::{csrf_input, first_name, page, Nav};
 
 pub fn member_show(
     viewer: &Viewer,
@@ -34,7 +34,7 @@ pub fn member_show(
             h1 { (person.name) }
             (bio_lede(person))
             section {
-                h2 { "Households" }
+                h2 { "Churches" }
                 (households(churches))
             }
             section {
@@ -63,7 +63,7 @@ fn bio_lede(person: &User) -> Markup {
 
 fn households(churches: &[(Church, &Membership)]) -> Markup {
     if churches.is_empty() {
-        return html! { p class="muted" { "Not yet approved in a church." } };
+        return html! { p class="muted" { "None yet." } };
     }
     html! {
         ul class="people" {
@@ -74,7 +74,7 @@ fn households(churches: &[(Church, &Membership)]) -> Markup {
 
 fn gift_section(gifts: &[MemberGift], endorsements: &[EndorsementCard]) -> Markup {
     if gifts.is_empty() {
-        return html! { p class="muted" { "No gifts named yet." } };
+        return html! { p class="muted" { "None listed yet." } };
     }
     html! {
         div class="stack" {
@@ -89,8 +89,8 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
     }
     html! {
         section class="panel" {
-            h2 { "Endorse a gift" }
-            p class="muted" { "They will be notified and can accept it onto their profile — or decline. You do not get to write their name for them." }
+            h2 { "Endorse " (first_name(&person.name)) }
+            p class="muted" { "They'll get a note and can add it to their profile." }
             form class="stack" method="post" action={ "/members/" (person.id) "/endorse" } {
                 (csrf_input(csrf))
                 label { "Gift"
@@ -98,10 +98,10 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
                         (catalog_name_options(catalog))
                     }
                 }
-                label { "What you have actually seen"
-                    textarea name="note" rows="3" required placeholder="Be specific. A gift is a life, not a compliment." {}
+                label { "Why"
+                    textarea name="note" rows="3" required placeholder="Something you saw them do." {}
                 }
-                button class="btn" type="submit" { "Send endorsement" }
+                button class="btn" type="submit" { "Send" }
             }
         }
     }
@@ -122,7 +122,7 @@ pub fn inbox(
         Nav::Inbox,
         flash,
         html! {
-            h1 { "What needs your yes" }
+            h1 { "Inbox" }
             hr class="gold-rule";
             (inbox_empty(pending, notes))
             (pending_endorsements(pending, csrf))
@@ -137,7 +137,7 @@ fn inbox_empty(pending: &[EndorsementCard], notes: &[Notification]) -> Markup {
     }
     html! {
         div class="empty" {
-            p { "Nothing waiting. When someone endorses you, asks to join your church, or offers to help, it will land here." }
+            p { "Nothing here yet." }
         }
     }
 }
@@ -148,7 +148,7 @@ fn pending_endorsements(pending: &[EndorsementCard], csrf: &str) -> Markup {
     }
     html! {
         section {
-            h2 { "Endorsements to receive" }
+            h2 { "Endorsements" }
             div class="stack" {
                 (pending_endorsement_cards(pending, csrf))
             }
@@ -162,7 +162,7 @@ fn notice_section(notes: &[Notification]) -> Markup {
     }
     html! {
         section {
-            h2 { "Notices" }
+            h2 { "Updates" }
             div class="stack" {
                 (notice_cards(notes))
             }
@@ -192,9 +192,9 @@ pub fn me(
                 label { "Name" input name="name" required value=(viewer.user.name) maxlength="80"; }
                 div class="split" {
                     label { "City" input name="city" required value=(viewer.user.city); }
-                    label { "Region" input name="region" required value=(viewer.user.region); }
+                    label { "State or region" input name="region" required value=(viewer.user.region); }
                 }
-                label { "How you serve"
+                label { "About you"
                     textarea name="bio" rows="3" { (viewer.user.bio) }
                 }
                 button class="btn" type="submit" { "Save" }
@@ -209,10 +209,10 @@ pub fn me(
                             (unused_gift_options(catalog, gifts))
                         }
                     }
-                    label { "How you practice it"
-                        input name="note" placeholder="Thursday nights. Hospital rooms. Spreadsheets.";
+                    label { "Note (optional)"
+                        input name="note" placeholder="Thursday nights. Hospital visits. Spreadsheets.";
                     }
-                    button class="btn btn-quiet" type="submit" { "Add gift" }
+                    button class="btn btn-quiet" type="submit" { "Add" }
                 }
             }
             section {
@@ -221,7 +221,7 @@ pub fn me(
             }
             form method="post" action="/session/logout" {
                 (csrf_input(csrf))
-                button class="btn btn-quiet" type="submit" { "Leave this seat" }
+                button class="btn btn-quiet" type="submit" { "Sign out" }
             }
         },
     )
@@ -230,7 +230,7 @@ pub fn me(
 fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
     if gifts.is_empty() {
         return html! {
-            p class="muted" { "Name what you can actually do. This is how a need finds a person." }
+            p class="muted" { "Add what you're good at. Needs that match will show it." }
         };
     }
     html! {
@@ -244,7 +244,7 @@ fn my_churches(memberships: &[(Church, &Membership)]) -> Markup {
     if memberships.is_empty() {
         return html! {
             p class="muted" { "None yet." }
-            a href="/churches" { "Join or plant one" }
+            a href="/churches" { "Find your church" }
         };
     }
     html! {

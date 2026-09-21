@@ -70,8 +70,8 @@ pub fn apply_to_need(
     .with_notice(notice(
         &need.author_id,
         "application",
-        format!("{} offered to help: {}", viewer.user.name, need.title),
-        "Receive them from the need if this is the right pair of hands.",
+        format!("{} offered to help with {}", viewer.user.name, need.title),
+        "Accept or decline on the need.",
         format!("/needs/{}", need.id),
     )))
 }
@@ -149,8 +149,8 @@ fn received_application_notice(
     notice(
         &application.user_id,
         "application",
-        format!("{} received your offer", need.title),
-        "Go be the hands.",
+        format!("Your offer on {} was accepted", need.title),
+        "Reach out to them and set a time.",
         format!("/needs/{}", need.id),
     )
 }
@@ -159,8 +159,8 @@ fn passed_application_notice(need: &Need, application: &Application) -> super::m
     notice(
         &application.user_id,
         "application",
-        format!("{} could not receive this offer", need.title),
-        "Thank you for offering. Another need will come.",
+        format!("Your offer on {} was declined", need.title),
+        "Thanks for offering.",
         format!("/needs/{}", need.id),
     )
 }

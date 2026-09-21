@@ -138,7 +138,7 @@ fn dock(nav: Nav, unread: i64) -> Markup {
         nav class="dock" aria-label="Primary" {
             (dock_link("/home", "Home", DockIcon::Home, DockState::for_nav(nav, Nav::Home), None))
             (dock_link("/churches", "Churches", DockIcon::Church, DockState::for_nav(nav, Nav::Churches), None))
-            (dock_link("/the-body", "The body", DockIcon::Body, DockState::for_nav(nav, Nav::Body), None))
+            (dock_link("/the-body", "Nearby", DockIcon::Body, DockState::for_nav(nav, Nav::Body), None))
             (dock_link("/inbox", "Inbox", DockIcon::Inbox, DockState::for_nav(nav, Nav::Inbox), unread_badge(unread)))
             (dock_link("/me", "You", DockIcon::You, DockState::for_nav(nav, Nav::You), None))
         }
@@ -216,15 +216,15 @@ pub fn first_name(name: &str) -> &str {
 
 pub fn error_page(message: &str) -> Markup {
     page(
-        "Something gave way",
+        "Sorry",
         None,
         0,
         Nav::None,
         None,
         html! {
-            h1 { "Something gave way" }
+            h1 { "Sorry" }
             p { (message) }
-            a class="btn" href="/" { "Return" }
+            a class="btn" href="/" { "Go home" }
         },
     )
 }

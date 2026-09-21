@@ -29,8 +29,8 @@ impl NeedScope {
     pub fn label(self) -> &'static str {
         match self {
             Self::Church => "This church",
-            Self::Neighboring => "Neighboring churches",
-            Self::Body => "The whole body",
+            Self::Neighboring => "Nearby churches",
+            Self::Body => "Everyone",
         }
     }
 }

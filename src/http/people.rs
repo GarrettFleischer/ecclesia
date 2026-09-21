@@ -33,7 +33,7 @@ pub async fn member_show(
     let Some(person) = state.db.user(&id).await? else {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("That person is not here.")),
+            html(views::error_page("We couldn't find that person.")),
         ));
     };
     let memberships = state.db.memberships_for_user(&person.id).await?;
@@ -327,6 +327,6 @@ pub async fn the_body(State(state): State<AppState>, jar: CookieJar) -> Result<R
 pub async fn fallback() -> impl IntoResponse {
     (
         StatusCode::NOT_FOUND,
-        html(views::error_page("That page is not in this house.")),
+        html(views::error_page("That page doesn't exist.")),
     )
 }

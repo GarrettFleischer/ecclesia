@@ -79,15 +79,15 @@ fn persona_form(user: &User, csrf: &str) -> Markup {
 
 fn persona_line(user: &User) -> &'static str {
     match user.id.as_str() {
-        "user_miriam" => "Pastor · Grace Covenant · approves members",
-        "user_daniel" => "Member · posted a neighboring repair need",
-        "user_ruth" => "Member · has a hospitality endorsement waiting",
-        "user_samuel" => "Rector · St. Luke's · asking neighbors for worship",
-        "user_james" => "Steward · carpenter from St. Luke's",
-        "user_keisha" => "Pastor · New Mercy · Waterloo, same valley",
-        "user_elena" => "Member · translator who can cross the river",
-        "user_peter" => "Still waiting · requested Grace Covenant",
-        _ => "Member of the body",
+        "user_miriam" => "Pastor, Grace Covenant",
+        "user_daniel" => "Grace Covenant · needs a ramp built",
+        "user_ruth" => "Grace Covenant · has an endorsement waiting",
+        "user_samuel" => "Rector, St. Luke's",
+        "user_james" => "St. Luke's · carpenter",
+        "user_keisha" => "Pastor, New Mercy (Waterloo)",
+        "user_elena" => "New Mercy · speaks Spanish",
+        "user_peter" => "Asked to join Grace Covenant",
+        _ => "Member",
     }
 }
 
@@ -104,12 +104,12 @@ fn pending_door_card(pair: &(&Membership, Church), csrf: &str) -> Markup {
     html! {
         article class="card" {
             @if membership.status == "pending_request" {
-                p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } ". A pastor still has to open the door." }
+                p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } ". The pastor will approve or decline." }
             } @else {
                 p { (church.name) " invited you." }
                 form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
                     (csrf_input(csrf))
-                    button class="btn" type="submit" { "Accept and come in" }
+                    button class="btn" type="submit" { "Accept invite" }
                 }
             }
         }
@@ -172,7 +172,7 @@ fn pending_member_line(member: &ChurchMember) -> &'static str {
     if member.status == "pending_request" {
         "Asked to join"
     } else {
-        "Invited — waiting on them"
+        "Invited"
     }
 }
 
@@ -278,11 +278,11 @@ fn application_verdict_row(application: &ApplicationCard, csrf: &str) -> Markup 
         div class="row" {
             form method="post" action={ "/applications/" (application.id) "/accept" } {
                 (csrf_input(csrf))
-                button class="btn" type="submit" { "Receive them" }
+                button class="btn" type="submit" { "Accept" }
             }
             form method="post" action={ "/applications/" (application.id) "/decline" } {
                 (csrf_input(csrf))
-                button class="btn btn-quiet" type="submit" { "Not this time" }
+                button class="btn btn-quiet" type="submit" { "Decline" }
             }
         }
     }
@@ -357,13 +357,13 @@ fn pending_endorsement_card(endorsement: &EndorsementCard, csrf: &str) -> Markup
         article class="card" {
             p {
                 a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
-                " named you for " strong { (endorsement.gift_name) } "."
+                " endorsed you for " strong { (endorsement.gift_name) } "."
             }
             p { (endorsement.note) }
             div class="row" {
                 form method="post" action={ "/endorsements/" (endorsement.id) "/accept" } {
                     (csrf_input(csrf))
-                    button class="btn" type="submit" { "Accept onto my profile" }
+                    button class="btn" type="submit" { "Add to profile" }
                 }
                 form method="post" action={ "/endorsements/" (endorsement.id) "/decline" } {
                     (csrf_input(csrf))
@@ -430,19 +430,10 @@ fn place_section(group: &PlaceGroup) -> Markup {
     html! {
         section class="panel" {
             h2 { (church.city) ", " (church.region) }
-            p class="muted" { (neighbor_line(group.len())) }
             div class="stack" {
                 (place_church_cards(group))
             }
         }
-    }
-}
-
-fn neighbor_line(count: usize) -> &'static str {
-    if count > 1 {
-        "These households can already carry neighboring needs for each other."
-    } else {
-        "One household here so far. A neighbor in this city or region would end the island."
     }
 }
 

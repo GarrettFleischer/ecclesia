@@ -114,7 +114,7 @@ pub async fn church_show(
     let Some(church) = state.db.church(&id).await? else {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("That church is not here.")),
+            html(views::error_page("We couldn't find that church.")),
         ));
     };
     let viewer = viewer_for(&state.db, user).await?;

@@ -8,7 +8,7 @@ use super::layout::{csrf_input, page, Nav};
 
 pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat) -> Markup {
     page(
-        "The body, together",
+        "Ecclesia",
         None,
         0,
         Nav::None,
@@ -22,30 +22,30 @@ pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat)
                         path fill="#b1842c" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
                     }
                 }
-                p class="eyebrow" { "For churches who refuse to be islands" }
-                h1 { "The ecclesia is a people, not a campus." }
+                p class="eyebrow" { "Ecclesia" }
+                h1 { "Ask for help. Offer yours." }
                 hr class="gold-rule";
                 p class="lede" {
-                    "Each church keeps its own household. Members ask or are invited in, and a pastor approves. "
-                    "People name their gifts. Needs are posted in the open. Whoever can help, offers. "
-                    "Neighboring churches can see what the next parish cannot carry alone."
+                    "Someone in your church needs five dinners this week, a ramp by Saturday, "
+                    "or a Spanish speaker on Thursday night. Post it here. "
+                    "People who can help say so, and churches in the same town see each other's needs too."
                 }
             }
             (demo_panel(users, csrf, demo))
             section class="panel" {
-                h2 { "Take your own seat" }
+                h2 { "Create an account" }
                 form class="stack" method="post" action="/register" {
                     (csrf_input(csrf))
                     label { "Name" input name="name" required placeholder="Your name" maxlength="80"; }
                     label { "Email" input type="email" name="email" required placeholder="you@church.org" maxlength="120"; }
                     div class="split" {
                         label { "City" input name="city" required placeholder="Cedar Falls" maxlength="80"; }
-                        label { "Region" input name="region" required placeholder="Iowa" maxlength="80"; }
+                        label { "State or region" input name="region" required placeholder="Iowa" maxlength="80"; }
                     }
-                    label { "How do you serve?"
-                        textarea name="bio" rows="3" maxlength="800" placeholder="The gifts you already practice, even if no one has ordained them." {}
+                    label { "About you"
+                        textarea name="bio" rows="3" maxlength="800" placeholder="A line or two. What you do, what you're good at." {}
                     }
-                    button class="btn" type="submit" { "Create my place" }
+                    button class="btn" type="submit" { "Create account" }
                 }
             }
         },
@@ -57,10 +57,8 @@ fn demo_panel(users: &[User], csrf: &str, demo: DemoSeat) -> Markup {
         DemoSeat::Sealed => html! {},
         DemoSeat::Open => html! {
             section class="panel" {
-                h2 { "Walk through the Cedar Falls valley" }
-                p class="muted" {
-                    "Demo seats have no passwords. Enter as a pastor, a member, a neighbor, or the person still waiting in the doorway. Production turns this off."
-                }
+                h2 { "Or look around as someone in Cedar Falls" }
+                p class="muted" { "Pick a person. No password." }
                 (persona_grid(users, csrf))
             }
         },

@@ -27,7 +27,7 @@ pub fn request_join(
         governor_ids,
         "join_request",
         format!("{} asked to join {}", actor.name, church.name),
-        "Approve them from the church page if they belong in this household.",
+        "Approve or decline from the church page.",
         &href,
     );
     Ok(effect)
@@ -68,7 +68,7 @@ pub fn invite_member(
             &invitee.id,
             "invite",
             format!("{} invited you to {}", actor.user.name, church.name),
-            "Accept from home or the church page. They already want you in.",
+            "Accept from your home page or the church page.",
             format!("/churches/{}", church.id),
         )),
     )
@@ -152,8 +152,8 @@ fn approved_membership_notice(target: &Membership, church: &Church) -> super::mo
     notice(
         &target.user_id,
         "membership",
-        format!("You are in at {}", church.name),
-        "Your gifts can now meet the needs of this household.",
+        format!("{} approved your request", church.name),
+        "You can see and post needs there now.",
         format!("/churches/{}", church.id),
     )
 }
@@ -162,8 +162,8 @@ fn declined_membership_notice(target: &Membership, church: &Church) -> super::mo
     notice(
         &target.user_id,
         "membership",
-        format!("{} could not receive you just now", church.name),
-        "You can ask again later, or look for another household.",
+        format!("{} declined your request", church.name),
+        "You can ask again later.",
         format!("/churches/{}", church.id),
     )
 }

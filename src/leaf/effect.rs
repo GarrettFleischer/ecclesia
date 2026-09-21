@@ -4,39 +4,39 @@ use super::person::{Endorsement, User};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum DomainError {
-    #[error("You cannot do that for yourself.")]
+    #[error("You can't do that for yourself.")]
     SelfAction,
-    #[error("Only an active member of a church can do that.")]
+    #[error("Join a church to apply.")]
     NotInTheBody,
-    #[error("This need stays inside its own church.")]
+    #[error("Only members of this church can apply.")]
     OutsideChurch,
-    #[error("This need is open to neighboring churches in the same city or region.")]
+    #[error("Only churches in the same city or region can apply.")]
     OutsideNeighborhood,
-    #[error("That need is no longer open.")]
+    #[error("This need is closed.")]
     NeedClosed,
-    #[error("You already asked to help.")]
+    #[error("You already applied.")]
     AlreadyApplied,
-    #[error("The author of a need cannot apply to it.")]
+    #[error("This is your need.")]
     OwnNeed,
-    #[error("Only a pastor or steward of this church can do that.")]
+    #[error("Only the pastor can do that.")]
     NotGovernor,
-    #[error("There is nothing pending to decide.")]
+    #[error("Nothing to decide.")]
     NothingPending,
-    #[error("You are already part of this church.")]
+    #[error("You're already in this church.")]
     AlreadyMember,
-    #[error("An endorsement for that gift is already waiting.")]
+    #[error("You already endorsed them for this.")]
     DuplicateEndorsement,
-    #[error("A few required fields are empty or too long.")]
+    #[error("Fill in the required fields.")]
     InvalidInput,
-    #[error("That email is not a usable address.")]
+    #[error("Check the email address.")]
     InvalidEmail,
-    #[error("That email is already at the table.")]
+    #[error("An account with that email already exists.")]
     EmailTaken,
-    #[error("That gift is not in the catalog.")]
+    #[error("Pick a gift from the list.")]
     UnknownGift,
-    #[error("We could not find that.")]
+    #[error("Not found.")]
     NotFound,
-    #[error("Demo impersonation is turned off.")]
+    #[error("Demo sign-in is off.")]
     DemoDisabled,
 }
 

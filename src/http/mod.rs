@@ -46,7 +46,10 @@ impl IntoResponse for AppError {
         tracing::error!("{0:#}", self.0);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Html(views::error_page("The server stumbled. Try again.").into_string()),
+            Html(
+                views::error_page("Something broke on our end. Try again in a moment.")
+                    .into_string(),
+            ),
         )
             .into_response()
     }

@@ -21,10 +21,7 @@ pub fn need_new(
         Nav::Home,
         flash,
         html! {
-            h1 { "What does the body need?" }
-            p class="muted" {
-                "Keep it inside your church, open it to neighboring households in the same city or region, or ask the whole ecclesia."
-            }
+            h1 { "Post a need" }
             (need_form_or_empty(viewer, gifts, selected_church, csrf))
         },
     )
@@ -40,8 +37,8 @@ fn need_form_or_empty(
     if churches.peek().is_none() {
         return html! {
             div class="empty" {
-                p { "You can only post from a church where you are an approved member." }
-                a class="btn" href="/churches" { "Find a church" }
+                p { "Join a church first, then post from there." }
+                a class="btn" href="/churches" { "Find your church" }
             }
         };
     }
@@ -53,13 +50,13 @@ fn need_form_or_empty(
                     (church_options(churches, selected_church))
                 }
             }
-            label { "Title" input name="title" required placeholder="Meal train for the Okonkwo family"; }
-            label { "The actual need"
-                textarea name="body" rows="5" required placeholder="When, where, what kind of help, and what would be too much." {}
+            label { "Title" input name="title" required placeholder="Dinners for the Okonkwos this week"; }
+            label { "Details"
+                textarea name="body" rows="5" required placeholder="What, when, and where. Anything that helps someone decide if they can do it." {}
             }
-            label { "Primary gift you are hoping for"
+            label { "Gift needed"
                 select name="gift_id" {
-                    option value="" { "Any willing hands" }
+                    option value="" { "Anyone" }
                     (gift_options(gifts))
                 }
             }
@@ -67,18 +64,18 @@ fn need_form_or_empty(
                 legend { "Who can see this" }
                 label class="choice" {
                     input type="radio" name="scope" value="church" checked;
-                    span { strong { "This church" } " Only approved members of the household." }
+                    span { strong { "This church" } " Members only." }
                 }
                 label class="choice" {
                     input type="radio" name="scope" value="neighboring";
-                    span { strong { "Neighboring churches" } " Same city or region. The valley can help." }
+                    span { strong { "Churches nearby" } " Same city or region." }
                 }
                 label class="choice" {
                     input type="radio" name="scope" value="body";
-                    span { strong { "The whole body" } " Any approved member in Ecclesia." }
+                    span { strong { "Everyone on Ecclesia" } }
                 }
             }
-            button class="btn" type="submit" { "Post the need" }
+            button class="btn" type="submit" { "Post need" }
         }
     }
 }
@@ -110,7 +107,7 @@ pub fn need_show(
             p class="lede" { (need.body) }
             p class="meta" {
                 "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) }
-                @if let Some(gift) = &need.gift_name { " · seeking " (gift) }
+                @if let Some(gift) = &need.gift_name { " · " (gift) }
                 " · " (need.status)
             }
             (matching_gift_pill(viewer, need))
@@ -118,7 +115,7 @@ pub fn need_show(
             (already_offered(offer))
             (close_form(need, steward, csrf))
             section {
-                h2 { "Who offered" }
+                h2 { "Offers" }
                 (who_offered(applications, steward, csrf))
             }
         },
@@ -140,7 +137,7 @@ fn matching_gift_pill(viewer: &Viewer, need: &NeedCard) -> Markup {
     if !viewer.has_gift(gift_id) {
         return html! {};
     }
-    html! { p class="pill" { "You named this gift. They may be waiting for you." } }
+    html! { p class="pill" { "This matches a gift on your profile." } }
 }
 
 fn offer_panel(
@@ -162,15 +159,15 @@ fn offer_panel(
                 h2 { "Offer to help" }
                 form class="stack" method="post" action={ "/needs/" (need.id) "/apply" } {
                     (csrf_input(csrf))
-                    label { "How you can carry this"
-                        textarea name="message" rows="3" required maxlength="600" placeholder="When you can come, and what you will actually do." {}
+                    label { "Message"
+                        textarea name="message" rows="3" required maxlength="600" placeholder="When you're free and what you can do." {}
                     }
                     button class="btn" type="submit" { "Apply to help" }
                 }
             }
         },
-        Err(_) => html! {
-            p class="muted" { "You can see this, but you cannot apply from where you stand." }
+        Err(reason) => html! {
+            p class="muted" { (reason) }
         },
     }
 }
@@ -178,7 +175,7 @@ fn offer_panel(
 fn already_offered(offer: OfferState) -> Markup {
     match offer {
         OfferState::AlreadyOffered => {
-            html! { p class="pill" { "You already offered. They have your name." } }
+            html! { p class="pill" { "You applied. They'll see your offer." } }
         }
         OfferState::NotYet => html! {},
     }
@@ -191,7 +188,7 @@ fn close_form(need: &NeedCard, steward: StewardView, csrf: &str) -> Markup {
     html! {
         form method="post" action={ "/needs/" (need.id) "/close" } {
             (csrf_input(csrf))
-            button class="btn btn-quiet" type="submit" { "Close this need" }
+            button class="btn btn-quiet" type="submit" { "Close need" }
         }
     }
 }
@@ -199,7 +196,7 @@ fn close_form(need: &NeedCard, steward: StewardView, csrf: &str) -> Markup {
 fn who_offered(applications: &[ApplicationCard], steward: StewardView, csrf: &str) -> Markup {
     if applications.is_empty() {
         return html! {
-            div class="empty" { p { "No one has applied yet." } }
+            div class="empty" { p { "No offers yet." } }
         };
     }
     html! {

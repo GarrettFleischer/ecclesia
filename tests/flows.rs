@@ -168,7 +168,7 @@ async fn us_mem_04_pastor_can_approve_a_join_request() {
 
     let (app, peter) = login(app, "user_peter").await;
     let home = get(app, &peter, "/home").await;
-    assert!(home.contains("Needs the body can carry"));
+    assert!(home.contains("Open needs"));
     assert!(home.contains("Prayer covering"));
 }
 
@@ -178,12 +178,12 @@ async fn us_need_05_neighboring_need_is_visible_across_the_valley() {
     let (app, elena) = login(app, "user_elena").await;
     let home = get(app.clone(), &elena, "/home").await;
     assert!(home.contains("Spanish interpreter"));
-    assert!(!home.contains("Meal train for the Okonkwo"));
+    assert!(!home.contains("Dinners for the Okonkwo"));
 
     let (app, peter) = login(app, "user_peter").await;
     let home = get(app, &peter, "/home").await;
     assert!(!home.contains("Spanish interpreter"));
-    assert!(home.contains("At the door"));
+    assert!(home.contains("Pending"));
 }
 
 #[tokio::test]
@@ -210,7 +210,7 @@ async fn us_need_02_apply_form_and_offer() {
     assert_eq!(status, StatusCode::SEE_OTHER);
 
     let again = get(app, &cookie, "/needs/need_spanish").await;
-    assert!(again.contains("You already offered"));
+    assert!(again.contains("You applied."));
 }
 
 #[tokio::test]

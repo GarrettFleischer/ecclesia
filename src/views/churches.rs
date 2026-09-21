@@ -26,16 +26,15 @@ pub fn churches_index(
         flash,
         html! {
             div class="toolbar" {
-                h1 { "Church households" }
-                a class="btn" href="/churches/new" { "Plant a group" }
+                h1 { "Churches" }
+                a class="btn" href="/churches/new" { "Add your church" }
             }
-            p class="muted" { "A church here is a group with a shepherd. You request or receive an invite. They approve. Then your gifts are actually findable." }
             form class="row-form" method="post" action="/invites/redeem" {
                 (csrf_input(csrf))
-                label { "Invite code"
+                label { "Have an invite code?"
                     input name="code" placeholder="grace-k2m9" autocomplete="off";
                 }
-                button class="btn btn-quiet" type="submit" { "Redeem" }
+                button class="btn btn-quiet" type="submit" { "Use it" }
             }
             (church_list(churches))
         },
@@ -45,7 +44,7 @@ pub fn churches_index(
 fn church_list(churches: &[ChurchCard]) -> Markup {
     if churches.is_empty() {
         return html! {
-            div class="empty" { p { "No churches yet. The first pastor has to plant one." } }
+            div class="empty" { p { "No churches yet. Yours could be the first." } }
         };
     }
     html! {
@@ -57,26 +56,26 @@ fn church_list(churches: &[ChurchCard]) -> Markup {
 
 pub fn church_new(viewer: &Viewer, unread: i64, flash: Option<Flash>, csrf: &str) -> Markup {
     page(
-        "Plant a church group",
+        "Add your church",
         Some(&viewer.user),
         unread,
         Nav::Churches,
         flash,
         html! {
-            h1 { "Plant a church group" }
-            p class="muted" { "You become the owner — the pastor or steward who approves people in. Neighboring churches will see you if you share a city or region." }
+            h1 { "Add your church" }
+            p class="muted" { "You'll be its pastor here, so you decide who joins." }
             form class="stack" method="post" action="/churches" {
                 (csrf_input(csrf))
                 label { "Church name" input name="name" required placeholder="Grace Covenant Church" maxlength="120"; }
                 div class="split" {
                     label { "City" input name="city" required value=(viewer.user.city); }
-                    label { "Region" input name="region" required value=(viewer.user.region); }
+                    label { "State or region" input name="region" required value=(viewer.user.region); }
                 }
-                label { "When you gather" input name="gathering" placeholder="Sundays 10:00 a.m."; }
-                label { "Who you are"
-                    textarea name="description" rows="4" required placeholder="A household in this city, not a brand." {}
+                label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m."; }
+                label { "About the church"
+                    textarea name="description" rows="4" required placeholder="A few sentences. Where you are, who comes, what you're about." {}
                 }
-                button class="btn" type="submit" { "Create the group" }
+                button class="btn" type="submit" { "Add church" }
             }
         },
     )
@@ -103,10 +102,7 @@ pub fn church_show(
             p class="eyebrow" { (church.city) ", " (church.region) }
             h1 { (church.name) }
             p class="lede" { (church.description) }
-            p class="meta" {
-                @if !church.gathering.is_empty() { (church.gathering) " · " }
-                "Shepherd: the owner of this group"
-            }
+            @if !church.gathering.is_empty() { p class="meta" { (church.gathering) } }
             (membership_status(mine, church, csrf))
             (governor_door(church, door, csrf))
             (people_section(members, door, csrf))
@@ -129,18 +125,26 @@ fn membership_status(mine: Option<&Membership>, church: &Church, csrf: &str) -> 
 
 fn membership_pill(membership: &Membership, csrf: &str) -> Markup {
     match membership.status.as_str() {
-        "active" => html! { p class="pill" { "You belong here as " (membership.role) } },
+        "active" => html! { p class="pill" { (role_line(&membership.role)) } },
         "pending_request" => {
-            html! { p class="pill pill-wait" { "Your request is waiting on a pastor" } }
+            html! { p class="pill pill-wait" { "You asked to join. Waiting on the pastor." } }
         }
         "pending_invite" => html! {
             form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
                 (csrf_input(csrf))
-                button class="btn" type="submit" { "Accept this church's invite" }
+                button class="btn" type="submit" { "Accept invite" }
             }
         },
-        "declined" => html! { p class="pill pill-warn" { "A previous request was declined" } },
+        "declined" => html! { p class="pill pill-warn" { "Your request was declined." } },
         _ => html! {},
+    }
+}
+
+fn role_line(role: &str) -> &'static str {
+    match role {
+        "owner" => "You're the pastor here.",
+        "steward" => "You're a steward here.",
+        _ => "You're a member here.",
     }
 }
 
@@ -164,15 +168,15 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
     }
     html! {
         section class="panel" {
-            h2 { "Keep the door" }
-            p class="muted" { "Share this invite code. They still confirm; you already chose them. Or invite someone already in Ecclesia by email." }
+            h2 { "Invite people" }
+            p class="muted" { "Share this code, or send an invite by email." }
             p class="code" { (church.invite_code) }
             form class="row-form" method="post" action={ "/churches/" (church.id) "/invite" } {
                 (csrf_input(csrf))
-                label { "Invite by email"
+                label { "Email"
                     input type="email" name="email" required placeholder="james@stlukes.test";
                 }
-                button class="btn btn-quiet" type="submit" { "Invite" }
+                button class="btn btn-quiet" type="submit" { "Send invite" }
             }
         }
     }
@@ -210,7 +214,7 @@ fn no_active_members(members: &[ChurchMember]) -> Markup {
     if has_active_member(members) {
         return html! {};
     }
-    html! { p class="muted" { "No approved members yet." } }
+    html! { p class="muted" { "No members yet." } }
 }
 
 fn needs_section(viewer: &Viewer, church: &Church, needs: &[NeedCard]) -> Markup {
@@ -231,7 +235,7 @@ fn church_needs(needs: &[NeedCard], viewer: &Viewer, church: &Church) -> Markup 
     let mut visible = visible_need_cards(viewer, needs, std::slice::from_ref(church)).peekable();
     if visible.peek().is_none() {
         return html! {
-            p class="muted" { "No needs posted. Either they are between crises, or they have not learned to ask." }
+            p class="muted" { "No open needs." }
         };
     }
     need_card_stack(visible, viewer)
@@ -239,19 +243,15 @@ fn church_needs(needs: &[NeedCard], viewer: &Viewer, church: &Church) -> Markup 
 
 pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64) -> Markup {
     page(
-        "The body",
+        "Churches nearby",
         Some(&viewer.user),
         unread,
         Nav::Body,
         None,
         html! {
-            h1 { "Churches are not islands" }
+            h1 { "Churches nearby" }
             hr class="gold-rule";
-            p class="lede" {
-                "A need marked for neighboring churches is visible to approved members in the same city or region. "
-                "A need marked for the whole body is visible to anyone already received into a household. "
-                "The point is not a marketplace. It is that the wound in one congregation can be bound by another."
-            }
+            p class="lede" { "Churches in the same city or region can see each other's needs." }
             (body_groups(groups))
         },
     )
@@ -260,7 +260,7 @@ pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64) -> Markup {
 fn body_groups(groups: &[PlaceGroup]) -> Markup {
     if groups.is_empty() {
         return html! {
-            div class="empty" { p { "No churches have been planted yet." } }
+            div class="empty" { p { "No churches yet." } }
         };
     }
     place_sections(groups)

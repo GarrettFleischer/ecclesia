@@ -35,7 +35,7 @@ pub fn endorse(
         &to.id,
         "endorsement",
         format!("{} endorsed you for {gift_name}", from.name),
-        "Accept it onto your profile from Inbox, or decline.",
+        "Add it to your profile, or decline, from your inbox.",
         "/inbox".into(),
     )))
 }
@@ -112,8 +112,8 @@ fn worn_endorsement_notice(
     notice(
         &endorsement.from_user_id,
         "endorsement",
-        format!("{} received your endorsement for {gift_name}", actor.name),
-        "It is on their profile now.",
+        format!("{} accepted your endorsement for {gift_name}", actor.name),
+        "It's on their profile now.",
         format!("/members/{}", actor.id),
     )
 }
@@ -127,7 +127,7 @@ fn declined_endorsement_notice(
         &endorsement.from_user_id,
         "endorsement",
         format!("{} declined your endorsement for {gift_name}", actor.name),
-        "They chose not to wear it. That is theirs to decide.",
+        "No action needed.",
         format!("/members/{}", actor.id),
     )
 }

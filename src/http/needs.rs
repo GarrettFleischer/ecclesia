@@ -103,19 +103,21 @@ pub async fn need_show(
     let Some(card) = state.db.need_card(&id).await? else {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("That need is not here.")),
+            html(views::error_page("We couldn't find that need.")),
         ));
     };
     let Some(church) = state.db.church(&card.church_id).await? else {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("That church is not here.")),
+            html(views::error_page("We couldn't find that church.")),
         ));
     };
     if !crate::leaf::can_view_need(&viewer, card.sight(), &church) {
         return Ok(with_cookie(
             jar,
-            html(views::error_page("This need stays with another household.")),
+            html(views::error_page(
+                "This need is only visible to its church.",
+            )),
         ));
     }
     let applications = state.db.applications_for_need(&card.id).await?;
