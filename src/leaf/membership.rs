@@ -1,11 +1,12 @@
 //! Join requests, invites, and planting a household.
 
-use super::flags::MembershipDoor;
 use super::model::{
     Church, DomainError, Effect, Membership, MembershipStatus, User, Viewer, Write,
 };
 use super::notice::{notice, notice_each_governor};
-use super::rules::{can_decide_membership, invite_code_for, membership_after_door};
+use super::rules::{
+    can_decide_membership, invite_code_for, membership_after_approval, membership_after_decline,
+};
 use super::validate::{church_fields, normalize_email};
 
 /// US-MEM-01 — ask to join a household.
@@ -120,7 +121,9 @@ pub fn approve_membership(
     target: &Membership,
     church: &Church,
 ) -> Result<Effect, DomainError> {
-    settle_membership(actor, target, church, MembershipDoor::Open)
+    require_governor(actor, &target.church_id)?;
+    let next = membership_after_approval(pending_status(target)?)?;
+    Ok(set_membership(target, next).with_notice(approved_membership_notice(target, church)))
 }
 
 /// US-MEM-04 — pastor or steward closes the door on a request.
@@ -129,47 +132,40 @@ pub fn decline_membership(
     target: &Membership,
     church: &Church,
 ) -> Result<Effect, DomainError> {
-    settle_membership(actor, target, church, MembershipDoor::Shut)
+    require_governor(actor, &target.church_id)?;
+    let next = membership_after_decline(pending_status(target)?)?;
+    Ok(set_membership(target, next).with_notice(declined_membership_notice(target, church)))
 }
 
-fn settle_membership(
-    actor: &Viewer,
-    target: &Membership,
-    church: &Church,
-    door: MembershipDoor,
-) -> Result<Effect, DomainError> {
-    require_governor(actor, &target.church_id)?;
-    let current = target.status().ok_or(DomainError::NothingPending)?;
-    let next = membership_after_door(current, door)?;
-    Ok(Effect::write(Write::SetMembershipStatus {
+fn pending_status(target: &Membership) -> Result<MembershipStatus, DomainError> {
+    target.status().ok_or(DomainError::NothingPending)
+}
+
+fn set_membership(target: &Membership, next: MembershipStatus) -> Effect {
+    Effect::write(Write::SetMembershipStatus {
         id: target.id.clone(),
         status: next.as_str().into(),
     })
-    .with_notice(membership_notice(target, church, door)))
 }
 
-fn membership_notice(
-    target: &Membership,
-    church: &Church,
-    door: MembershipDoor,
-) -> super::model::NoticeDraft {
-    let href = format!("/churches/{}", church.id);
-    match door {
-        MembershipDoor::Open => notice(
-            &target.user_id,
-            "membership",
-            format!("You are in at {}", church.name),
-            "Your gifts can now meet the needs of this household.",
-            href,
-        ),
-        MembershipDoor::Shut => notice(
-            &target.user_id,
-            "membership",
-            format!("{} could not receive you just now", church.name),
-            "You can ask again later, or look for another household.",
-            href,
-        ),
-    }
+fn approved_membership_notice(target: &Membership, church: &Church) -> super::model::NoticeDraft {
+    notice(
+        &target.user_id,
+        "membership",
+        format!("You are in at {}", church.name),
+        "Your gifts can now meet the needs of this household.",
+        format!("/churches/{}", church.id),
+    )
+}
+
+fn declined_membership_notice(target: &Membership, church: &Church) -> super::model::NoticeDraft {
+    notice(
+        &target.user_id,
+        "membership",
+        format!("{} could not receive you just now", church.name),
+        "You can ask again later, or look for another household.",
+        format!("/churches/{}", church.id),
+    )
 }
 
 /// US-MEM-05 — the invited person accepts.

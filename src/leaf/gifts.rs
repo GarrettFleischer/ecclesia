@@ -1,6 +1,6 @@
 //! Gifts, endorsements, and how a person is known.
 
-use super::flags::{CatalogPresence, EndorsementQueue, EndorsementVerdict};
+use super::flags::{CatalogPresence, EndorsementQueue};
 use super::model::{DomainError, Effect, Endorsement, User, Write};
 use super::notice::notice;
 use super::rules::can_endorse;
@@ -60,7 +60,17 @@ pub fn accept_endorsement(
     endorsement: &Endorsement,
     gift_name: &str,
 ) -> Result<Effect, DomainError> {
-    settle_endorsement(actor, endorsement, gift_name, EndorsementVerdict::Wear)
+    require_pending_recipient(actor, endorsement)?;
+    let mut effect = set_endorsement(endorsement, "accepted");
+    effect.push(Write::UpsertMemberGift {
+        user_id: actor.id.clone(),
+        gift_id: endorsement.gift_id.clone(),
+        note: String::new(),
+    });
+    effect
+        .notices
+        .push(worn_endorsement_notice(actor, endorsement, gift_name));
+    Ok(effect)
 }
 
 /// US-END-02 — the named person lets the word go.
@@ -69,25 +79,14 @@ pub fn decline_endorsement(
     endorsement: &Endorsement,
     gift_name: &str,
 ) -> Result<Effect, DomainError> {
-    settle_endorsement(actor, endorsement, gift_name, EndorsementVerdict::Decline)
-}
-
-fn settle_endorsement(
-    actor: &User,
-    endorsement: &Endorsement,
-    gift_name: &str,
-    verdict: EndorsementVerdict,
-) -> Result<Effect, DomainError> {
     require_pending_recipient(actor, endorsement)?;
-    let mut effect = Effect::write(Write::SetEndorsementStatus {
-        id: endorsement.id.clone(),
-        status: endorsement_status(verdict).into(),
-    });
-    wear_gift_if_accepted(&mut effect, actor, endorsement, verdict);
-    effect
-        .notices
-        .push(endorsement_notice(actor, endorsement, gift_name, verdict));
-    Ok(effect)
+    Ok(
+        set_endorsement(endorsement, "declined").with_notice(declined_endorsement_notice(
+            actor,
+            endorsement,
+            gift_name,
+        )),
+    )
 }
 
 fn require_pending_recipient(actor: &User, endorsement: &Endorsement) -> Result<(), DomainError> {
@@ -98,50 +97,39 @@ fn require_pending_recipient(actor: &User, endorsement: &Endorsement) -> Result<
     }
 }
 
-fn endorsement_status(verdict: EndorsementVerdict) -> &'static str {
-    match verdict {
-        EndorsementVerdict::Wear => "accepted",
-        EndorsementVerdict::Decline => "declined",
-    }
+fn set_endorsement(endorsement: &Endorsement, status: &str) -> Effect {
+    Effect::write(Write::SetEndorsementStatus {
+        id: endorsement.id.clone(),
+        status: status.into(),
+    })
 }
 
-fn wear_gift_if_accepted(
-    effect: &mut Effect,
-    actor: &User,
-    endorsement: &Endorsement,
-    verdict: EndorsementVerdict,
-) {
-    if let EndorsementVerdict::Wear = verdict {
-        effect.push(Write::UpsertMemberGift {
-            user_id: actor.id.clone(),
-            gift_id: endorsement.gift_id.clone(),
-            note: String::new(),
-        });
-    }
-}
-
-fn endorsement_notice(
+fn worn_endorsement_notice(
     actor: &User,
     endorsement: &Endorsement,
     gift_name: &str,
-    verdict: EndorsementVerdict,
 ) -> super::model::NoticeDraft {
-    match verdict {
-        EndorsementVerdict::Wear => notice(
-            &endorsement.from_user_id,
-            "endorsement",
-            format!("{} received your endorsement for {gift_name}", actor.name),
-            "It is on their profile now.",
-            format!("/members/{}", actor.id),
-        ),
-        EndorsementVerdict::Decline => notice(
-            &endorsement.from_user_id,
-            "endorsement",
-            format!("{} declined your endorsement for {gift_name}", actor.name),
-            "They chose not to wear it. That is theirs to decide.",
-            format!("/members/{}", actor.id),
-        ),
-    }
+    notice(
+        &endorsement.from_user_id,
+        "endorsement",
+        format!("{} received your endorsement for {gift_name}", actor.name),
+        "It is on their profile now.",
+        format!("/members/{}", actor.id),
+    )
+}
+
+fn declined_endorsement_notice(
+    actor: &User,
+    endorsement: &Endorsement,
+    gift_name: &str,
+) -> super::model::NoticeDraft {
+    notice(
+        &endorsement.from_user_id,
+        "endorsement",
+        format!("{} declined your endorsement for {gift_name}", actor.name),
+        "They chose not to wear it. That is theirs to decide.",
+        format!("/members/{}", actor.id),
+    )
 }
 
 /// US-GIFT-01 — name a gift you practice.

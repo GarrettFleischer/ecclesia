@@ -1,17 +1,17 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
     accept_invite, approve_membership, decline_membership, invite_member, parse_invite_email,
-    plant_church, redeem_invite, request_join, visible_need_cards, Church, MembershipDoor,
+    plant_church, redeem_invite, request_join, visible_need_cards, Church, Viewer,
 };
 use crate::sdk::clock::{new_id, nonce4, now_iso};
 use crate::views;
 
 use super::context::{
-    bind_session, church_directory, fail_csrf, governor_ids, html, leaf_err, redirect_err,
-    redirect_ok, require_user, unread, viewer_for, with_cookie,
+    apply_leaf_redirect, bind_session, church_directory, fail_csrf, governor_ids, html, leaf_err,
+    redirect_err, redirect_ok, require_user, unread, viewer_for, with_cookie,
 };
 use super::forms::{ChurchForm, CsrfForm, FlashQuery, InviteForm, RedeemForm};
 use super::{AppError, AppState};
@@ -260,7 +260,18 @@ pub async fn approve_membership_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    settle_membership_http(state, jar, id, form.csrf, MembershipDoor::Open).await
+    let loaded = match load_membership_decision(&state, jar, &id, &form.csrf).await {
+        Ok(loaded) => loaded,
+        Err(response) => return Ok(response),
+    };
+    apply_leaf_redirect(
+        &state.db,
+        loaded.jar,
+        &loaded.dest,
+        approve_membership(&loaded.viewer, &loaded.target, &loaded.church),
+        "approved",
+    )
+    .await
 }
 
 pub async fn decline_membership_http(
@@ -269,42 +280,69 @@ pub async fn decline_membership_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    settle_membership_http(state, jar, id, form.csrf, MembershipDoor::Shut).await
+    let loaded = match load_membership_decision(&state, jar, &id, &form.csrf).await {
+        Ok(loaded) => loaded,
+        Err(response) => return Ok(response),
+    };
+    apply_leaf_redirect(
+        &state.db,
+        loaded.jar,
+        &loaded.dest,
+        decline_membership(&loaded.viewer, &loaded.target, &loaded.church),
+        "declined",
+    )
+    .await
 }
 
-async fn settle_membership_http(
-    state: AppState,
+struct MembershipDecision {
     jar: CookieJar,
-    id: String,
-    csrf: String,
-    door: MembershipDoor,
-) -> Result<Response, AppError> {
+    viewer: Viewer,
+    target: crate::leaf::Membership,
+    church: Church,
+    dest: String,
+}
+
+async fn load_membership_decision(
+    state: &AppState,
+    jar: CookieJar,
+    id: &str,
+    csrf: &str,
+) -> Result<MembershipDecision, Response> {
     let (session, jar) = bind_session(jar, &state.secret);
     let user = match require_user(&state.db, &session).await {
         Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+        Err(response) => return Err(with_cookie(jar, response)),
     };
-    let Some(target) = state.db.membership(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err("/home", "not_found")));
+    let Some(target) = state
+        .db
+        .membership(id)
+        .await
+        .map_err(|error| AppError::from(error).into_response())?
+    else {
+        return Err(with_cookie(jar, redirect_err("/home", "not_found")));
     };
     let dest = format!("/churches/{}", target.church_id);
-    if !session.check_csrf(&csrf) {
-        return Ok(with_cookie(jar, fail_csrf(&dest)));
+    if !session.check_csrf(csrf) {
+        return Err(with_cookie(jar, fail_csrf(&dest)));
     }
-    let viewer = viewer_for(&state.db, user).await?;
-    let Some(church) = state.db.church(&target.church_id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+    let viewer = viewer_for(&state.db, user)
+        .await
+        .map_err(|error| error.into_response())?;
+    let Some(church) = state
+        .db
+        .church(&target.church_id)
+        .await
+        .map_err(|error| AppError::from(error).into_response())?
+    else {
+        return Err(with_cookie(jar, redirect_err(&dest, "not_found")));
     };
-    let effect = match door {
-        MembershipDoor::Open => approve_membership(&viewer, &target, &church),
-        MembershipDoor::Shut => decline_membership(&viewer, &target, &church),
-    };
-    let effect = match effect {
-        Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
-    };
-    state.db.apply(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, door.flash_code())))
+    Ok(MembershipDecision {
+        jar,
+        viewer,
+        target,
+        church,
+        dest,
+    })
 }
 
 pub async fn accept_invite_http(

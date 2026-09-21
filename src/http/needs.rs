@@ -1,17 +1,17 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
-    accept_application, apply_to_need, close_need, decline_application, post_need, CatalogPresence,
-    Need, OfferState, OfferVerdict, PriorOffer,
+    accept_application, apply_to_need, close_need, decline_application, post_need, Application,
+    CatalogPresence, Need, OfferState, PriorOffer, Viewer,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
 
 use super::context::{
-    bind_session, fail_csrf, html, leaf_err, optional_gift_id, redirect_err, redirect_ok,
-    require_user, unread, viewer_for, with_cookie,
+    apply_leaf_redirect, bind_session, fail_csrf, html, leaf_err, optional_gift_id, redirect_err,
+    redirect_ok, require_user, unread, viewer_for, with_cookie,
 };
 use super::forms::{ApplyForm, CsrfForm, FlashQuery, NeedForm, NeedQuery};
 use super::{AppError, AppState};
@@ -216,7 +216,18 @@ pub async fn accept_application_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    settle_application_http(state, jar, id, form.csrf, OfferVerdict::Receive).await
+    let loaded = match load_application_decision(&state, jar, &id, &form.csrf).await {
+        Ok(loaded) => loaded,
+        Err(response) => return Ok(response),
+    };
+    apply_leaf_redirect(
+        &state.db,
+        loaded.jar,
+        &loaded.dest,
+        accept_application(&loaded.viewer, &loaded.need, &loaded.application),
+        "application_accepted",
+    )
+    .await
 }
 
 pub async fn decline_application_http(
@@ -225,40 +236,68 @@ pub async fn decline_application_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    settle_application_http(state, jar, id, form.csrf, OfferVerdict::Pass).await
+    let loaded = match load_application_decision(&state, jar, &id, &form.csrf).await {
+        Ok(loaded) => loaded,
+        Err(response) => return Ok(response),
+    };
+    apply_leaf_redirect(
+        &state.db,
+        loaded.jar,
+        &loaded.dest,
+        decline_application(&loaded.viewer, &loaded.need, &loaded.application),
+        "declined",
+    )
+    .await
 }
 
-async fn settle_application_http(
-    state: AppState,
+struct ApplicationDecision {
     jar: CookieJar,
-    id: String,
-    csrf: String,
-    verdict: OfferVerdict,
-) -> Result<Response, AppError> {
+    viewer: Viewer,
+    need: Need,
+    application: Application,
+    dest: String,
+}
+
+async fn load_application_decision(
+    state: &AppState,
+    jar: CookieJar,
+    id: &str,
+    csrf: &str,
+) -> Result<ApplicationDecision, Response> {
     let (session, jar) = bind_session(jar, &state.secret);
     let user = match require_user(&state.db, &session).await {
         Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+        Err(response) => return Err(with_cookie(jar, response)),
     };
-    let viewer = viewer_for(&state.db, user).await?;
-    let Some(application) = state.db.application(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err("/home", "not_found")));
+    let viewer = match viewer_for(&state.db, user).await {
+        Ok(viewer) => viewer,
+        Err(error) => return Err(error.into_response()),
+    };
+    let Some(application) = state
+        .db
+        .application(id)
+        .await
+        .map_err(|error| AppError::from(error).into_response())?
+    else {
+        return Err(with_cookie(jar, redirect_err("/home", "not_found")));
     };
     let dest = format!("/needs/{}", application.need_id);
-    if !session.check_csrf(&csrf) {
-        return Ok(with_cookie(jar, fail_csrf(&dest)));
+    if !session.check_csrf(csrf) {
+        return Err(with_cookie(jar, fail_csrf(&dest)));
     }
-    let Some(need) = state.db.need(&application.need_id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+    let Some(need) = state
+        .db
+        .need(&application.need_id)
+        .await
+        .map_err(|error| AppError::from(error).into_response())?
+    else {
+        return Err(with_cookie(jar, redirect_err(&dest, "not_found")));
     };
-    let effect = match verdict {
-        OfferVerdict::Receive => accept_application(&viewer, &need, &application),
-        OfferVerdict::Pass => decline_application(&viewer, &need, &application),
-    };
-    let effect = match effect {
-        Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
-    };
-    state.db.apply(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, verdict.flash_code())))
+    Ok(ApplicationDecision {
+        jar,
+        viewer,
+        need,
+        application,
+        dest,
+    })
 }

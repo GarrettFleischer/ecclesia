@@ -37,10 +37,9 @@ pub async fn landing(
 }
 
 async fn demo_people(state: &AppState) -> Result<Vec<crate::leaf::User>, AppError> {
-    if state.demo.is_open() {
-        Ok(state.db.demo_users().await?)
-    } else {
-        Ok(Vec::new())
+    match state.demo {
+        crate::leaf::DemoSeat::Open => Ok(state.db.demo_users().await?),
+        crate::leaf::DemoSeat::Sealed => Ok(Vec::new()),
     }
 }
 

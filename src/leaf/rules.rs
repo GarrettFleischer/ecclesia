@@ -1,4 +1,3 @@
-use super::flags::MembershipDoor;
 use super::model::{
     Church, DomainError, Membership, MembershipStatus, Need, NeedCard, NeedScope, Viewer,
 };
@@ -64,36 +63,21 @@ pub fn can_decide_membership(actor: &Membership) -> Result<(), DomainError> {
 pub fn membership_after_approval(
     current: MembershipStatus,
 ) -> Result<MembershipStatus, DomainError> {
-    membership_after_door(current, MembershipDoor::Open)
+    require_pending_membership(current)?;
+    Ok(MembershipStatus::Active)
 }
 
 pub fn membership_after_decline(
     current: MembershipStatus,
 ) -> Result<MembershipStatus, DomainError> {
-    membership_after_door(current, MembershipDoor::Shut)
+    require_pending_membership(current)?;
+    Ok(MembershipStatus::Declined)
 }
 
-pub fn membership_after_door(
-    current: MembershipStatus,
-    door: MembershipDoor,
-) -> Result<MembershipStatus, DomainError> {
-    if !is_pending_membership(current) {
-        return Err(DomainError::NothingPending);
-    }
-    Ok(status_for_door(door))
-}
-
-fn is_pending_membership(current: MembershipStatus) -> bool {
-    matches!(
-        current,
-        MembershipStatus::PendingRequest | MembershipStatus::PendingInvite
-    )
-}
-
-fn status_for_door(door: MembershipDoor) -> MembershipStatus {
-    match door {
-        MembershipDoor::Open => MembershipStatus::Active,
-        MembershipDoor::Shut => MembershipStatus::Declined,
+fn require_pending_membership(current: MembershipStatus) -> Result<(), DomainError> {
+    match current {
+        MembershipStatus::PendingRequest | MembershipStatus::PendingInvite => Ok(()),
+        MembershipStatus::Active | MembershipStatus::Declined => Err(DomainError::NothingPending),
     }
 }
 

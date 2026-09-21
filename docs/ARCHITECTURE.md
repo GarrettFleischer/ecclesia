@@ -30,9 +30,10 @@ Leaves do not:
 
 If a test can construct the inputs in memory, the household rule is testable.
 
-Boolean arguments are not used. A caller names the situation
-(`MembershipDoor::Open`, `CatalogPresence::Listed`) or calls a dedicated
-function (`approve_membership`, `decline_membership`).
+Boolean function arguments are not used. A caller names the situation
+(`CatalogPresence::Listed`, `PriorOffer::Fresh`) or calls a dedicated
+function (`approve_membership`, `decline_membership`) instead of switching
+on a flag.
 
 | Module | Responsibility |
 | --- | --- |

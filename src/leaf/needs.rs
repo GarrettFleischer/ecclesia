@@ -1,6 +1,6 @@
 //! Posting needs and receiving offers.
 
-use super::flags::{CatalogPresence, OfferVerdict, PriorOffer};
+use super::flags::{CatalogPresence, PriorOffer};
 use super::model::{Application, Church, DomainError, Effect, Need, Viewer, Write};
 use super::notice::notice;
 use super::rules::can_apply;
@@ -109,7 +109,10 @@ pub fn accept_application(
     need: &Need,
     application: &Application,
 ) -> Result<Effect, DomainError> {
-    settle_application(viewer, need, application, OfferVerdict::Receive)
+    require_need_steward(viewer, need)?;
+    require_pending_application(application)?;
+    Ok(set_application(application, "accepted")
+        .with_notice(received_application_notice(need, application)))
 }
 
 /// US-NEED-04 — decline an offer.
@@ -118,54 +121,48 @@ pub fn decline_application(
     need: &Need,
     application: &Application,
 ) -> Result<Effect, DomainError> {
-    settle_application(viewer, need, application, OfferVerdict::Pass)
-}
-
-fn settle_application(
-    viewer: &Viewer,
-    need: &Need,
-    application: &Application,
-    verdict: OfferVerdict,
-) -> Result<Effect, DomainError> {
     require_need_steward(viewer, need)?;
-    if application.status != "pending" {
-        return Err(DomainError::NothingPending);
+    require_pending_application(application)?;
+    Ok(set_application(application, "declined")
+        .with_notice(passed_application_notice(need, application)))
+}
+
+fn require_pending_application(application: &Application) -> Result<(), DomainError> {
+    if application.status == "pending" {
+        Ok(())
+    } else {
+        Err(DomainError::NothingPending)
     }
-    Ok(Effect::write(Write::SetApplicationStatus {
+}
+
+fn set_application(application: &Application, status: &str) -> Effect {
+    Effect::write(Write::SetApplicationStatus {
         id: application.id.clone(),
-        status: application_status(verdict).into(),
+        status: status.into(),
     })
-    .with_notice(application_notice(need, application, verdict)))
 }
 
-fn application_status(verdict: OfferVerdict) -> &'static str {
-    match verdict {
-        OfferVerdict::Receive => "accepted",
-        OfferVerdict::Pass => "declined",
-    }
-}
-
-fn application_notice(
+fn received_application_notice(
     need: &Need,
     application: &Application,
-    verdict: OfferVerdict,
 ) -> super::model::NoticeDraft {
-    match verdict {
-        OfferVerdict::Receive => notice(
-            &application.user_id,
-            "application",
-            format!("{} received your offer", need.title),
-            "Go be the hands.",
-            format!("/needs/{}", need.id),
-        ),
-        OfferVerdict::Pass => notice(
-            &application.user_id,
-            "application",
-            format!("{} could not receive this offer", need.title),
-            "Thank you for offering. Another need will come.",
-            format!("/needs/{}", need.id),
-        ),
-    }
+    notice(
+        &application.user_id,
+        "application",
+        format!("{} received your offer", need.title),
+        "Go be the hands.",
+        format!("/needs/{}", need.id),
+    )
+}
+
+fn passed_application_notice(need: &Need, application: &Application) -> super::model::NoticeDraft {
+    notice(
+        &application.user_id,
+        "application",
+        format!("{} could not receive this offer", need.title),
+        "Thank you for offering. Another need will come.",
+        format!("/needs/{}", need.id),
+    )
 }
 
 #[cfg(test)]

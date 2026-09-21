@@ -5,14 +5,15 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
     accept_endorsement, add_gift, decline_endorsement, endorse, remove_gift, update_profile,
-    CatalogPresence, EndorsementQueue, EndorsementVerdict,
+    CatalogPresence, Endorsement, EndorsementQueue, User,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
 
 use super::context::{
-    bind_session, churches_by_place, churches_paired_with, fail_csrf, gift_name_or_default, html,
-    leaf_err, redirect_err, redirect_ok, require_user, unread, viewer_for, with_cookie,
+    apply_leaf_redirect, bind_session, churches_by_place, churches_paired_with, fail_csrf,
+    gift_name_or_default, html, leaf_err, redirect_err, redirect_ok, require_user, unread,
+    viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
 use super::{AppError, AppState};
@@ -108,7 +109,18 @@ pub async fn accept_endorsement_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    settle_endorsement_http(state, jar, id, form.csrf, EndorsementVerdict::Wear).await
+    let loaded = match load_endorsement_decision(&state, jar, &id, &form.csrf).await {
+        Ok(loaded) => loaded,
+        Err(response) => return Ok(response),
+    };
+    apply_leaf_redirect(
+        &state.db,
+        loaded.jar,
+        "/inbox",
+        accept_endorsement(&loaded.user, &loaded.endorsement, &loaded.gift_name),
+        "endorsement_accepted",
+    )
+    .await
 }
 
 pub async fn decline_endorsement_http(
@@ -117,42 +129,63 @@ pub async fn decline_endorsement_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    settle_endorsement_http(state, jar, id, form.csrf, EndorsementVerdict::Decline).await
+    let loaded = match load_endorsement_decision(&state, jar, &id, &form.csrf).await {
+        Ok(loaded) => loaded,
+        Err(response) => return Ok(response),
+    };
+    apply_leaf_redirect(
+        &state.db,
+        loaded.jar,
+        "/inbox",
+        decline_endorsement(&loaded.user, &loaded.endorsement, &loaded.gift_name),
+        "endorsement_declined",
+    )
+    .await
 }
 
-async fn settle_endorsement_http(
-    state: AppState,
+struct EndorsementDecision {
     jar: CookieJar,
-    id: String,
-    csrf: String,
-    verdict: EndorsementVerdict,
-) -> Result<Response, AppError> {
+    user: User,
+    endorsement: Endorsement,
+    gift_name: String,
+}
+
+async fn load_endorsement_decision(
+    state: &AppState,
+    jar: CookieJar,
+    id: &str,
+    csrf: &str,
+) -> Result<EndorsementDecision, Response> {
     let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/inbox")));
+    if !session.check_csrf(csrf) {
+        return Err(with_cookie(jar, fail_csrf("/inbox")));
     }
     let user = match require_user(&state.db, &session).await {
         Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+        Err(response) => return Err(with_cookie(jar, response)),
     };
-    let Some(endorsement) = state.db.endorsement(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err("/inbox", "not_found")));
+    let Some(endorsement) = state
+        .db
+        .endorsement(id)
+        .await
+        .map_err(|error| AppError::from(error).into_response())?
+    else {
+        return Err(with_cookie(jar, redirect_err("/inbox", "not_found")));
     };
-    let gift_name =
-        gift_name_or_default(state.db.gift(&endorsement.gift_id).await?.map(|g| g.name));
-    let effect = match verdict {
-        EndorsementVerdict::Wear => accept_endorsement(&user, &endorsement, &gift_name),
-        EndorsementVerdict::Decline => decline_endorsement(&user, &endorsement, &gift_name),
-    };
-    let effect = match effect {
-        Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err("/inbox", error))),
-    };
-    state.db.apply(&effect).await?;
-    Ok(with_cookie(
+    let gift_name = gift_name_or_default(
+        state
+            .db
+            .gift(&endorsement.gift_id)
+            .await
+            .map_err(|error| AppError::from(error).into_response())?
+            .map(|gift| gift.name),
+    );
+    Ok(EndorsementDecision {
         jar,
-        redirect_ok("/inbox", verdict.flash_code()),
-    ))
+        user,
+        endorsement,
+        gift_name,
+    })
 }
 
 pub async fn inbox(

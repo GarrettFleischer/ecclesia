@@ -1,7 +1,8 @@
 //! Named states that used to travel as boolean arguments.
 //!
 //! A caller names the situation (`EmailAvailability::Taken`) instead of
-//! passing `true` and hoping the next reader remembers what it meant.
+//! passing `true`. Two-way decisions are separate functions
+//! (`approve_membership` / `decline_membership`), not a switch on a flag.
 
 /// Whether an email may still take a seat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,58 +81,6 @@ impl DemoSeat {
             Some("0") => Self::Sealed,
             Some(value) if value.eq_ignore_ascii_case("false") => Self::Sealed,
             _ => Self::Open,
-        }
-    }
-
-    pub fn is_open(self) -> bool {
-        matches!(self, Self::Open)
-    }
-}
-
-/// Pastor decision on a membership request or invite.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MembershipDoor {
-    Open,
-    Shut,
-}
-
-impl MembershipDoor {
-    pub fn flash_code(self) -> &'static str {
-        match self {
-            Self::Open => "approved",
-            Self::Shut => "declined",
-        }
-    }
-}
-
-/// Author or governor decision on an offer to help.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OfferVerdict {
-    Receive,
-    Pass,
-}
-
-impl OfferVerdict {
-    pub fn flash_code(self) -> &'static str {
-        match self {
-            Self::Receive => "application_accepted",
-            Self::Pass => "declined",
-        }
-    }
-}
-
-/// The named person deciding whether to wear an endorsement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EndorsementVerdict {
-    Wear,
-    Decline,
-}
-
-impl EndorsementVerdict {
-    pub fn flash_code(self) -> &'static str {
-        match self {
-            Self::Wear => "endorsement_accepted",
-            Self::Decline => "endorsement_declined",
         }
     }
 }

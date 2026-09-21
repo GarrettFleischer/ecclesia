@@ -5,7 +5,7 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::db::Db;
 use crate::leaf::{
-    churches_with_counts, group_churches_by_place, visible_need_cards, Church, DomainError,
+    churches_with_counts, group_churches_by_place, visible_need_cards, Church, DomainError, Effect,
     Membership, NeedCard, User, Viewer,
 };
 use crate::sdk::session::{self, Session};
@@ -36,6 +36,22 @@ pub fn redirect_err(path: &str, code: &str) -> Redirect {
 
 pub fn leaf_err(path: &str, error: DomainError) -> Redirect {
     redirect_err(path, error.flash_code())
+}
+
+pub async fn apply_leaf_redirect(
+    db: &Db,
+    jar: CookieJar,
+    dest: &str,
+    effect: Result<Effect, DomainError>,
+    ok: &str,
+) -> Result<Response, AppError> {
+    match effect {
+        Ok(effect) => {
+            db.apply(&effect).await?;
+            Ok(with_cookie(jar, redirect_ok(dest, ok)))
+        }
+        Err(error) => Ok(with_cookie(jar, leaf_err(dest, error))),
+    }
 }
 
 pub fn with_cookie(jar: CookieJar, body: impl IntoResponse) -> Response {
