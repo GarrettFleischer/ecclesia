@@ -1,9 +1,12 @@
 //! Posting needs and receiving offers.
 
 use super::flags::{CatalogPresence, PriorOffer};
-use super::model::{Application, Church, DomainError, Effect, Need, Viewer, Write};
+use super::model::{
+    Application, ApplicationCard, ApplicationStatus, Church, DomainError, Effect, Need, NeedSight,
+    NeedStatus, Viewer, Write,
+};
 use super::notice::notice;
-use super::rules::can_apply;
+use super::rules::{can_apply, is_need_steward};
 use super::validate::{need_fields, note_field};
 
 /// US-NEED-01 — post a need from a household you already belong to.
@@ -31,7 +34,7 @@ pub fn post_need(
         body,
         gift_id: gift_id.map(ToOwned::to_owned),
         scope: parsed_scope.as_str().into(),
-        status: "open".into(),
+        status: NeedStatus::Open.as_str().into(),
         created_at: now,
     })))
 }
@@ -64,7 +67,7 @@ pub fn apply_to_need(
         need_id: need.id.clone(),
         user_id: viewer.user.id.clone(),
         message,
-        status: "pending".into(),
+        status: ApplicationStatus::Pending.as_str().into(),
         created_at: now,
     }))
     .with_notice(notice(
@@ -91,16 +94,28 @@ pub fn close_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> {
     }
     Ok(Effect::write(Write::SetNeedStatus {
         id: need.id.clone(),
-        status: "closed",
+        status: NeedStatus::Closed.as_str(),
     }))
 }
 
 fn require_need_steward(viewer: &Viewer, need: &Need) -> Result<(), DomainError> {
-    if viewer.user.id == need.author_id || viewer.can_govern(&need.church_id) {
+    if is_need_steward(viewer, need.sight()) {
         Ok(())
     } else {
-        Err(DomainError::NotGovernor)
+        Err(DomainError::NotSteward)
     }
+}
+
+/// Offers stay between the steward and the person who wrote them.
+pub fn visible_offers<'a>(
+    viewer: &'a Viewer,
+    need: NeedSight<'_>,
+    cards: &'a [ApplicationCard],
+) -> impl Iterator<Item = &'a ApplicationCard> + 'a {
+    let steward = is_need_steward(viewer, need);
+    cards
+        .iter()
+        .filter(move |card| steward || card.user_id == viewer.user.id)
 }
 
 /// US-NEED-04 — receive an offer.
@@ -111,8 +126,10 @@ pub fn accept_application(
 ) -> Result<Effect, DomainError> {
     require_need_steward(viewer, need)?;
     require_pending_application(application)?;
-    Ok(set_application(application, "accepted")
-        .with_notice(received_application_notice(need, application)))
+    Ok(
+        set_application(application, ApplicationStatus::Accepted.as_str())
+            .with_notice(received_application_notice(need, application)),
+    )
 }
 
 /// US-NEED-04 — decline an offer.
@@ -123,15 +140,16 @@ pub fn decline_application(
 ) -> Result<Effect, DomainError> {
     require_need_steward(viewer, need)?;
     require_pending_application(application)?;
-    Ok(set_application(application, "declined")
-        .with_notice(passed_application_notice(need, application)))
+    Ok(
+        set_application(application, ApplicationStatus::Declined.as_str())
+            .with_notice(passed_application_notice(need, application)),
+    )
 }
 
 fn require_pending_application(application: &Application) -> Result<(), DomainError> {
-    if application.status == "pending" {
-        Ok(())
-    } else {
-        Err(DomainError::NothingPending)
+    match application.status() {
+        Some(ApplicationStatus::Pending) => Ok(()),
+        _ => Err(DomainError::NothingPending),
     }
 }
 
@@ -240,5 +258,48 @@ mod tests {
         )
         .unwrap();
         assert_eq!(effect.notices[0].user_id, "miriam");
+    }
+
+    #[test]
+    fn us_need_06_offers_stay_with_steward_or_applicant() {
+        let author = viewer_of(
+            user("miriam"),
+            vec![membership("m0", "grace", "miriam", "owner", "active")],
+            vec![church("grace")],
+        );
+        let neighbor = viewer_of(
+            user("james"),
+            vec![membership("m1", "luke", "james", "member", "active")],
+            vec![church("luke")],
+        );
+        let applicant = viewer_of(
+            user("elena"),
+            vec![membership("m2", "mercy", "elena", "member", "active")],
+            vec![church("mercy")],
+        );
+        let need = Need {
+            id: "need_spanish".into(),
+            church_id: "grace".into(),
+            author_id: "miriam".into(),
+            title: "Spanish interpreter".into(),
+            body: "Thursday".into(),
+            gift_id: None,
+            scope: "neighboring".into(),
+            status: "open".into(),
+            created_at: "t0".into(),
+        };
+        let elena = ApplicationCard {
+            id: "a1".into(),
+            need_id: need.id.clone(),
+            user_id: "elena".into(),
+            user_name: "Elena".into(),
+            message: "I can hold Thursday.".into(),
+            status: "pending".into(),
+            created_at: "t1".into(),
+        };
+        let cards = [elena];
+        assert_eq!(visible_offers(&author, need.sight(), &cards).count(), 1);
+        assert_eq!(visible_offers(&applicant, need.sight(), &cards).count(), 1);
+        assert_eq!(visible_offers(&neighbor, need.sight(), &cards).count(), 0);
     }
 }

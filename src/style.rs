@@ -44,6 +44,21 @@ mod tests {
     }
 
     #[test]
+    fn us_leaf_01_leaves_do_not_do_io() {
+        let mut offenders = Vec::new();
+        each_src_line(|path, index, line| {
+            if leaf_does_io(path, line) {
+                offenders.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+            }
+        });
+        assert!(
+            offenders.is_empty(),
+            "leaves take values and return Effect; I/O lives in the skin:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    #[test]
     fn us_perf_01_src_does_not_clone_collections_to_reiterate() {
         let mut offenders = Vec::new();
         each_src_line(|path, index, line| {
@@ -152,6 +167,36 @@ mod tests {
             return false;
         }
         named_bool_argument(trimmed)
+    }
+
+    fn leaf_does_io(path: &Path, line: &str) -> bool {
+        if !path_is_leaf(path) {
+            return false;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.starts_with("///") || trimmed.starts_with("//!") {
+            return false;
+        }
+        for needle in [
+            "sqlx::query",
+            "crate::db",
+            "crate::http",
+            "crate::sdk",
+            "std::env",
+            "tokio::",
+            "Uuid::",
+            "now_iso(",
+            "new_id(",
+        ] {
+            if trimmed.contains(needle) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn path_is_leaf(path: &Path) -> bool {
+        path.components().any(|part| part.as_os_str() == "leaf")
     }
 
     fn line_clones_a_collection(path: &Path, line: &str) -> bool {

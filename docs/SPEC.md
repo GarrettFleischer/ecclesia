@@ -29,7 +29,8 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 | US-NEED-02 | I can apply to a need I am allowed to see. The author is notified. I cannot apply to my own. | `apply_to_need` | `us_need_02_*`, HTTP |
 | US-NEED-03 | The author or a governor can close a need. | `close_need` | leaf |
 | US-NEED-04 | The author or a governor can receive or decline an offer. | `decide_application` | leaf |
-| US-NEED-05 | Church / neighboring / body visibility. Pending members are not yet in the body. | `can_view_need`, `visible_need_cards` | `us_need_05_*`, HTTP |
+| US-NEED-05 | Church / neighboring / body visibility. Pending members are not yet in the body. | `can_view_need`, `visible_need_cards`, `require_need_view` | `us_need_05_*`, HTTP |
+| US-NEED-06 | Offer messages are visible to the author or pastor, and to the person who wrote the offer. | `visible_offers` | `us_need_06_*` |
 
 ## Gifts and endorsements
 
@@ -61,3 +62,4 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 | US-SEC-01 | A session cookie is HMAC-signed. Tampering is rejected. | `sdk::session` | `us_sec_01_*` |
 | US-SEC-02 | Every POST carries a CSRF token bound to the session. | session + HTTP | `us_sec_02_*` |
 | US-PROSE-01 | User-facing copy follows [PROSE.md](PROSE.md). | `style` | `us_prose_01` |
+| US-LEAF-01 | Leaves do no I/O. | `style` | `us_leaf_01` |

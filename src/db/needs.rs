@@ -1,6 +1,42 @@
 use super::Db;
 use crate::leaf::{Application, ApplicationCard, Need, NeedCard};
 
+const NEED_CARD_BY_ID: &str = r#"
+        SELECT n.id, n.church_id, c.name AS church_name, c.city AS church_city, c.region AS church_region,
+               n.author_id, u.name AS author_name, n.title, n.body, n.gift_id, g.name AS gift_name,
+               n.scope, n.status, n.created_at
+        FROM needs n
+        JOIN churches c ON c.id = n.church_id
+        JOIN users u ON u.id = n.author_id
+        LEFT JOIN gifts g ON g.id = n.gift_id
+        WHERE n.id = ?
+        ORDER BY n.created_at DESC
+        "#;
+
+const NEED_CARD_OPEN: &str = r#"
+        SELECT n.id, n.church_id, c.name AS church_name, c.city AS church_city, c.region AS church_region,
+               n.author_id, u.name AS author_name, n.title, n.body, n.gift_id, g.name AS gift_name,
+               n.scope, n.status, n.created_at
+        FROM needs n
+        JOIN churches c ON c.id = n.church_id
+        JOIN users u ON u.id = n.author_id
+        LEFT JOIN gifts g ON g.id = n.gift_id
+        WHERE n.status = 'open'
+        ORDER BY n.created_at DESC
+        "#;
+
+const NEED_CARD_CHURCH: &str = r#"
+        SELECT n.id, n.church_id, c.name AS church_name, c.city AS church_city, c.region AS church_region,
+               n.author_id, u.name AS author_name, n.title, n.body, n.gift_id, g.name AS gift_name,
+               n.scope, n.status, n.created_at
+        FROM needs n
+        JOIN churches c ON c.id = n.church_id
+        JOIN users u ON u.id = n.author_id
+        LEFT JOIN gifts g ON g.id = n.gift_id
+        WHERE n.church_id = ?
+        ORDER BY n.created_at DESC
+        "#;
+
 impl Db {
     pub async fn need(&self, id: &str) -> anyhow::Result<Option<Need>> {
         Ok(
@@ -12,34 +48,23 @@ impl Db {
     }
 
     pub async fn need_card(&self, id: &str) -> anyhow::Result<Option<NeedCard>> {
-        Ok(sqlx::query_as::<_, NeedCard>(&need_card_sql("n.id = ?"))
+        Ok(sqlx::query_as::<_, NeedCard>(NEED_CARD_BY_ID)
             .bind(id)
             .fetch_optional(&self.pool)
             .await?)
     }
 
-    pub async fn all_need_cards(&self) -> anyhow::Result<Vec<NeedCard>> {
-        Ok(sqlx::query_as::<_, NeedCard>(&need_card_sql("1 = 1"))
+    pub async fn open_need_cards(&self) -> anyhow::Result<Vec<NeedCard>> {
+        Ok(sqlx::query_as::<_, NeedCard>(NEED_CARD_OPEN)
             .fetch_all(&self.pool)
             .await?)
     }
 
     pub async fn church_need_cards(&self, church_id: &str) -> anyhow::Result<Vec<NeedCard>> {
-        Ok(
-            sqlx::query_as::<_, NeedCard>(&need_card_sql("n.church_id = ?"))
-                .bind(church_id)
-                .fetch_all(&self.pool)
-                .await?,
-        )
-    }
-
-    pub async fn set_need_status(&self, id: &str, status: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE needs SET status = ? WHERE id = ?")
-            .bind(status)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+        Ok(sqlx::query_as::<_, NeedCard>(NEED_CARD_CHURCH)
+            .bind(church_id)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     pub async fn applications_for_need(
@@ -82,29 +107,4 @@ impl Db {
         .fetch_optional(&self.pool)
         .await?)
     }
-
-    pub async fn set_application_status(&self, id: &str, status: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE applications SET status = ? WHERE id = ?")
-            .bind(status)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-}
-
-fn need_card_sql(filter: &str) -> String {
-    format!(
-        r#"
-        SELECT n.id, n.church_id, c.name AS church_name, c.city AS church_city, c.region AS church_region,
-               n.author_id, u.name AS author_name, n.title, n.body, n.gift_id, g.name AS gift_name,
-               n.scope, n.status, n.created_at
-        FROM needs n
-        JOIN churches c ON c.id = n.church_id
-        JOIN users u ON u.id = n.author_id
-        LEFT JOIN gifts g ON g.id = n.gift_id
-        WHERE {filter}
-        ORDER BY n.created_at DESC
-        "#
-    )
 }

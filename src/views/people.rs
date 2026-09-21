@@ -16,7 +16,7 @@ use super::layout::{csrf_input, first_name, page, Nav};
 pub fn member_show(
     viewer: &Viewer,
     person: &User,
-    churches: &[(Church, &Membership)],
+    churches: &[(&Church, &Membership)],
     gifts: &[MemberGift],
     endorsements: &[EndorsementCard],
     declined: &[EndorsementCard],
@@ -67,7 +67,7 @@ fn bio_lede(person: &User) -> Markup {
     html! { p class="lede" { (person.bio) } }
 }
 
-fn households(churches: &[(Church, &Membership)]) -> Markup {
+fn households(churches: &[(&Church, &Membership)]) -> Markup {
     if churches.is_empty() {
         return html! { p class="muted" { "None yet." } };
     }
@@ -247,7 +247,7 @@ pub fn me(
     viewer: &Viewer,
     gifts: &[MemberGift],
     catalog: &[Gift],
-    memberships: &[(Church, &Membership)],
+    memberships: &[(&Church, &Membership)],
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
@@ -321,7 +321,7 @@ fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
     }
 }
 
-fn my_churches(memberships: &[(Church, &Membership)]) -> Markup {
+fn my_churches(memberships: &[(&Church, &Membership)]) -> Markup {
     if memberships.is_empty() {
         return html! {
             p class="muted" { "None yet." }

@@ -1,6 +1,8 @@
 use maud::{html, Markup};
 
-use crate::leaf::{ApplicationCard, Church, DomainError, Gift, NeedCard, OfferState, Viewer};
+use crate::leaf::{
+    is_need_steward, ApplicationCard, Church, DomainError, Gift, NeedCard, OfferState, Viewer,
+};
 
 use super::cards::{application_cards, church_options, gift_options, scope_label, StewardView};
 use super::flash::Flash;
@@ -85,7 +87,7 @@ pub fn need_show(
     viewer: &Viewer,
     need: &NeedCard,
     church: &Church,
-    applications: &[ApplicationCard],
+    applications: &[&ApplicationCard],
     can_help: Result<(), DomainError>,
     offer: OfferState,
     unread: i64,
@@ -126,7 +128,7 @@ pub fn need_show(
 }
 
 fn steward_of(viewer: &Viewer, need: &NeedCard) -> StewardView {
-    if viewer.user.id == need.author_id || viewer.can_govern(&need.church_id) {
+    if is_need_steward(viewer, need.sight()) {
         StewardView::Steward
     } else {
         StewardView::Guest
@@ -196,7 +198,7 @@ fn close_form(need: &NeedCard, steward: StewardView, csrf: &str) -> Markup {
     }
 }
 
-fn who_offered(applications: &[ApplicationCard], steward: StewardView, csrf: &str) -> Markup {
+fn who_offered(applications: &[&ApplicationCard], steward: StewardView, csrf: &str) -> Markup {
     if applications.is_empty() {
         return html! {
             div class="empty" { p { "No offers yet." } }
@@ -204,7 +206,7 @@ fn who_offered(applications: &[ApplicationCard], steward: StewardView, csrf: &st
     }
     html! {
         div class="stack" {
-            (application_cards(applications, steward, csrf))
+            (application_cards(applications.iter().copied(), steward, csrf))
         }
     }
 }

@@ -48,13 +48,68 @@ pub struct Need {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeedStatus {
+    Open,
+    Closed,
+}
+
+impl NeedStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "open" => Some(Self::Open),
+            "closed" => Some(Self::Closed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationStatus {
+    Pending,
+    Accepted,
+    Declined,
+}
+
+impl ApplicationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "accepted" => Some(Self::Accepted),
+            "declined" => Some(Self::Declined),
+            _ => None,
+        }
+    }
+}
+
 impl Need {
     pub fn scope(&self) -> Option<NeedScope> {
         NeedScope::parse(&self.scope)
     }
 
+    pub fn status(&self) -> Option<NeedStatus> {
+        NeedStatus::parse(&self.status)
+    }
+
     pub fn is_open(&self) -> bool {
-        self.status == "open"
+        self.status() == Some(NeedStatus::Open)
     }
 
     pub fn sight(&self) -> NeedSight<'_> {
@@ -78,7 +133,7 @@ pub struct NeedSight<'a> {
 
 impl NeedSight<'_> {
     pub fn is_open(self) -> bool {
-        self.status == "open"
+        NeedStatus::parse(self.status) == Some(NeedStatus::Open)
     }
 }
 
@@ -105,8 +160,12 @@ impl NeedCard {
         NeedScope::parse(&self.scope)
     }
 
+    pub fn status(&self) -> Option<NeedStatus> {
+        NeedStatus::parse(&self.status)
+    }
+
     pub fn is_open(&self) -> bool {
-        self.status == "open"
+        self.status() == Some(NeedStatus::Open)
     }
 
     pub fn sight(&self) -> NeedSight<'_> {
@@ -138,4 +197,16 @@ pub struct ApplicationCard {
     pub message: String,
     pub status: String,
     pub created_at: String,
+}
+
+impl Application {
+    pub fn status(&self) -> Option<ApplicationStatus> {
+        ApplicationStatus::parse(&self.status)
+    }
+}
+
+impl ApplicationCard {
+    pub fn status(&self) -> Option<ApplicationStatus> {
+        ApplicationStatus::parse(&self.status)
+    }
 }

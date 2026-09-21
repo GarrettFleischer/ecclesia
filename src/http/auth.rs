@@ -2,14 +2,14 @@ use axum::extract::{Form, Query, State};
 use axum::response::{Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
-use crate::leaf::{may_impersonate, register, EmailAvailability};
+use crate::leaf::{may_impersonate, pair_memberships, register, EmailAvailability};
 use crate::sdk::clock::{new_id, now_iso};
 use crate::sdk::session::{self, Session};
 use crate::views;
 
 use super::context::{
-    bind_session, fail_csrf, html, leaf_err, load_user, memberships_with_churches, redirect_ok,
-    require_user, unread, viewer_for, with_cookie,
+    bind_session, fail_csrf, html, leaf_err, load_user, redirect_ok, signed_in, unread, viewer_for,
+    with_cookie,
 };
 use super::forms::{CsrfForm, FlashQuery, RegisterForm, SessionForm};
 use super::{AppError, AppState};
@@ -123,18 +123,18 @@ pub async fn home(
     jar: CookieJar,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
-    let pending = memberships_with_churches(&state.db, viewer.pending_memberships()).await?;
-    let needs = state.db.all_need_cards().await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
+    let pending: Vec<_> =
+        pair_memberships(viewer.pending_memberships(), &viewer.churches).collect();
+    let needs = state.db.open_need_cards().await?;
     let churches = state.db.churches().await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        jar,
+        signed.jar,
         html(views::home(
             &viewer,
             views::flash_from(flash.ok, flash.err),
@@ -142,7 +142,7 @@ pub async fn home(
             &needs,
             &churches,
             count,
-            &session.csrf,
+            &signed.session.csrf,
         )),
     ))
 }

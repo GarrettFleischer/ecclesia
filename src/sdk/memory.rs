@@ -145,7 +145,7 @@ fn push_notice(world: &mut MemoryWorld, notice: crate::leaf::NoticeDraft, now: &
         id: format!("n-{}", world.notifications.len()),
         user_id: notice.user_id,
         kind: notice.kind.into(),
-        title: notice.title,
+        title: notice.title.to_string(),
         body: notice.body.into(),
         href: notice.href,
         read: 0,

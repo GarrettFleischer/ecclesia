@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::household::{Church, Membership};
 use super::need::{Application, Need};
 use super::person::{Endorsement, User};
@@ -6,11 +8,11 @@ use super::person::{Endorsement, User};
 pub enum DomainError {
     #[error("You can't do that for yourself.")]
     SelfAction,
-    #[error("Join a church to apply.")]
+    #[error("Join a church to see this.")]
     NotInTheBody,
-    #[error("Only members of this church can apply.")]
+    #[error("This need is only open to its church.")]
     OutsideChurch,
-    #[error("Only churches in the same city or region can apply.")]
+    #[error("This need is only open to churches nearby.")]
     OutsideNeighborhood,
     #[error("This need is closed.")]
     NeedClosed,
@@ -20,6 +22,12 @@ pub enum DomainError {
     OwnNeed,
     #[error("Only the pastor can do that.")]
     NotGovernor,
+    #[error("Only the author or a pastor can do that.")]
+    NotSteward,
+    #[error("This endorsement is not yours.")]
+    NotRecipient,
+    #[error("This invite is not yours.")]
+    NotInvitee,
     #[error("Nothing to decide.")]
     NothingPending,
     #[error("You're already in this church.")]
@@ -50,6 +58,8 @@ impl DomainError {
             Self::AlreadyApplied | Self::AlreadyMember | Self::DuplicateEndorsement => "already",
             Self::OwnNeed => "own_need",
             Self::NotGovernor => "forbidden",
+            Self::NotSteward => "steward",
+            Self::NotRecipient | Self::NotInvitee => "not_yours",
             Self::NothingPending => "pending",
             Self::InvalidInput => "missing",
             Self::InvalidEmail => "bad_email",
@@ -65,7 +75,7 @@ impl DomainError {
 pub struct NoticeDraft {
     pub user_id: String,
     pub kind: &'static str,
-    pub title: String,
+    pub title: Arc<str>,
     pub body: &'static str,
     pub href: String,
 }

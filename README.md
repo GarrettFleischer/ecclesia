@@ -2,7 +2,7 @@
 
 Ask for help. Offer yours.
 
-A church posts a need. People who can help say so. Nearby churches see those needs too. Pastors approve who joins. Anyone can endorse a skill they have seen, even one the person never claimed. The note stays private until they publish it.
+A church posts a need. People who can help say so. Nearby churches see those needs too. Pastors approve who joins. Anyone can endorse a skill they have seen, even one the person never claimed. The note stays private until they accept it.
 
 ## Run it
 
@@ -42,6 +42,7 @@ Invite codes: `grace-k2m9`, `luke-p4r1`, `mercy-n8q2`.
 
 - How to write copy: [docs/PROSE.md](docs/PROSE.md)
 - User stories: [docs/SPEC.md](docs/SPEC.md)
+- Leaves and honest functions: [docs/LEAVES.md](docs/LEAVES.md)
 - Leaves and SDK: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Sessions and CSRF: [docs/SECURITY.md](docs/SECURITY.md)
 - iOS and Android: [docs/MOBILE.md](docs/MOBILE.md)

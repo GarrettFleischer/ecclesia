@@ -3,8 +3,9 @@
 use maud::{html, Markup};
 
 use crate::leaf::{
-    ApplicationCard, Church, ChurchCard, ChurchMember, EndorsementCard, Gift, MemberGift,
-    Membership, NeedCard, NeedScope, Notification, PlaceGroup, User, Viewer,
+    ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchMember, EndorsementCard, Gift,
+    MemberGift, Membership, MembershipStatus, NeedCard, NeedScope, Notification, PlaceGroup, User,
+    Viewer,
 };
 
 use super::layout::{csrf_input, initials};
@@ -91,7 +92,7 @@ fn persona_line(user: &User) -> &'static str {
     }
 }
 
-pub fn pending_door_cards(pending: &[(&Membership, Church)], csrf: &str) -> Markup {
+pub fn pending_door_cards(pending: &[(&Church, &Membership)], csrf: &str) -> Markup {
     html! {
         @for pair in pending {
             (pending_door_card(pair, csrf))
@@ -99,11 +100,11 @@ pub fn pending_door_cards(pending: &[(&Membership, Church)], csrf: &str) -> Mark
     }
 }
 
-fn pending_door_card(pair: &(&Membership, Church), csrf: &str) -> Markup {
-    let (membership, church) = pair;
+fn pending_door_card(pair: &(&Church, &Membership), csrf: &str) -> Markup {
+    let (church, membership) = pair;
     html! {
         article class="card" {
-            @if membership.status == "pending_request" {
+            @if membership.status() == Some(MembershipStatus::PendingRequest) {
                 p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } ". The pastor will approve or decline." }
             } @else {
                 p { (church.name) " invited you." }
@@ -152,7 +153,7 @@ fn pending_member_card(member: &ChurchMember, csrf: &str) -> Markup {
         article class="card" {
             a href={ "/members/" (member.user_id) } { strong { (member.name) } }
             p class="muted" { (pending_member_line(member)) }
-            @if member.status == "pending_request" {
+            @if member.status() == Some(MembershipStatus::PendingRequest) {
                 div class="row" {
                     form method="post" action={ "/memberships/" (member.membership_id) "/approve" } {
                         (csrf_input(csrf))
@@ -169,7 +170,7 @@ fn pending_member_card(member: &ChurchMember, csrf: &str) -> Markup {
 }
 
 fn pending_member_line(member: &ChurchMember) -> &'static str {
-    if member.status == "pending_request" {
+    if member.status() == Some(MembershipStatus::PendingRequest) {
         "Asked to join"
     } else {
         "Invited"
@@ -177,16 +178,12 @@ fn pending_member_line(member: &ChurchMember) -> &'static str {
 }
 
 pub fn pending_people(members: &[ChurchMember]) -> impl Iterator<Item = &ChurchMember> {
-    members.iter().filter(|member| is_pending_member(member))
-}
-
-fn is_pending_member(member: &ChurchMember) -> bool {
-    matches!(member.status.as_str(), "pending_request" | "pending_invite")
+    members.iter().filter(|member| member.is_pending())
 }
 
 pub fn active_member_items(members: &[ChurchMember]) -> Markup {
     html! {
-        @for member in members.iter().filter(|member| member.status == "active") {
+        @for member in members.iter().filter(|member| member.is_active()) {
             (active_member_item(member))
         }
     }
@@ -202,7 +199,7 @@ fn active_member_item(member: &ChurchMember) -> Markup {
 }
 
 pub fn has_active_member(members: &[ChurchMember]) -> bool {
-    members.iter().any(|member| member.status == "active")
+    members.iter().any(|member| member.is_active())
 }
 
 pub fn church_options<'a>(
@@ -242,8 +239,8 @@ pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift]) -> Markup {
     }
 }
 
-pub fn application_cards(
-    applications: &[ApplicationCard],
+pub fn application_cards<'a>(
+    applications: impl IntoIterator<Item = &'a ApplicationCard>,
     steward: StewardView,
     csrf: &str,
 ) -> Markup {
@@ -266,7 +263,9 @@ fn application_card(application: &ApplicationCard, steward: StewardView, csrf: &
             a href={ "/members/" (application.user_id) } { strong { (application.user_name) } }
             p { (application.message) }
             p class="meta" { (application.status) }
-            @if matches!(steward, StewardView::Steward) && application.status == "pending" {
+            @if matches!(steward, StewardView::Steward)
+                && application.status() == Some(ApplicationStatus::Pending)
+            {
                 (application_verdict_row(application, csrf))
             }
         }
@@ -288,7 +287,7 @@ fn application_verdict_row(application: &ApplicationCard, csrf: &str) -> Markup 
     }
 }
 
-pub fn household_items(churches: &[(Church, &Membership)]) -> Markup {
+pub fn household_items(churches: &[(&Church, &Membership)]) -> Markup {
     html! {
         @for pair in churches {
             (household_item(pair))
@@ -296,7 +295,7 @@ pub fn household_items(churches: &[(Church, &Membership)]) -> Markup {
     }
 }
 
-fn household_item(pair: &(Church, &Membership)) -> Markup {
+fn household_item(pair: &(&Church, &Membership)) -> Markup {
     let (church, membership) = pair;
     html! {
         li {

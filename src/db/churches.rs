@@ -76,13 +76,16 @@ impl Db {
         .await?)
     }
 
-    pub async fn set_membership_status(&self, id: &str, status: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE memberships SET status = ? WHERE id = ?")
-            .bind(status)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+    pub async fn churches_with_ids(&self, ids: &[&str]) -> anyhow::Result<Vec<Church>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = churches_in_sql(ids.len());
+        let mut query = sqlx::query_as::<_, Church>(&sql);
+        for id in ids {
+            query = query.bind(*id);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn church_members(&self, church_id: &str) -> anyhow::Result<Vec<ChurchMember>> {
@@ -128,6 +131,22 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
         Ok(count_rows(rows))
+    }
+}
+
+fn churches_in_sql(count: usize) -> String {
+    let mut sql = String::from("SELECT * FROM churches WHERE id IN (");
+    append_placeholders(&mut sql, count);
+    sql.push(')');
+    sql
+}
+
+fn append_placeholders(sql: &mut String, count: usize) {
+    for index in 0..count {
+        if index > 0 {
+            sql.push(',');
+        }
+        sql.push('?');
     }
 }
 

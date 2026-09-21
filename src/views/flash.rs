@@ -64,6 +64,8 @@ fn flash_err(code: &str) -> String {
         "auth" => "Sign in first.".into(),
         "not_found" => "Not found.".into(),
         "forbidden" => "Only the pastor can do that.".into(),
+        "steward" => "Author or pastor only.".into(),
+        "not_yours" => "Not yours.".into(),
         "self" => "You can't do that for yourself.".into(),
         "already" => "Already done.".into(),
         "not_member" => "Join a church first.".into(),

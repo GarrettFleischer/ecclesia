@@ -98,7 +98,43 @@ impl Membership {
         self.status() == Some(MembershipStatus::Active)
     }
 
+    pub fn is_pending(&self) -> bool {
+        matches!(
+            self.status(),
+            Some(MembershipStatus::PendingRequest | MembershipStatus::PendingInvite)
+        )
+    }
+
     pub fn can_govern(&self) -> bool {
         self.is_active() && self.role().is_some_and(MembershipRole::can_govern)
     }
+}
+
+/// Pair each membership with the church it names. Both sides stay borrowed.
+pub fn pair_memberships<'a>(
+    memberships: impl IntoIterator<Item = &'a Membership>,
+    churches: &'a [Church],
+) -> impl Iterator<Item = (&'a Church, &'a Membership)> {
+    memberships.into_iter().filter_map(move |membership| {
+        church_named(churches, &membership.church_id).map(|church| (church, membership))
+    })
+}
+
+fn church_named<'a>(churches: &'a [Church], id: &str) -> Option<&'a Church> {
+    churches.iter().find(|church| church.id == id)
+}
+
+pub fn unique_church_ids(memberships: &[Membership]) -> Vec<&str> {
+    let mut ids = Vec::new();
+    for membership in memberships {
+        push_unique_id(&mut ids, membership.church_id.as_str());
+    }
+    ids
+}
+
+fn push_unique_id<'a>(ids: &mut Vec<&'a str>, id: &'a str) {
+    if ids.iter().any(|existing| *existing == id) {
+        return;
+    }
+    ids.push(id);
 }

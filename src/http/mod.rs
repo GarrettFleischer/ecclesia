@@ -34,6 +34,8 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Persist the effect, then fan notices to installed phones.
+    /// Push failure does not roll back the write.
     pub(crate) async fn commit(&self, effect: &Effect) -> Result<(), AppError> {
         self.db.apply(effect).await?;
         self.push.dispatch(&self.db, &effect.notices).await;
@@ -41,7 +43,7 @@ impl AppState {
     }
 }
 
-struct AppError(anyhow::Error);
+pub(crate) struct AppError(anyhow::Error);
 
 impl<E> From<E> for AppError
 where

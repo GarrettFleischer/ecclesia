@@ -104,7 +104,7 @@ fn read_pem(value: &str) -> String {
 
 async fn send_notice(hub: &PushHub, db: &Db, notice: &NoticeDraft) {
     let payload = serde_json::json!({
-        "title": notice.title,
+        "title": notice.title.as_ref(),
         "body": notice.body,
         "url": notice.href,
     });
@@ -183,7 +183,7 @@ async fn send_fcm(
     let body = serde_json::json!({
         "to": device.token,
         "notification": {
-            "title": notice.title,
+            "title": notice.title.as_ref(),
             "body": notice.body,
         },
         "data": {

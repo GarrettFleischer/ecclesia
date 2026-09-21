@@ -170,13 +170,27 @@ fn declined_membership_notice(target: &Membership, church: &Church) -> super::mo
 
 /// US-MEM-05 — the invited person accepts.
 pub fn accept_invite(actor: &User, target: &Membership) -> Result<Effect, DomainError> {
-    if target.user_id != actor.id || target.status() != Some(MembershipStatus::PendingInvite) {
-        return Err(DomainError::NotGovernor);
-    }
+    require_invitee(actor, target)?;
+    require_pending_invite(target)?;
     Ok(Effect::write(Write::SetMembershipStatus {
         id: target.id.clone(),
         status: MembershipStatus::Active.as_str(),
     }))
+}
+
+fn require_invitee(actor: &User, target: &Membership) -> Result<(), DomainError> {
+    if target.user_id == actor.id {
+        Ok(())
+    } else {
+        Err(DomainError::NotInvitee)
+    }
+}
+
+fn require_pending_invite(target: &Membership) -> Result<(), DomainError> {
+    match target.status() {
+        Some(MembershipStatus::PendingInvite) => Ok(()),
+        _ => Err(DomainError::NothingPending),
+    }
 }
 
 /// US-CH-01 — plant a household. The planter becomes owner.
@@ -338,7 +352,7 @@ mod tests {
         let target = membership("m1", "grace", "peter", "member", "pending_invite");
         assert_eq!(
             accept_invite(&user("miriam"), &target),
-            Err(DomainError::NotGovernor)
+            Err(DomainError::NotInvitee)
         );
         let effect = accept_invite(&user("peter"), &target).unwrap();
         match effect.writes[0] {

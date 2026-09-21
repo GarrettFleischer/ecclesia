@@ -5,12 +5,18 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::db::Db;
 use crate::leaf::{
-    churches_with_counts, group_churches_by_place, Church, ChurchCard, DomainError, Effect,
-    Membership, PlaceGroup, User, Viewer,
+    churches_with_counts, group_churches_by_place, unique_church_ids, Church, ChurchCard,
+    DomainError, Effect, Membership, PlaceGroup, User, Viewer,
 };
 use crate::sdk::session::{self, Session};
 
 use super::AppError;
+
+pub struct SignedIn {
+    pub session: Session,
+    pub jar: CookieJar,
+    pub user: User,
+}
 
 pub fn html(markup: maud::Markup) -> Html<String> {
     Html(markup.into_string())
@@ -20,6 +26,27 @@ pub fn bind_session(jar: CookieJar, secret: &str) -> (Session, CookieJar) {
     let session = session::from_jar(secret, &jar);
     let jar = session::put(jar, secret, &session);
     (session, jar)
+}
+
+pub async fn signed_in(state: &super::AppState, jar: CookieJar) -> Result<SignedIn, Response> {
+    let (session, jar) = bind_session(jar, &state.secret);
+    match require_user(&state.db, &session).await {
+        Ok(user) => Ok(SignedIn { session, jar, user }),
+        Err(response) => Err(with_cookie(jar, response)),
+    }
+}
+
+pub async fn signed_form(
+    state: &super::AppState,
+    jar: CookieJar,
+    csrf: &str,
+    fail_path: &str,
+) -> Result<SignedIn, Response> {
+    let signed = signed_in(state, jar).await?;
+    if !signed.session.check_csrf(csrf) {
+        return Err(with_cookie(signed.jar, fail_csrf(fail_path)));
+    }
+    Ok(signed)
 }
 
 pub fn fail_csrf(path: &str) -> Redirect {
@@ -89,41 +116,12 @@ pub async fn unread(db: &Db, user_id: &str) -> Result<i64, AppError> {
     Ok(db.unread_count(user_id).await?)
 }
 
-pub async fn memberships_with_churches<'a>(
+pub async fn churches_for_memberships(
     db: &Db,
-    memberships: impl IntoIterator<Item = &'a Membership>,
-) -> Result<Vec<(&'a Membership, Church)>, AppError> {
-    let mut rows = Vec::new();
-    for membership in memberships {
-        append_church_if_present(db, membership, &mut rows).await?;
-    }
-    Ok(rows)
-}
-
-async fn append_church_if_present<'a>(
-    db: &Db,
-    membership: &'a Membership,
-    rows: &mut Vec<(&'a Membership, Church)>,
-) -> Result<(), AppError> {
-    let Some(church) = db.church(&membership.church_id).await? else {
-        return Ok(());
-    };
-    rows.push((membership, church));
-    Ok(())
-}
-
-pub async fn churches_paired_with<'a>(
-    db: &Db,
-    memberships: impl IntoIterator<Item = &'a Membership>,
-) -> Result<Vec<(Church, &'a Membership)>, AppError> {
-    let rows = memberships_with_churches(db, memberships).await?;
-    Ok(swap_membership_pairs(rows))
-}
-
-fn swap_membership_pairs<'a>(rows: Vec<(&'a Membership, Church)>) -> Vec<(Church, &'a Membership)> {
-    rows.into_iter()
-        .map(|(membership, church)| (church, membership))
-        .collect()
+    memberships: &[Membership],
+) -> Result<Vec<Church>, AppError> {
+    let ids = unique_church_ids(memberships);
+    Ok(db.churches_with_ids(&ids).await?)
 }
 
 pub async fn church_directory(db: &Db) -> Result<Vec<ChurchCard>, AppError> {

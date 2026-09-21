@@ -9,7 +9,7 @@ use super::layout::{page, Nav};
 pub fn home(
     viewer: &Viewer,
     flash: Option<Flash>,
-    pending: &[(&Membership, Church)],
+    pending: &[(&Church, &Membership)],
     needs: &[NeedCard],
     churches: &[Church],
     unread: i64,
@@ -36,7 +36,7 @@ pub fn home(
     )
 }
 
-fn no_church_yet(viewer: &Viewer, pending: &[(&Membership, Church)]) -> Markup {
+fn no_church_yet(viewer: &Viewer, pending: &[(&Church, &Membership)]) -> Markup {
     if viewer.is_active_anywhere() || !pending.is_empty() {
         return html! {};
     }
@@ -48,7 +48,7 @@ fn no_church_yet(viewer: &Viewer, pending: &[(&Membership, Church)]) -> Markup {
     }
 }
 
-fn pending_section(pending: &[(&Membership, Church)], csrf: &str) -> Markup {
+fn pending_section(pending: &[(&Church, &Membership)], csrf: &str) -> Markup {
     if pending.is_empty() {
         return html! {};
     }

@@ -3,15 +3,16 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
-    accept_application, apply_to_need, close_need, decline_application, post_need, Application,
-    CatalogPresence, Need, OfferState, PriorOffer, Viewer,
+    accept_application, apply_to_need, close_need, decline_application, post_need,
+    require_need_view, visible_offers, Application, CatalogPresence, Need, OfferState, PriorOffer,
+    Viewer,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
 
 use super::context::{
-    apply_leaf_redirect, bind_session, fail_csrf, html, leaf_err, optional_gift_id, redirect_err,
-    redirect_ok, require_user, unread, viewer_for, with_cookie,
+    apply_leaf_redirect, html, leaf_err, optional_gift_id, redirect_err, redirect_ok, signed_form,
+    signed_in, unread, viewer_for, with_cookie,
 };
 use super::forms::{ApplyForm, CsrfForm, FlashQuery, NeedForm, NeedQuery};
 use super::{AppError, AppState};
@@ -22,23 +23,22 @@ pub async fn need_new(
     Query(query): Query<NeedQuery>,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let gifts = state.db.gifts().await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        jar,
+        signed.jar,
         html(views::need_new(
             &viewer,
             &gifts,
             query.church_id.as_deref(),
             count,
             views::flash_from(flash.ok, flash.err),
-            &session.csrf,
+            &signed.session.csrf,
         )),
     ))
 }
@@ -48,15 +48,11 @@ pub async fn create_need(
     jar: CookieJar,
     Form(form): Form<NeedForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/needs/new")));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, "/needs/new").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let gift = optional_gift_id(&form.gift_id);
     let presence = gift_presence(&state, gift).await?;
     let effect = match post_need(
@@ -71,14 +67,17 @@ pub async fn create_need(
         now_iso(),
     ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err("/needs/new", error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err("/needs/new", error))),
     };
     let Some(need_id) = effect.inserted_need_id() else {
-        return Ok(with_cookie(jar, redirect_err("/needs/new", "missing")));
+        return Ok(with_cookie(
+            signed.jar,
+            redirect_err("/needs/new", "missing"),
+        ));
     };
     let dest = format!("/needs/{need_id}");
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "need_posted")))
+    Ok(with_cookie(signed.jar, redirect_ok(&dest, "need_posted")))
 }
 
 async fn gift_presence(state: &AppState, gift: Option<&str>) -> Result<CatalogPresence, AppError> {
@@ -94,48 +93,46 @@ pub async fn need_show(
     Path(id): Path<String>,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let Some(card) = state.db.need_card(&id).await? else {
         return Ok(with_cookie(
-            jar,
+            signed.jar,
             html(views::error_page("We couldn't find that need.")),
         ));
     };
     let Some(church) = state.db.church(&card.church_id).await? else {
         return Ok(with_cookie(
-            jar,
+            signed.jar,
             html(views::error_page("We couldn't find that church.")),
         ));
     };
-    if !crate::leaf::can_view_need(&viewer, card.sight(), &church) {
+    if let Err(error) = require_need_view(&viewer, card.sight(), &church) {
         return Ok(with_cookie(
-            jar,
-            html(views::error_page(
-                "This need is only visible to its church.",
-            )),
+            signed.jar,
+            html(views::error_page(&error.to_string())),
         ));
     }
     let applications = state.db.applications_for_need(&card.id).await?;
+    let offers: Vec<_> = visible_offers(&viewer, card.sight(), &applications).collect();
     let offer = OfferState::of_existing(applications.iter().find(|a| a.user_id == viewer.user.id));
     let help = crate::leaf::can_apply(&viewer, card.sight(), &church);
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        jar,
+        signed.jar,
         html(views::need_show(
             &viewer,
             &card,
             &church,
-            &applications,
+            &offers,
             help,
             offer,
             count,
             views::flash_from(flash.ok, flash.err),
-            &session.csrf,
+            &signed.session.csrf,
         )),
     ))
 }
@@ -147,20 +144,16 @@ pub async fn apply_need(
     Form(form): Form<ApplyForm>,
 ) -> Result<Response, AppError> {
     let dest = format!("/needs/{id}");
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf(&dest)));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let Some(need) = state.db.need(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     let Some(church) = state.db.church(&need.church_id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     let prior =
         PriorOffer::of_existing(state.db.application_pair(&need.id, &viewer.user.id).await?);
@@ -174,10 +167,10 @@ pub async fn apply_need(
         now_iso(),
     ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "applied")))
+    Ok(with_cookie(signed.jar, redirect_ok(&dest, "applied")))
 }
 
 pub async fn close_need_http(
@@ -187,24 +180,20 @@ pub async fn close_need_http(
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
     let dest = format!("/needs/{id}");
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf(&dest)));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let Some(need) = state.db.need(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     let effect = match close_need(&viewer, &need) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "need_closed")))
+    Ok(with_cookie(signed.jar, redirect_ok(&dest, "need_closed")))
 }
 
 pub async fn accept_application_http(
@@ -261,12 +250,8 @@ async fn load_application_decision(
     id: &str,
     csrf: &str,
 ) -> Result<ApplicationDecision, Response> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Err(with_cookie(jar, response)),
-    };
-    let viewer = match viewer_for(&state.db, user).await {
+    let signed = signed_in(state, jar).await?;
+    let viewer = match viewer_for(&state.db, signed.user).await {
         Ok(viewer) => viewer,
         Err(error) => return Err(error.into_response()),
     };
@@ -276,11 +261,11 @@ async fn load_application_decision(
         .await
         .map_err(|error| AppError::from(error).into_response())?
     else {
-        return Err(with_cookie(jar, redirect_err("/home", "not_found")));
+        return Err(with_cookie(signed.jar, redirect_err("/home", "not_found")));
     };
     let dest = format!("/needs/{}", application.need_id);
-    if !session.check_csrf(csrf) {
-        return Err(with_cookie(jar, fail_csrf(&dest)));
+    if !signed.session.check_csrf(csrf) {
+        return Err(with_cookie(signed.jar, super::context::fail_csrf(&dest)));
     }
     let Some(need) = state
         .db
@@ -288,10 +273,10 @@ async fn load_application_decision(
         .await
         .map_err(|error| AppError::from(error).into_response())?
     else {
-        return Err(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Err(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     Ok(ApplicationDecision {
-        jar,
+        jar: signed.jar,
         viewer,
         need,
         application,

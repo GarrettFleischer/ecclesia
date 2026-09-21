@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 use std::path::PathBuf;
 
-use super::context::{bind_session, fail_csrf, require_user, with_cookie};
+use super::context::{signed_form, with_cookie};
 use super::forms::{PushDeviceForm, PushSubscribeForm, PushUnsubscribeForm};
 use super::{AppError, AppState};
 
@@ -44,19 +44,15 @@ pub async fn subscribe(
     jar: CookieJar,
     Form(form): Form<PushSubscribeForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/me")));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
     state
         .db
-        .upsert_push_subscription(&user.id, &form.endpoint, &form.p256dh, &form.auth)
+        .upsert_push_subscription(&signed.user.id, &form.endpoint, &form.p256dh, &form.auth)
         .await?;
-    Ok(with_cookie(jar, StatusCode::NO_CONTENT))
+    Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT))
 }
 
 pub async fn unsubscribe(
@@ -64,15 +60,12 @@ pub async fn unsubscribe(
     jar: CookieJar,
     Form(form): Form<PushUnsubscribeForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/me")));
-    }
-    if require_user(&state.db, &session).await.is_err() {
-        return Ok(with_cookie(jar, StatusCode::NO_CONTENT));
-    }
+    let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
     state.db.remove_push_subscription(&form.endpoint).await?;
-    Ok(with_cookie(jar, StatusCode::NO_CONTENT))
+    Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT))
 }
 
 pub async fn register_device(
@@ -80,17 +73,13 @@ pub async fn register_device(
     jar: CookieJar,
     Form(form): Form<PushDeviceForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/me")));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
     state
         .db
-        .upsert_push_device(&user.id, &form.token, &form.platform)
+        .upsert_push_device(&signed.user.id, &form.token, &form.platform)
         .await?;
-    Ok(with_cookie(jar, StatusCode::NO_CONTENT))
+    Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT))
 }

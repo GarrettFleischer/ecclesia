@@ -150,11 +150,28 @@ impl Viewer {
     }
 
     pub fn pending_memberships(&self) -> impl Iterator<Item = &Membership> {
-        self.memberships.iter().filter(|membership| {
-            matches!(
-                membership.status.as_str(),
-                "pending_request" | "pending_invite"
+        self.memberships
+            .iter()
+            .filter(|membership| membership.is_pending())
+    }
+}
+
+impl ChurchMember {
+    pub fn status(&self) -> Option<super::household::MembershipStatus> {
+        super::household::MembershipStatus::parse(&self.status)
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.status() == Some(super::household::MembershipStatus::Active)
+    }
+
+    pub fn is_pending(&self) -> bool {
+        matches!(
+            self.status(),
+            Some(
+                super::household::MembershipStatus::PendingRequest
+                    | super::household::MembershipStatus::PendingInvite
             )
-        })
+        )
     }
 }

@@ -7,8 +7,12 @@ pub fn churches_are_neighbors(a: &Church, b: &Church) -> bool {
         && (a.city.eq_ignore_ascii_case(&b.city) || a.region.eq_ignore_ascii_case(&b.region))
 }
 
+pub fn is_need_steward(viewer: &Viewer, need: NeedSight<'_>) -> bool {
+    viewer.user.id == need.author_id || viewer.can_govern(need.church_id)
+}
+
 pub fn can_view_need(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> bool {
-    if viewer.user.id == need.author_id || viewer.can_govern(need.church_id) {
+    if is_need_steward(viewer, need) {
         return true;
     }
     match need.scope {
@@ -42,6 +46,26 @@ pub fn can_apply(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> Resul
         return Err(DomainError::NotInTheBody);
     }
     Ok(())
+}
+
+pub fn require_need_view(
+    viewer: &Viewer,
+    need: NeedSight<'_>,
+    church: &Church,
+) -> Result<(), DomainError> {
+    if can_view_need(viewer, need, church) {
+        Ok(())
+    } else {
+        Err(need_hidden(need))
+    }
+}
+
+fn need_hidden(need: NeedSight<'_>) -> DomainError {
+    match need.scope {
+        Some(NeedScope::Church) => DomainError::OutsideChurch,
+        Some(NeedScope::Neighboring) => DomainError::OutsideNeighborhood,
+        _ => DomainError::NotInTheBody,
+    }
 }
 
 pub fn can_endorse(from_id: &str, to_id: &str) -> Result<(), DomainError> {

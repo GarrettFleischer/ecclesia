@@ -10,8 +10,8 @@ use crate::sdk::clock::{new_id, nonce4, now_iso};
 use crate::views;
 
 use super::context::{
-    apply_leaf_redirect, bind_session, church_directory, fail_csrf, governor_ids, html, leaf_err,
-    redirect_err, redirect_ok, require_user, unread, viewer_for, with_cookie,
+    apply_leaf_redirect, church_directory, governor_ids, html, leaf_err, redirect_err, redirect_ok,
+    signed_form, signed_in, unread, viewer_for, with_cookie,
 };
 use super::forms::{ChurchForm, CsrfForm, FlashQuery, InviteForm, RedeemForm};
 use super::{AppError, AppState};
@@ -21,22 +21,21 @@ pub async fn churches_index(
     jar: CookieJar,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let cards = church_directory(&state.db).await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        jar,
+        signed.jar,
         html(views::churches_index(
             &viewer,
             views::flash_from(flash.ok, flash.err),
             &cards,
             count,
-            &session.csrf,
+            &signed.session.csrf,
         )),
     ))
 }
@@ -46,20 +45,19 @@ pub async fn church_new(
     jar: CookieJar,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        jar,
+        signed.jar,
         html(views::church_new(
             &viewer,
             count,
             views::flash_from(flash.ok, flash.err),
-            &session.csrf,
+            &signed.session.csrf,
         )),
     ))
 }
@@ -69,16 +67,12 @@ pub async fn create_church(
     jar: CookieJar,
     Form(form): Form<ChurchForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/churches/new")));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, "/churches/new").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
     let effect = match plant_church(
-        &user,
+        &signed.user,
         &form.name,
         &form.city,
         &form.region,
@@ -90,14 +84,20 @@ pub async fn create_church(
         now_iso(),
     ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err("/churches/new", error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err("/churches/new", error))),
     };
     let Some(church_id) = effect.inserted_church_id() else {
-        return Ok(with_cookie(jar, redirect_err("/churches/new", "missing")));
+        return Ok(with_cookie(
+            signed.jar,
+            redirect_err("/churches/new", "missing"),
+        ));
     };
     let dest = format!("/churches/{church_id}");
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "church_planted")))
+    Ok(with_cookie(
+        signed.jar,
+        redirect_ok(&dest, "church_planted"),
+    ))
 }
 
 pub async fn church_show(
@@ -106,23 +106,22 @@ pub async fn church_show(
     Path(id): Path<String>,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
     let Some(church) = state.db.church(&id).await? else {
         return Ok(with_cookie(
-            jar,
+            signed.jar,
             html(views::error_page("We couldn't find that church.")),
         ));
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let members = state.db.church_members(&church.id).await?;
     let needs = state.db.church_need_cards(&church.id).await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
-        jar,
+        signed.jar,
         html(views::church_show(
             &viewer,
             &church,
@@ -130,7 +129,7 @@ pub async fn church_show(
             &needs,
             views::flash_from(flash.ok, flash.err),
             count,
-            &session.csrf,
+            &signed.session.csrf,
         )),
     ))
 }
@@ -142,21 +141,17 @@ pub async fn join_church(
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
     let dest = format!("/churches/{id}");
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf(&dest)));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
     let Some(church) = state.db.church(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
-    let existing = state.db.membership_pair(&id, &user.id).await?;
+    let existing = state.db.membership_pair(&id, &signed.user.id).await?;
     let governors = governor_ids(&state.db, &id).await?;
     let effect = match request_join(
-        &user,
+        &signed.user,
         &church,
         existing.as_ref(),
         &governors,
@@ -164,10 +159,13 @@ pub async fn join_church(
         now_iso(),
     ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "joined_request")))
+    Ok(with_cookie(
+        signed.jar,
+        redirect_ok(&dest, "joined_request"),
+    ))
 }
 
 pub async fn invite(
@@ -177,24 +175,20 @@ pub async fn invite(
     Form(form): Form<InviteForm>,
 ) -> Result<Response, AppError> {
     let dest = format!("/churches/{id}");
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf(&dest)));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    let viewer = viewer_for(&state.db, user).await?;
+    let viewer = viewer_for(&state.db, signed.user).await?;
     let Some(church) = state.db.church(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     let email = match parse_invite_email(&form.email) {
         Ok(email) => email,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     let Some(invitee) = state.db.user_by_email(&email).await? else {
-        return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     let existing = state.db.membership_pair(&id, &invitee.id).await?;
     let effect = match invite_member(
@@ -206,10 +200,10 @@ pub async fn invite(
         now_iso(),
     ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "invited")))
+    Ok(with_cookie(signed.jar, redirect_ok(&dest, "invited")))
 }
 
 pub async fn redeem(
@@ -217,27 +211,32 @@ pub async fn redeem(
     jar: CookieJar,
     Form(form): Form<RedeemForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/churches")));
-    }
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, "/churches").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
     let Some(church) = state.db.church_by_invite(&form.code).await? else {
-        return Ok(with_cookie(jar, redirect_err("/churches", "invite")));
+        return Ok(with_cookie(signed.jar, redirect_err("/churches", "invite")));
     };
-    let existing = state.db.membership_pair(&church.id, &user.id).await?;
+    let existing = state
+        .db
+        .membership_pair(&church.id, &signed.user.id)
+        .await?;
     let dest = format!("/churches/{}", church.id);
-    let effect = match redeem_invite(&user, &church, existing.as_ref(), new_id(), now_iso()) {
+    let effect = match redeem_invite(
+        &signed.user,
+        &church,
+        existing.as_ref(),
+        new_id(),
+        now_iso(),
+    ) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     if !effect.writes.is_empty() {
         state.commit(&effect).await?;
     }
-    Ok(with_cookie(jar, redirect_ok(&dest, "redeemed")))
+    Ok(with_cookie(signed.jar, redirect_ok(&dest, "redeemed")))
 }
 
 pub async fn approve_membership_http(
@@ -294,24 +293,20 @@ async fn load_membership_decision(
     id: &str,
     csrf: &str,
 ) -> Result<MembershipDecision, Response> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Err(with_cookie(jar, response)),
-    };
+    let signed = signed_in(state, jar).await?;
     let Some(target) = state
         .db
         .membership(id)
         .await
         .map_err(|error| AppError::from(error).into_response())?
     else {
-        return Err(with_cookie(jar, redirect_err("/home", "not_found")));
+        return Err(with_cookie(signed.jar, redirect_err("/home", "not_found")));
     };
     let dest = format!("/churches/{}", target.church_id);
-    if !session.check_csrf(csrf) {
-        return Err(with_cookie(jar, fail_csrf(&dest)));
+    if !signed.session.check_csrf(csrf) {
+        return Err(with_cookie(signed.jar, super::context::fail_csrf(&dest)));
     }
-    let viewer = viewer_for(&state.db, user)
+    let viewer = viewer_for(&state.db, signed.user)
         .await
         .map_err(|error| error.into_response())?;
     let Some(church) = state
@@ -320,10 +315,10 @@ async fn load_membership_decision(
         .await
         .map_err(|error| AppError::from(error).into_response())?
     else {
-        return Err(with_cookie(jar, redirect_err(&dest, "not_found")));
+        return Err(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
     };
     Ok(MembershipDecision {
-        jar,
+        jar: signed.jar,
         viewer,
         target,
         church,
@@ -337,22 +332,21 @@ pub async fn accept_invite_http(
     Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
-    let user = match require_user(&state.db, &session).await {
-        Ok(user) => user,
-        Err(response) => return Ok(with_cookie(jar, response)),
+    let signed = match signed_form(&state, jar, &form.csrf, "/home").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
     };
-    if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/home")));
-    }
     let Some(target) = state.db.membership(&id).await? else {
-        return Ok(with_cookie(jar, redirect_err("/home", "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_err("/home", "not_found")));
     };
     let dest = format!("/churches/{}", target.church_id);
-    let effect = match accept_invite(&user, &target) {
+    let effect = match accept_invite(&signed.user, &target) {
         Ok(effect) => effect,
-        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+        Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     state.commit(&effect).await?;
-    Ok(with_cookie(jar, redirect_ok(&dest, "invite_accepted")))
+    Ok(with_cookie(
+        signed.jar,
+        redirect_ok(&dest, "invite_accepted"),
+    ))
 }

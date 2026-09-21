@@ -76,12 +76,13 @@ pub fn endorse(
     refuse_waiting_endorsement(queue)?;
     let skill_name = skill_field(skill.display())?;
     let note = note_field(note)?;
+    let title = format!("{} endorsed you for {skill_name}", from.name);
     Ok(Effect::write(Write::InsertEndorsement(Endorsement {
         id,
         from_user_id: from.id.clone(),
         to_user_id: to.id.clone(),
         gift_id: skill.gift_id().into(),
-        skill: skill_name.clone(),
+        skill: skill_name,
         note,
         status: "pending".into(),
         created_at: now,
@@ -89,7 +90,7 @@ pub fn endorse(
     .with_notice(notice(
         &to.id,
         "endorsement",
-        format!("{} endorsed you for {skill_name}", from.name),
+        title,
         "Accept it from your inbox, or decline.",
         "/inbox".into(),
     )))
@@ -173,7 +174,7 @@ fn require_recipient(actor: &User, endorsement: &Endorsement) -> Result<(), Doma
     if endorsement.to_user_id == actor.id {
         Ok(())
     } else {
-        Err(DomainError::NotGovernor)
+        Err(DomainError::NotRecipient)
     }
 }
 
@@ -398,5 +399,14 @@ mod tests {
         assert_eq!(declined_visible_to("ruth", &cards).count(), 1);
         assert_eq!(declined_visible_to("james", &cards).count(), 1);
         assert_eq!(declined_visible_to("peter", &cards).count(), 0);
+    }
+
+    #[test]
+    fn us_end_02_only_the_named_person_can_accept() {
+        let endorsement = pending("Hospitality", "gift_hospitality");
+        assert_eq!(
+            accept_endorsement(&user("james"), &endorsement, GiftOnProfile::Absent),
+            Err(DomainError::NotRecipient)
+        );
     }
 }
