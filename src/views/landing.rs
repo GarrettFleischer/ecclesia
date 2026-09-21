@@ -5,7 +5,7 @@ use crate::leaf::{DemoSeat, User, VoiceKind};
 use super::cards::persona_grid;
 use super::draft::{RegisterDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, rewrite_row};
+use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row};
 
 pub fn landing(
     users: &[User],
@@ -30,8 +30,7 @@ pub fn landing(
                         path fill="#b1842c" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
                     }
                 }
-                h1 { "Ask for help. Offer yours." }
-                hr class="gold-rule";
+                (page_lead("Ask for help. Offer yours."))
                 p class="lede" {
                     "Someone needs five dinners this week, a ramp by Saturday, "
                     "or a Spanish speaker on Thursday."

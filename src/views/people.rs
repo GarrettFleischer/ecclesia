@@ -12,7 +12,7 @@ use super::cards::{
 };
 use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, first_name, page, rewrite_row};
+use super::layout::{Nav, csrf_input, first_name, page, page_lead, rewrite_row};
 
 pub fn member_show(
     viewer: &Viewer,
@@ -37,8 +37,7 @@ pub fn member_show(
         csrf,
         html! {
             p class="eyebrow" { (person.city) ", " (person.region) }
-            h1 { (person.name) }
-            hr class="gold-rule";
+            (page_lead(&person.name))
             (bio_lede(person))
             section {
                 h2 { "Churches" }
@@ -188,8 +187,7 @@ pub fn inbox(
         flash,
         csrf,
         html! {
-            h1 { "Inbox" }
-            hr class="gold-rule";
+            (page_lead("Inbox"))
             (inbox_empty(pending, declined, notes))
             (pending_endorsements(pending, csrf))
             (inbox_declined(declined, csrf))
@@ -203,7 +201,7 @@ fn inbox_empty(
     declined: &[EndorsementCard],
     notes: &[Notification],
 ) -> Markup {
-    if !pending.is_empty() || !declined.is_empty() || !notes.is_empty() {
+    if !pending.is_empty() || !declined.is_empty() || update_notes(notes).next().is_some() {
         return html! {};
     }
     html! {
@@ -242,17 +240,26 @@ fn pending_endorsements(pending: &[EndorsementCard], csrf: &str) -> Markup {
 }
 
 fn notice_section(notes: &[Notification]) -> Markup {
-    if notes.is_empty() {
+    let mut visible = update_notes(notes).peekable();
+    if visible.peek().is_none() {
         return html! {};
     }
     html! {
         section {
             h2 { "Updates" }
             div class="stack" {
-                (notice_cards(notes))
+                (notice_cards(visible))
             }
         }
     }
+}
+
+fn update_notes(notes: &[Notification]) -> impl Iterator<Item = &Notification> {
+    notes.iter().filter(|note| !endorsement_prompt(note))
+}
+
+fn endorsement_prompt(note: &Notification) -> bool {
+    note.kind == "endorsement" && note.href == "/inbox"
 }
 
 pub fn me(
@@ -274,22 +281,24 @@ pub fn me(
         flash,
         csrf,
         html! {
-            h1 { (viewer.user.name) }
-            hr class="gold-rule";
-            form class="stack" method="post" action="/me" {
-                (csrf_input(csrf))
-                (voice_pass_input(profile.kind))
-                (review_banner(profile.kind))
-                label { "Name" input name="name" required autocomplete="name" autocapitalize="words" value=(profile.name) maxlength="80"; }
-                div class="split" {
-                    label { "City" input name="city" required autocomplete="address-level2" maxlength="80" value=(profile.city); }
-                    label { "State or region" input name="region" required autocomplete="address-level1" maxlength="80" value=(profile.region); }
+            (page_lead(&viewer.user.name))
+            section {
+                h2 { "Profile" }
+                form class="stack" method="post" action="/me" {
+                    (csrf_input(csrf))
+                    (voice_pass_input(profile.kind))
+                    (review_banner(profile.kind))
+                    label { "Name" input name="name" required autocomplete="name" autocapitalize="words" value=(profile.name) maxlength="80"; }
+                    div class="split" {
+                        label { "City" input name="city" required autocomplete="address-level2" maxlength="80" value=(profile.city); }
+                        label { "State or region" input name="region" required autocomplete="address-level1" maxlength="80" value=(profile.region); }
+                    }
+                    label { "About you"
+                        textarea name="bio" rows="3" maxlength="800" { (profile.bio) }
+                        (rewrite_row(VoiceKind::Bio))
+                    }
+                    button class="btn" type="submit" { (profile.kind.submit_label("Save")) }
                 }
-                label { "About you"
-                    textarea name="bio" rows="3" maxlength="800" { (profile.bio) }
-                    (rewrite_row(VoiceKind::Bio))
-                }
-                button class="btn" type="submit" { (profile.kind.submit_label("Save")) }
             }
             section class="panel" {
                 h2 { "Your gifts" }

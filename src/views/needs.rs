@@ -8,7 +8,7 @@ use crate::leaf::{
 use super::cards::{StewardView, application_cards, church_options, gift_options, scope_label};
 use super::draft::{NeedDraft, OfferDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, rewrite_row, share_button};
+use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row, share_button};
 
 pub fn need_new(
     viewer: &Viewer,
@@ -26,8 +26,7 @@ pub fn need_new(
         flash,
         csrf,
         html! {
-            h1 { "Post a need" }
-            hr class="gold-rule";
+            (page_lead("Post a need"))
             (need_form_or_empty(viewer, gifts, csrf, draft))
         },
     )
@@ -117,8 +116,7 @@ pub fn need_show(
                 (scope_label(&need.scope)) " · "
                 a href={ "/churches/" (church.id) } { (church.name) }
             }
-            h1 { (need.title) }
-            hr class="gold-rule";
+            (page_lead(&need.title))
             p class="lede" { (need.body) }
             p class="meta" {
                 "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) }

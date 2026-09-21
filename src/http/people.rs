@@ -12,8 +12,8 @@ use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
 
 use super::context::{
-    apply_leaf_redirect, churches_by_place, churches_for_memberships, html, leaf_err, redirect_err,
-    redirect_ok, signed_form, signed_in, unread, viewer_for, with_cookie,
+    apply_leaf_redirect, bind_session, churches_by_place, churches_for_memberships, html, leaf_err,
+    load_user, redirect_err, redirect_ok, signed_form, signed_in, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
 use super::{AppError, AppState};
@@ -402,11 +402,35 @@ pub async fn the_body(State(state): State<AppState>, jar: CookieJar) -> Result<R
     ))
 }
 
-pub async fn fallback() -> impl IntoResponse {
+pub async fn fallback(State(state): State<AppState>, jar: CookieJar) -> Response {
+    let (session, jar) = bind_session(jar, &state);
+    match load_user(&state.db, &session).await {
+        Ok(Some(user)) => signed_missing(&state, jar, user, &session.csrf).await,
+        _ => (
+            StatusCode::NOT_FOUND,
+            html(views::error_page("That page doesn't exist.")),
+        )
+            .into_response(),
+    }
+}
+
+async fn signed_missing(state: &AppState, jar: CookieJar, user: User, csrf: &str) -> Response {
+    let count = unread(&state.db, &user.id).await.unwrap_or(0);
     (
         StatusCode::NOT_FOUND,
-        html(views::error_page("That page doesn't exist.")),
+        with_cookie(
+            jar,
+            html(views::sorry_page(
+                "That page doesn't exist.",
+                views::SorrySeat::Member {
+                    user: &user,
+                    unread: count,
+                    csrf,
+                },
+            )),
+        ),
     )
+        .into_response()
 }
 
 async fn paint_member(

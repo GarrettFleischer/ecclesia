@@ -54,6 +54,13 @@ pub fn rewrite_row(kind: VoiceKind) -> Markup {
     }
 }
 
+pub fn page_lead(title: &str) -> Markup {
+    html! {
+        h1 { (title) }
+        hr class="gold-rule";
+    }
+}
+
 pub fn share_button(label: &str, title: &str, text: &str) -> Markup {
     html! {
         button type="button" class="btn btn-quiet" data-share data-share-title=(title) data-share-text=(text) {
@@ -302,8 +309,7 @@ pub fn sorry_page(message: &str, seat: SorrySeat<'_>) -> Markup {
 
 fn sorry_body(message: &str, href: &str, action: &str) -> Markup {
     html! {
-        h1 { "Sorry" }
-        hr class="gold-rule";
+        (page_lead("Sorry"))
         p class="lede" { (message) }
         a class="btn" href=(href) { (action) }
     }

@@ -4,11 +4,12 @@ use maud::{Markup, html};
 
 use crate::leaf::{
     ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchMember, EndorsementCard, Gift,
-    MemberGift, Membership, MembershipRole, MembershipStatus, NeedCard, NeedScope, Notification,
-    PlaceGroup, User, Viewer,
+    MemberGift, Membership, MembershipStatus, NeedCard, NeedScope, Notification, PlaceGroup, User,
+    Viewer,
 };
 
 use super::layout::{csrf_input, initials};
+use super::words::{category_label, census_line, household_line, offer_status_word, role_word};
 
 #[derive(Clone, Copy)]
 pub enum NeedCardPlace {
@@ -438,7 +439,7 @@ fn declined_accept(endorsement: &EndorsementCard, csrf: &str, action: DeclineAct
     }
 }
 
-pub fn notice_cards(notes: &[Notification]) -> Markup {
+pub fn notice_cards<'a>(notes: impl IntoIterator<Item = &'a Notification>) -> Markup {
     html! {
         @for note in notes {
             (notice_card(note))
@@ -516,44 +517,6 @@ fn place_church_card(card: &ChurchCard) -> Markup {
             p class="clamp-2" { (church.description) }
             p class="meta" { (census_line(*members, *needs)) }
         }
-    }
-}
-
-fn census_line(members: i64, needs: i64) -> String {
-    format!(
-        "{} {} · {} {}",
-        members,
-        count_word(members, "member", "members"),
-        needs,
-        count_word(needs, "open need", "open needs")
-    )
-}
-
-fn count_word(count: i64, one: &'static str, many: &'static str) -> &'static str {
-    if count == 1 { one } else { many }
-}
-
-fn role_word(role: Option<MembershipRole>) -> &'static str {
-    role.map(MembershipRole::label).unwrap_or("Member")
-}
-
-fn household_line(membership: &Membership) -> &'static str {
-    match membership.status() {
-        Some(MembershipStatus::Active) => role_word(membership.role()),
-        Some(status) => status.label(),
-        None => role_word(membership.role()),
-    }
-}
-
-fn offer_status_word(status: Option<ApplicationStatus>) -> &'static str {
-    status.map(ApplicationStatus::label).unwrap_or("Offer")
-}
-
-fn category_label(category: &str) -> String {
-    let mut chars = category.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
     }
 }
 

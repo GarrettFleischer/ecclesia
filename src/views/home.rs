@@ -4,7 +4,7 @@ use crate::leaf::{Church, Membership, NeedCard, Viewer, visible_need_cards};
 
 use super::cards::{NeedCardPlace, need_card_stack, pending_door_cards};
 use super::flash::Flash;
-use super::layout::{Nav, page};
+use super::layout::{Nav, page, page_lead};
 
 pub fn home(
     viewer: &Viewer,
@@ -24,8 +24,7 @@ pub fn home(
         csrf,
         html! {
             p class="eyebrow" { (viewer.user.city) ", " (viewer.user.region) }
-            h1 { "Open needs" }
-            hr class="gold-rule";
+            (page_lead("Open needs"))
             (no_church_yet(viewer, pending))
             (pending_section(pending, csrf))
             (active_toolbar(viewer))

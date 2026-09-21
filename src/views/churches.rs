@@ -11,7 +11,7 @@ use super::cards::{
 };
 use super::draft::{ChurchDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, rewrite_row, share_button};
+use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row, share_button};
 
 pub fn churches_index(
     viewer: &Viewer,
@@ -30,8 +30,7 @@ pub fn churches_index(
         html! {
             div class="page-head" {
                 div {
-                    h1 { "Churches" }
-                    hr class="gold-rule";
+                    (page_lead("Churches"))
                 }
                 a class="btn btn-quiet" href="/churches/new" { "Add your church" }
             }
@@ -75,8 +74,7 @@ pub fn church_new(
         flash,
         csrf,
         html! {
-            h1 { "Add your church" }
-            hr class="gold-rule";
+            (page_lead("Add your church"))
             p class="muted" { "You'll be its pastor." }
             form class="stack" method="post" action="/churches" {
                 (csrf_input(csrf))
@@ -118,8 +116,7 @@ pub fn church_show(
         csrf,
         html! {
             p class="eyebrow" { (church.city) ", " (church.region) }
-            h1 { (church.name) }
-            hr class="gold-rule";
+            (page_lead(&church.name))
             p class="lede" { (church.description) }
             @if !church.gathering.is_empty() { p class="meta" { (church.gathering) } }
             (membership_status(mine, church, csrf))
@@ -276,8 +273,7 @@ pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64, csrf: &str)
         None,
         csrf,
         html! {
-            h1 { "Churches nearby" }
-            hr class="gold-rule";
+            (page_lead("Churches nearby"))
             (body_groups(groups))
         },
     )

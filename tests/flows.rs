@@ -268,6 +268,10 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
     let csrf = csrf.expect("inbox csrf");
     assert!(inbox.contains("James Whitaker"));
     assert!(inbox.contains("Hospitality"));
+    assert!(
+        !inbox.contains("Accept it from your inbox"),
+        "the pending card is the decision; the notice is only a badge"
+    );
 
     let before = get(app.clone(), &cookie, "/members/user_ruth").await;
     assert!(!before.contains("flood cleanup"));

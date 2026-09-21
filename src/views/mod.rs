@@ -9,6 +9,7 @@ mod landing;
 mod layout;
 mod needs;
 mod people;
+mod words;
 
 pub use churches::{church_new, church_show, churches_index, the_body};
 pub use draft::{
