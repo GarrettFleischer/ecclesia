@@ -24,6 +24,7 @@ pub fn home(
         html! {
             p class="eyebrow" { (viewer.user.city) ", " (viewer.user.region) }
             h1 { "Peace, " (first_name(&viewer.user.name)) "." }
+            hr class="gold-rule";
             (empty_household(viewer, pending))
             (door_section(pending, csrf))
             (active_toolbar(viewer))

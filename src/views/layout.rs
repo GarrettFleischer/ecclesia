@@ -64,20 +64,22 @@ pub fn page(
                 meta name="apple-mobile-web-app-status-bar-style" content="black-translucent";
                 meta name="apple-mobile-web-app-title" content="Ecclesia";
                 link rel="manifest" href="/static/manifest.webmanifest";
+                link rel="icon" href="/static/favicon.svg" type="image/svg+xml";
                 title { (title) " · Ecclesia" }
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
                 link rel="stylesheet" href="/static/app.css";
             }
-            body {
+            body class=(site_class(nav)) {
+                (atmosphere())
                 @if nav != Nav::None {
                     (topbar(user))
                 }
                 @if let Some(flash) = flash {
                     div class=(flash.class_name()) { (flash.text()) }
                 }
-                main class={ "sheet" (sheet_extra(nav)) } {
+                main class={ "sheet page-rise" (sheet_extra(nav)) } {
                     (main)
                 }
                 @if nav != Nav::None {
@@ -85,6 +87,28 @@ pub fn page(
                 }
             }
         }
+    }
+}
+
+fn site_class(nav: Nav) -> &'static str {
+    match nav {
+        Nav::None => "site site-guest",
+        Nav::Home => "site site-app site-home",
+        Nav::Churches => "site site-app site-churches",
+        Nav::Body => "site site-app site-body",
+        Nav::Inbox => "site site-app site-inbox",
+        Nav::You => "site site-app site-you",
+    }
+}
+
+fn atmosphere() -> Markup {
+    html! {
+        div class="atmosphere" aria-hidden="true" {
+            span class="orb orb-a" {}
+            span class="orb orb-b" {}
+            span class="orb orb-c" {}
+        }
+        div class="grain" aria-hidden="true" {}
     }
 }
 

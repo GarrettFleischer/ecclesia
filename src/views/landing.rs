@@ -14,9 +14,11 @@ pub fn landing(users: &[User], flash: Option<Flash>, csrf: &str, demo: DemoSeat)
         Nav::None,
         flash,
         html! {
-            section class="hero" {
+            section class="hero hero-illum" {
+                div class="vesica" aria-hidden="true" {}
                 p class="eyebrow" { "For churches who refuse to be islands" }
                 h1 { "The ecclesia is a people, not a campus." }
+                hr class="gold-rule";
                 p class="lede" {
                     "Each church keeps its own household. Members ask or are invited in, and a pastor approves. "
                     "People name their gifts. Needs are posted in the open. Whoever can help, offers. "

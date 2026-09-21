@@ -123,6 +123,7 @@ pub fn inbox(
         flash,
         html! {
             h1 { "What needs your yes" }
+            hr class="gold-rule";
             (inbox_empty(pending, notes))
             (pending_endorsements(pending, csrf))
             (notice_section(notes))

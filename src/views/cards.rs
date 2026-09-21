@@ -21,7 +21,7 @@ pub fn need_card(need: &NeedCard, viewer: &Viewer) -> Markup {
                 @if let Some(gift) = &need.gift_name { (gift) " · " }
                 (need.author_name)
                 @if let Some(gift_id) = &need.gift_id {
-                    @if viewer.has_gift(gift_id) { " · you have this gift" }
+                    @if viewer.has_gift(gift_id) { span class="chip" { "Your gift" } }
                 }
             }
         }

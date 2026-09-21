@@ -246,6 +246,7 @@ pub fn the_body(viewer: &Viewer, groups: &[PlaceGroup], unread: i64) -> Markup {
         None,
         html! {
             h1 { "Churches are not islands" }
+            hr class="gold-rule";
             p class="lede" {
                 "A need marked for neighboring churches is visible to approved members in the same city or region. "
                 "A need marked for the whole body is visible to anyone already received into a household. "
