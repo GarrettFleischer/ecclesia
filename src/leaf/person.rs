@@ -44,6 +44,21 @@ impl EndorsementStatus {
             Self::Declined => "declined",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "accepted" => Some(Self::Accepted),
+            "declined" => Some(Self::Declined),
+            _ => None,
+        }
+    }
+}
+
+impl Endorsement {
+    pub fn status(&self) -> Option<EndorsementStatus> {
+        EndorsementStatus::parse(&self.status)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow, Serialize)]

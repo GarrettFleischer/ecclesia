@@ -39,6 +39,7 @@ pub async fn member_show(
     let churches = churches_paired_with(&state.db, &memberships).await?;
     let gifts = state.db.member_gifts(&person.id).await?;
     let endorsements = state.db.accepted_endorsements_for(&person.id).await?;
+    let declined = state.db.declined_endorsements_for(&person.id).await?;
     let catalog = state.db.gifts().await?;
     let count = unread(&state.db, &viewer.user.id).await?;
     Ok(with_cookie(
@@ -49,6 +50,7 @@ pub async fn member_show(
             &churches,
             &gifts,
             &endorsements,
+            &declined,
             &catalog,
             count,
             views::flash_from(flash.ok, flash.err),
@@ -197,6 +199,7 @@ pub async fn inbox(
     };
     let viewer = viewer_for(&state.db, user).await?;
     let pending = state.db.pending_endorsements_for(&viewer.user.id).await?;
+    let declined = state.db.declined_endorsements_for(&viewer.user.id).await?;
     let notes = state.db.notifications(&viewer.user.id).await?;
     state.db.mark_notifications_read(&viewer.user.id).await?;
     Ok(with_cookie(
@@ -204,6 +207,7 @@ pub async fn inbox(
         html(views::inbox(
             &viewer,
             &pending,
+            &declined,
             &notes,
             0,
             views::flash_from(flash.ok, flash.err),

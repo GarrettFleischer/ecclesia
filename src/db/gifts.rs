@@ -119,6 +119,13 @@ impl Db {
     ) -> anyhow::Result<Vec<EndorsementCard>> {
         endorsement_cards(self, user_id, "pending").await
     }
+
+    pub async fn declined_endorsements_for(
+        &self,
+        user_id: &str,
+    ) -> anyhow::Result<Vec<EndorsementCard>> {
+        endorsement_cards(self, user_id, "declined").await
+    }
 }
 
 async fn endorsement_cards(

@@ -341,6 +341,15 @@ body.standalone .install-bar { display: none !important; }
 
 .card-link { text-decoration: none; color: inherit; }
 
+.card-dim {
+  opacity: 0.58;
+  filter: grayscale(0.35);
+  box-shadow: none;
+  background: color-mix(in srgb, var(--paper-deep) 55%, var(--card));
+}
+
+.card-dim .btn { opacity: 1; filter: none; }
+
 .card-link:hover,
 .card-link:focus-visible {
   transform: translateY(-4px);

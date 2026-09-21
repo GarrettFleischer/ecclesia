@@ -243,6 +243,64 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
 }
 
 #[tokio::test]
+async fn us_end_02_declined_stays_with_the_pair_and_can_be_accepted() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_ruth").await;
+    let (_inbox, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/inbox").await;
+    let csrf = csrf.expect("inbox csrf");
+    let status = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/endorsements/end_james_ruth/decline",
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let inbox = get(app.clone(), &cookie, "/inbox").await;
+    assert!(inbox.contains("Declined"));
+    assert!(inbox.contains("flood cleanup"));
+    assert!(inbox.contains("card-dim"));
+    assert!(inbox.contains("Accept"));
+
+    let as_ruth = get(app.clone(), &cookie, "/members/user_ruth").await;
+    assert!(as_ruth.contains("Declined"));
+    assert!(as_ruth.contains("flood cleanup"));
+    assert!(as_ruth.contains("card-dim"));
+    assert!(as_ruth.contains("Accept"));
+
+    let (app, peter) = login(app, "user_peter").await;
+    let as_peter = get(app.clone(), &peter, "/members/user_ruth").await;
+    assert!(!as_peter.contains("flood cleanup"));
+
+    let (app, james) = login(app, "user_james").await;
+    let as_james = get(app.clone(), &james, "/members/user_ruth").await;
+    assert!(as_james.contains("Declined"));
+    assert!(as_james.contains("flood cleanup"));
+    assert!(!as_james.contains("/endorsements/end_james_ruth/accept"));
+
+    let (app, cookie) = login(app, "user_ruth").await;
+    let (_inbox, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/inbox").await;
+    let csrf = csrf.expect("inbox csrf");
+    let status = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/endorsements/end_james_ruth/accept",
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let (app, peter) = login(app, "user_peter").await;
+    let public = get(app, &peter, "/members/user_ruth").await;
+    assert!(public.contains("Endorsements"));
+    assert!(public.contains("flood cleanup"));
+    assert!(!public.contains("card-dim"));
+}
+
+#[tokio::test]
 async fn us_end_01_can_endorse_a_skill_they_have_not_claimed() {
     let app = app().await;
     let (app, cookie) = login(app, "user_elena").await;
@@ -264,7 +322,8 @@ async fn us_end_01_can_endorse_a_skill_they_have_not_claimed() {
     let inbox = get(app.clone(), &cookie, "/inbox").await;
     assert!(inbox.contains("Mercy"));
     assert!(inbox.contains("thanked every person"));
-    assert!(inbox.contains("Publish"));
+    assert!(inbox.contains("Accept"));
+    assert!(inbox.contains("Decline"));
 
     let before = get(app.clone(), &cookie, "/members/user_daniel").await;
     assert!(!before.contains("thanked every person"));

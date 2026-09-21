@@ -1,7 +1,9 @@
 //! Gifts, endorsements, and how a person is known.
 
 use super::flags::{CatalogPresence, EndorsementQueue, GiftOnProfile};
-use super::model::{DomainError, Effect, Endorsement, Gift, User, Write};
+use super::model::{
+    DomainError, Effect, Endorsement, EndorsementCard, EndorsementStatus, Gift, User, Write,
+};
 use super::notice::notice;
 use super::rules::can_endorse;
 use super::validate::{note_field, optional_note, profile_fields, require_text, skill_field};
@@ -60,7 +62,7 @@ fn same_skill(left: &str, right: &str) -> bool {
     }
 }
 
-/// US-END-01 — name a skill on someone else. They still decide whether to publish it.
+/// US-END-01 — name a skill on someone else. They still decide whether to accept it.
 pub fn endorse(
     from: &User,
     to: &User,
@@ -88,7 +90,7 @@ pub fn endorse(
         &to.id,
         "endorsement",
         format!("{} endorsed you for {skill_name}", from.name),
-        "Publish it from your inbox, or decline.",
+        "Accept it from your inbox, or decline.",
         "/inbox".into(),
     )))
 }
@@ -100,28 +102,41 @@ fn refuse_waiting_endorsement(queue: EndorsementQueue) -> Result<(), DomainError
     }
 }
 
-/// US-END-02 — the named person publishes the message.
+/// US-END-02 — the named person accepts the message onto their profile.
 pub fn accept_endorsement(
     actor: &User,
     endorsement: &Endorsement,
     held: GiftOnProfile,
 ) -> Result<Effect, DomainError> {
-    require_pending_recipient(actor, endorsement)?;
-    let mut effect = set_endorsement(endorsement, "accepted");
+    require_open_recipient(actor, endorsement)?;
+    let mut effect = set_endorsement(endorsement, EndorsementStatus::Accepted.as_str());
     if let Some(write) = gift_to_add(endorsement, held) {
         effect.push(write);
     }
     effect
         .notices
-        .push(published_endorsement_notice(actor, endorsement));
+        .push(accepted_endorsement_notice(actor, endorsement));
     Ok(effect)
 }
 
-/// US-END-02 — the named person keeps the message off their profile.
+/// US-END-02 — the named person keeps the message off the public profile.
+/// They and the endorser can still see it, and they can accept it later.
 pub fn decline_endorsement(actor: &User, endorsement: &Endorsement) -> Result<Effect, DomainError> {
     require_pending_recipient(actor, endorsement)?;
-    Ok(set_endorsement(endorsement, "declined")
-        .with_notice(declined_endorsement_notice(actor, endorsement)))
+    Ok(
+        set_endorsement(endorsement, EndorsementStatus::Declined.as_str())
+            .with_notice(declined_endorsement_notice(actor, endorsement)),
+    )
+}
+
+/// A declined endorsement stays between the pair until they accept it.
+pub fn declined_visible_to<'a>(
+    viewer_id: &'a str,
+    cards: impl IntoIterator<Item = &'a EndorsementCard>,
+) -> impl Iterator<Item = &'a EndorsementCard> {
+    cards
+        .into_iter()
+        .filter(move |card| viewer_id == card.to_user_id || viewer_id == card.from_user_id)
 }
 
 fn gift_to_add(endorsement: &Endorsement, held: GiftOnProfile) -> Option<Write> {
@@ -139,10 +154,26 @@ fn gift_to_add(endorsement: &Endorsement, held: GiftOnProfile) -> Option<Write> 
 }
 
 fn require_pending_recipient(actor: &User, endorsement: &Endorsement) -> Result<(), DomainError> {
-    if endorsement.to_user_id != actor.id || endorsement.status != "pending" {
-        Err(DomainError::NotGovernor)
-    } else {
+    require_recipient(actor, endorsement)?;
+    match endorsement.status() {
+        Some(EndorsementStatus::Pending) => Ok(()),
+        _ => Err(DomainError::NothingPending),
+    }
+}
+
+fn require_open_recipient(actor: &User, endorsement: &Endorsement) -> Result<(), DomainError> {
+    require_recipient(actor, endorsement)?;
+    match endorsement.status() {
+        Some(EndorsementStatus::Pending | EndorsementStatus::Declined) => Ok(()),
+        _ => Err(DomainError::NothingPending),
+    }
+}
+
+fn require_recipient(actor: &User, endorsement: &Endorsement) -> Result<(), DomainError> {
+    if endorsement.to_user_id == actor.id {
         Ok(())
+    } else {
+        Err(DomainError::NotGovernor)
     }
 }
 
@@ -153,7 +184,7 @@ fn set_endorsement(endorsement: &Endorsement, status: &'static str) -> Effect {
     })
 }
 
-fn published_endorsement_notice(
+fn accepted_endorsement_notice(
     actor: &User,
     endorsement: &Endorsement,
 ) -> super::model::NoticeDraft {
@@ -161,10 +192,10 @@ fn published_endorsement_notice(
         &endorsement.from_user_id,
         "endorsement",
         format!(
-            "{} published your endorsement for {}",
+            "{} accepted your endorsement for {}",
             actor.name, endorsement.skill
         ),
-        "It's on their profile now.",
+        "It's on their profile.",
         format!("/members/{}", actor.id),
     )
 }
@@ -180,7 +211,7 @@ fn declined_endorsement_notice(
             "{} declined your endorsement for {}",
             actor.name, endorsement.skill
         ),
-        "No action needed.",
+        "You can still see it on their profile.",
         format!("/members/{}", actor.id),
     )
 }
@@ -326,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn us_end_02_accept_spoken_skill_publishes_without_a_catalog_gift() {
+    fn us_end_02_accept_spoken_skill_adds_no_catalog_gift() {
         let endorsement = pending("Sitting still with people", "");
         let effect =
             accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Absent).unwrap();
@@ -335,5 +366,37 @@ mod tests {
             .iter()
             .any(|write| matches!(write, Write::UpsertMemberGift { .. })));
         assert!(effect.notices[0].title.contains("Sitting still"));
+        assert!(effect.notices[0].title.contains("accepted"));
+    }
+
+    #[test]
+    fn us_end_02_declined_can_be_accepted_later() {
+        let mut endorsement = pending("Hospitality", "gift_hospitality");
+        endorsement.status = EndorsementStatus::Declined.as_str().into();
+        let effect =
+            accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Absent).unwrap();
+        assert!(effect.writes.iter().any(
+            |write| matches!(write, Write::SetEndorsementStatus { status, .. } if *status == "accepted")
+        ));
+    }
+
+    #[test]
+    fn us_end_02_declined_stays_between_the_pair() {
+        let card = EndorsementCard {
+            id: "e1".into(),
+            from_user_id: "james".into(),
+            from_user_name: "James".into(),
+            to_user_id: "ruth".into(),
+            to_user_name: "Ruth".into(),
+            gift_id: "gift_hospitality".into(),
+            gift_name: "Hospitality".into(),
+            note: "She stayed.".into(),
+            status: "declined".into(),
+            created_at: "t0".into(),
+        };
+        let cards = [card];
+        assert_eq!(declined_visible_to("ruth", &cards).count(), 1);
+        assert_eq!(declined_visible_to("james", &cards).count(), 1);
+        assert_eq!(declined_visible_to("peter", &cards).count(), 0);
     }
 }

@@ -31,7 +31,7 @@ For a shared host: `ECCLESIA_DEMO=0`, a long random `ECCLESIA_SECRET`, and your 
 
 1. **Peter Lang** — asked to join Grace Covenant.
 2. **Miriam Cole** — approve Peter. See the needs she posted.
-3. **Ruth Alvarez** — Inbox: James endorsed her hospitality. Publish it or decline.
+3. **Ruth Alvarez** — Inbox: James endorsed her hospitality. Accept it or decline. A declined note stays with the two of you.
 4. **Daniel Okonkwo** — Inbox: Elena endorsed him for counseling. He never listed it.
 5. **Elena Vasquez** — can see Grace's interpreter need and apply.
 6. **James Whitaker** — the ramp need is open to nearby churches.

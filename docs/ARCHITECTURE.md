@@ -74,7 +74,7 @@ Status fields on `Write` and notice kind/body stay `&'static str`.
 | `http` | `http/{auth,churches,needs,people,push,context,forms}.rs` | Axum | load, call a leaf, apply, render |
 | `views` | `views/{layout,flash,cards,landing,home,churches,needs,people}.rs` | Maud | HTML; loops live in `cards` |
 
-HTTP is not allowed to decide who may join, see a need, or publish an endorsement.
+HTTP is not allowed to decide who may join, see a need, or accept an endorsement.
 It may only refuse a bad CSRF token or a missing session, then call the leaf.
 
 Loops that walk a collection live in a named function (`insert_gift_rows`,

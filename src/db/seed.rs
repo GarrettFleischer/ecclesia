@@ -257,7 +257,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_ruth",
         "endorsement",
         "James Whitaker endorsed you for Hospitality",
-        "Publish it from your inbox, or decline.",
+        "Accept it from your inbox, or decline.",
         "/inbox",
     )
     .await?;
@@ -265,7 +265,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_elena",
         "endorsement",
         "Miriam Cole endorsed you for Counseling",
-        "You published it on your profile.",
+        "It's on your profile.",
         "/members/user_elena",
     )
     .await?;
@@ -273,7 +273,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_daniel",
         "endorsement",
         "Elena Vasquez endorsed you for Counseling",
-        "Publish it from your inbox, or decline.",
+        "Accept it from your inbox, or decline.",
         "/inbox",
     )
     .await?;

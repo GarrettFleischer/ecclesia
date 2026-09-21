@@ -22,7 +22,7 @@ product, or tell the reader what the product is not.
 `Churches nearby`. `Inbox`. Not a greeting, not a slogan.
 
 **Name what will happen.** The button is the verb plus its object.
-`Post need`. `Accept invite`. `Publish`. `Send invite`. Never `Submit`, `OK`,
+`Post need`. `Accept invite`. `Accept`. `Send invite`. Never `Submit`, `OK`,
 or `Confirm`.
 
 **One idea per sentence.** Short sentences. Plain words. `Join a church first.`
@@ -44,7 +44,7 @@ The page already shows the result; the flash confirms it.
 `Once you're in a church, its needs show up here.`
 
 **Notifications: who did what, then where to act.** Title: `Elena Vasquez
-endorsed you for Counseling`. Body: `Publish it from your inbox, or decline.`
+endorsed you for Counseling`. Body: `Accept it from your inbox, or decline.`
 
 **Seed content sounds like the person typing into the form.** A pastor writes
 `Pastor at Grace Covenant since 2014. Two kids, one very old dog.` She does not
@@ -83,7 +83,7 @@ write a mission statement.
 | `You let it go. That is allowed.` | `Declined.` |
 | `Something gave way` | `Sorry` |
 | `Be specific. A gift is a life, not a compliment.` | `Something you saw them do.` |
-| `Accept onto my profile` | `Publish` |
+| `Accept onto my profile` | `Accept` |
 
 ## Checklist
 

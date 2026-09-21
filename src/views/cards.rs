@@ -324,15 +324,21 @@ fn member_gift_card(gift: &MemberGift) -> Markup {
     }
 }
 
-pub fn published_endorsement_cards(endorsements: &[EndorsementCard]) -> Markup {
+#[derive(Clone, Copy)]
+pub enum DeclineAction {
+    CanAccept,
+    Read,
+}
+
+pub fn accepted_endorsement_cards(endorsements: &[EndorsementCard]) -> Markup {
     html! {
         @for endorsement in endorsements {
-            (published_endorsement_card(endorsement))
+            (accepted_endorsement_card(endorsement))
         }
     }
 }
 
-fn published_endorsement_card(endorsement: &EndorsementCard) -> Markup {
+fn accepted_endorsement_card(endorsement: &EndorsementCard) -> Markup {
     html! {
         article class="card" {
             p class="eyebrow" { (endorsement.gift_name) }
@@ -363,7 +369,7 @@ fn pending_endorsement_card(endorsement: &EndorsementCard, csrf: &str) -> Markup
             div class="row" {
                 form method="post" action={ "/endorsements/" (endorsement.id) "/accept" } {
                     (csrf_input(csrf))
-                    button class="btn" type="submit" { "Publish" }
+                    button class="btn" type="submit" { "Accept" }
                 }
                 form method="post" action={ "/endorsements/" (endorsement.id) "/decline" } {
                     (csrf_input(csrf))
@@ -371,6 +377,47 @@ fn pending_endorsement_card(endorsement: &EndorsementCard, csrf: &str) -> Markup
                 }
             }
         }
+    }
+}
+
+pub fn declined_endorsement_cards<'a>(
+    cards: impl IntoIterator<Item = &'a EndorsementCard>,
+    csrf: &str,
+    action: DeclineAction,
+) -> Markup {
+    html! {
+        @for endorsement in cards {
+            (declined_endorsement_card(endorsement, csrf, action))
+        }
+    }
+}
+
+fn declined_endorsement_card(
+    endorsement: &EndorsementCard,
+    csrf: &str,
+    action: DeclineAction,
+) -> Markup {
+    html! {
+        article class="card card-dim" {
+            p class="eyebrow" { (endorsement.gift_name) }
+            p class="quote" { (endorsement.note) }
+            p class="meta" {
+                "From " a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+            }
+            (declined_accept(endorsement, csrf, action))
+        }
+    }
+}
+
+fn declined_accept(endorsement: &EndorsementCard, csrf: &str, action: DeclineAction) -> Markup {
+    match action {
+        DeclineAction::Read => html! {},
+        DeclineAction::CanAccept => html! {
+            form method="post" action={ "/endorsements/" (endorsement.id) "/accept" } {
+                (csrf_input(csrf))
+                button class="btn" type="submit" { "Accept" }
+            }
+        },
     }
 }
 

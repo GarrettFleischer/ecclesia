@@ -1,12 +1,14 @@
 use maud::{html, Markup};
 
 use crate::leaf::{
-    Church, EndorsementCard, Gift, MemberGift, Membership, Notification, User, Viewer,
+    declined_visible_to, Church, EndorsementCard, Gift, MemberGift, Membership, Notification, User,
+    Viewer,
 };
 
 use super::cards::{
-    catalog_name_options, household_items, member_gift_cards, my_gift_cards, notice_cards,
-    pending_endorsement_cards, published_endorsement_cards, unused_gift_options,
+    accepted_endorsement_cards, catalog_name_options, declined_endorsement_cards, household_items,
+    member_gift_cards, my_gift_cards, notice_cards, pending_endorsement_cards, unused_gift_options,
+    DeclineAction,
 };
 use super::flash::Flash;
 use super::layout::{csrf_input, first_name, page, Nav};
@@ -17,6 +19,7 @@ pub fn member_show(
     churches: &[(Church, &Membership)],
     gifts: &[MemberGift],
     endorsements: &[EndorsementCard],
+    declined: &[EndorsementCard],
     catalog: &[Gift],
     unread: i64,
     flash: Option<Flash>,
@@ -43,6 +46,7 @@ pub fn member_show(
                 (gift_section(gifts))
             }
             (endorsement_section(endorsements))
+            (declined_endorsement_section(viewer, person, declined, csrf))
             (endorse_panel(viewer, person, catalog, csrf))
         },
     )
@@ -93,9 +97,41 @@ fn endorsement_section(endorsements: &[EndorsementCard]) -> Markup {
         section {
             h2 { "Endorsements" }
             div class="stack" {
-                (published_endorsement_cards(endorsements))
+                (accepted_endorsement_cards(endorsements))
             }
         }
+    }
+}
+
+fn declined_endorsement_section(
+    viewer: &Viewer,
+    person: &User,
+    declined: &[EndorsementCard],
+    csrf: &str,
+) -> Markup {
+    let mut visible = declined_visible_to(&viewer.user.id, declined).peekable();
+    if visible.peek().is_none() {
+        return html! {};
+    }
+    html! {
+        section {
+            h2 { "Declined" }
+            div class="stack" {
+                (declined_endorsement_cards(
+                    visible,
+                    csrf,
+                    decline_action_for(&viewer.user.id, &person.id),
+                ))
+            }
+        }
+    }
+}
+
+fn decline_action_for(viewer_id: &str, person_id: &str) -> DeclineAction {
+    if viewer_id == person_id {
+        DeclineAction::CanAccept
+    } else {
+        DeclineAction::Read
     }
 }
 
@@ -126,6 +162,7 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
 pub fn inbox(
     viewer: &Viewer,
     pending: &[EndorsementCard],
+    declined: &[EndorsementCard],
     notes: &[Notification],
     unread: i64,
     flash: Option<Flash>,
@@ -141,20 +178,39 @@ pub fn inbox(
         html! {
             h1 { "Inbox" }
             hr class="gold-rule";
-            (inbox_empty(pending, notes))
+            (inbox_empty(pending, declined, notes))
             (pending_endorsements(pending, csrf))
+            (inbox_declined(declined, csrf))
             (notice_section(notes))
         },
     )
 }
 
-fn inbox_empty(pending: &[EndorsementCard], notes: &[Notification]) -> Markup {
-    if !pending.is_empty() || !notes.is_empty() {
+fn inbox_empty(
+    pending: &[EndorsementCard],
+    declined: &[EndorsementCard],
+    notes: &[Notification],
+) -> Markup {
+    if !pending.is_empty() || !declined.is_empty() || !notes.is_empty() {
         return html! {};
     }
     html! {
         div class="empty" {
             p { "Nothing here yet." }
+        }
+    }
+}
+
+fn inbox_declined(declined: &[EndorsementCard], csrf: &str) -> Markup {
+    if declined.is_empty() {
+        return html! {};
+    }
+    html! {
+        section {
+            h2 { "Declined" }
+            div class="stack" {
+                (declined_endorsement_cards(declined, csrf, DeclineAction::CanAccept))
+            }
         }
     }
 }
