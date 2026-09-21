@@ -4,7 +4,7 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
     accept_invite, approve_membership, decline_membership, invite_member, parse_invite_email,
-    plant_church, request_join, redeem_invite, visible_need_cards, Church, MembershipDoor,
+    plant_church, redeem_invite, request_join, visible_need_cards, Church, MembershipDoor,
 };
 use crate::sdk::clock::{new_id, nonce4, now_iso};
 use crate::views;

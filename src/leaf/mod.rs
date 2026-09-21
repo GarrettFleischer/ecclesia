@@ -5,12 +5,16 @@
 
 pub mod auth;
 pub mod directory;
+pub mod effect;
 pub mod flags;
 pub mod gifts;
+pub mod household;
 pub mod membership;
 pub mod model;
+pub mod need;
 pub mod needs;
 pub mod notice;
+pub mod person;
 pub mod rules;
 pub mod validate;
 

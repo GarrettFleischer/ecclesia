@@ -7,6 +7,7 @@ mod needs;
 mod notices;
 mod schema;
 mod seed;
+mod seed_data;
 mod users;
 
 use anyhow::Context;

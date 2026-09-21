@@ -45,7 +45,11 @@ function (`approve_membership`, `decline_membership`).
 | `leaf/directory.rs` | church counts and place grouping |
 | `leaf/flags.rs` | named states that used to be booleans |
 | `leaf/notice.rs` | notice drafts, including governor fan-out |
-| `leaf/model.rs` | records, `Write`, `Effect`, `DomainError` |
+| `leaf/household.rs` | church and membership records |
+| `leaf/person.rs` | people, gifts, endorsements, `Viewer` |
+| `leaf/need.rs` | needs and applications |
+| `leaf/effect.rs` | `Write`, `Effect`, `DomainError` |
+| `leaf/model.rs` | re-exports the record modules |
 
 ## SDK skin
 
