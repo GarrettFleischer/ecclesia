@@ -28,7 +28,7 @@ Leaves do not:
 - look at cookies, env, sockets, or HTTP
 - import `crate::sdk`, `crate::http`, or `crate::views`
 
-If a test can construct the inputs, the church rule is testable.
+If a test can construct the inputs, the church rule is testable. `tests/leaf_props.rs` throws random strings and states at every leaf. A leaf may return `Err`; it may not panic, and an `Ok` write must look like the person typed.
 
 ## Honest functions
 
@@ -70,3 +70,5 @@ submit is `VoicePass::Review`; the second is `Publish`. The leaf calls
 Keep leaf modules small and named after the story they serve. Shared records live in `household`, `person`, `need`, and `effect`. Named states that used to be booleans live in `flags`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module table and [SPEC.md](SPEC.md) for the story list.
+
+Random leaf inputs live in `tests/leaf_props.rs`. Random clicks through the HTTP skin live in `tests/chaos.rs`.

@@ -28,15 +28,52 @@ pub fn optional_text(value: &str, max: usize) -> Result<String, DomainError> {
 
 pub fn normalize_email(value: &str) -> Result<String, DomainError> {
     let email = require_text(value, EMAIL_MAX)?.to_lowercase();
-    let (local, domain) = email.split_once('@').ok_or(DomainError::InvalidEmail)?;
-    if local.is_empty() || !domain.contains('.') || domain.starts_with('.') || domain.ends_with('.')
-    {
+    if email.chars().any(email_forbidden) {
         return Err(DomainError::InvalidEmail);
     }
-    if email.chars().any(|c| c.is_whitespace()) {
+    let (local, domain) = one_at(&email).ok_or(DomainError::InvalidEmail)?;
+    if !local_ok(local) || !domain_ok(domain) {
         return Err(DomainError::InvalidEmail);
     }
     Ok(email)
+}
+
+fn email_forbidden(ch: char) -> bool {
+    ch.is_whitespace() || ch.is_control()
+}
+
+fn one_at(email: &str) -> Option<(&str, &str)> {
+    let (local, domain) = email.split_once('@')?;
+    if domain.contains('@') {
+        return None;
+    }
+    Some((local, domain))
+}
+
+fn local_ok(local: &str) -> bool {
+    !local.is_empty()
+        && local
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '+' | '-' | '_'))
+        && !local.starts_with('.')
+        && !local.ends_with('.')
+}
+
+fn domain_ok(domain: &str) -> bool {
+    if !domain.contains('.') || domain.contains("..") {
+        return false;
+    }
+    let mut labels = domain.split('.');
+    labels.all(label_ok)
+}
+
+fn label_ok(label: &str) -> bool {
+    !label.is_empty()
+        && label
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        && !label.starts_with('-')
+        && !label.ends_with('-')
 }
 
 pub fn person_fields(
@@ -76,8 +113,12 @@ pub fn church_fields(
     description: &str,
     gathering: &str,
 ) -> Result<(String, String, String, String, String), DomainError> {
+    let name = require_text(name, TITLE_MAX)?;
+    if !name.chars().any(|ch| ch.is_ascii_alphanumeric()) {
+        return Err(DomainError::InvalidInput);
+    }
     Ok((
-        require_text(name, TITLE_MAX)?,
+        name,
         require_text(city, PLACE_MAX)?,
         require_text(region, PLACE_MAX)?,
         require_text(description, BODY_MAX)?,
@@ -177,6 +218,27 @@ mod tests {
             normalize_email(" Miriam@Grace.Test ").unwrap(),
             "miriam@grace.test"
         );
+        assert_eq!(
+            normalize_email("ada@@nope.com"),
+            Err(DomainError::InvalidEmail)
+        );
+        assert_eq!(
+            normalize_email("ada@nope.com@x.com"),
+            Err(DomainError::InvalidEmail)
+        );
+        assert_eq!(
+            normalize_email("ada@nope..com"),
+            Err(DomainError::InvalidEmail)
+        );
+    }
+
+    #[test]
+    fn us_val_01_church_name_needs_a_letter() {
+        assert_eq!(
+            church_fields("!!!", "Cedar Falls", "Iowa", "A table.", ""),
+            Err(DomainError::InvalidInput)
+        );
+        assert!(church_fields("House of Bread", "Cedar Falls", "Iowa", "A table.", "").is_ok());
     }
 
     #[test]

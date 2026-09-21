@@ -29,7 +29,7 @@ use crate::sdk::session::{self, CookieTransport, Session};
 use crate::views;
 use axum_extra::extract::cookie::CookieJar;
 
-pub use context::security_headers;
+pub use context::{security_headers, soften_form_errors};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -245,6 +245,7 @@ pub fn router(state: AppState) -> Router {
             ServeDir::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")),
         )
         .fallback(people::fallback)
+        .layer(middleware::from_fn(soften_form_errors))
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

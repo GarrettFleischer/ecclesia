@@ -1,6 +1,6 @@
 use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::request::Parts;
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
@@ -204,6 +204,18 @@ pub async fn security_headers(request: axum::extract::Request, next: Next) -> Re
     let mut response = next.run(request).await;
     attach_security_headers(response.headers_mut());
     response
+}
+
+pub async fn soften_form_errors(request: axum::extract::Request, next: Next) -> Response {
+    let response = next.run(request).await;
+    if response.status() != StatusCode::UNPROCESSABLE_ENTITY {
+        return response;
+    }
+    (
+        StatusCode::BAD_REQUEST,
+        html(crate::views::error_page("Fill in the required fields.")),
+    )
+        .into_response()
 }
 
 fn attach_security_headers(headers: &mut axum::http::HeaderMap) {

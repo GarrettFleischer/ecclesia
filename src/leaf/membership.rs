@@ -62,6 +62,7 @@ pub fn invite_member(
     now: String,
 ) -> Result<Effect, DomainError> {
     require_governor(actor, &church.id)?;
+    refuse_self_invite(&actor.user, invitee)?;
     refuse_if_already_related(existing)?;
     let created = pending_invite(invitee, church, id, now);
     Ok(
@@ -73,6 +74,14 @@ pub fn invite_member(
             format!("/churches/{}", church.id),
         )),
     )
+}
+
+fn refuse_self_invite(actor: &User, invitee: &User) -> Result<(), DomainError> {
+    if actor.id == invitee.id {
+        Err(DomainError::SelfAction)
+    } else {
+        Ok(())
+    }
 }
 
 fn require_governor(actor: &Viewer, church_id: &str) -> Result<(), DomainError> {
@@ -311,6 +320,26 @@ mod tests {
                 "t".into()
             ),
             Err(DomainError::AlreadyMember)
+        );
+    }
+
+    #[test]
+    fn us_mem_02_cannot_invite_yourself() {
+        let miriam = viewer_of(
+            user("miriam"),
+            vec![membership("m0", "grace", "miriam", "owner", "active")],
+            vec![church("grace")],
+        );
+        assert_eq!(
+            invite_member(
+                &miriam,
+                &church("grace"),
+                &user("miriam"),
+                None,
+                "m2".into(),
+                "t".into()
+            ),
+            Err(DomainError::SelfAction)
         );
     }
 

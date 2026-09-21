@@ -125,7 +125,7 @@ fn church_for_card<'a>(card: &NeedCard, churches: &'a [Church]) -> Option<&'a Ch
 }
 
 pub fn invite_code_for(name: &str, nonce: &str) -> String {
-    format!("{}-{}", slug_from(name, 8), nonce_from(nonce, 8))
+    format!("{}-{}", slug_from(name, 8), nonce_from(nonce, 8)).to_ascii_lowercase()
 }
 
 fn slug_from(name: &str, take: usize) -> String {
@@ -308,6 +308,7 @@ mod tests {
             invite_code_for("Grace Covenant", "k2m9p4r1"),
             "gracecov-k2m9p4r1"
         );
+        assert_eq!(invite_code_for("Grace", "Ab12CdEf"), "grace-ab12cdef");
     }
 
     #[test]

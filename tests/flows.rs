@@ -81,6 +81,12 @@ fn csrf_from(html: &str) -> Option<String> {
         .nth(1)
         .and_then(|rest| rest.split('"').next())
         .map(ToOwned::to_owned)
+        .or_else(|| {
+            html.split(r#"name="csrf" content=""#)
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .map(ToOwned::to_owned)
+        })
 }
 
 async fn body_string(response: axum::http::Response<Body>) -> String {
