@@ -77,7 +77,7 @@ pub fn church_new(
         html! {
             h1 { "Add your church" }
             hr class="gold-rule";
-            p class="muted" { "You'll be the pastor." }
+            p class="muted" { "You'll be its pastor." }
             form class="stack" method="post" action="/churches" {
                 (csrf_input(csrf))
                 (voice_pass_input(draft.kind))

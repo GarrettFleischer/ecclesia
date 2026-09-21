@@ -66,7 +66,7 @@ fn demo_panel(users: &[User], csrf: &str, demo: DemoSeat) -> Markup {
         DemoSeat::Sealed => html! {},
         DemoSeat::Open => html! {
             section class="panel" {
-                h2 { "Cedar Falls" }
+                h2 { "People in Cedar Falls" }
                 p class="muted" { "Pick a person." }
                 (persona_grid(users, csrf))
             }

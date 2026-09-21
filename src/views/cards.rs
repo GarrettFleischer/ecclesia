@@ -212,8 +212,11 @@ pub fn active_member_items(members: &[ChurchMember]) -> Markup {
 fn active_member_item(member: &ChurchMember) -> Markup {
     html! {
         li {
-            a href={ "/members/" (member.user_id) } { (member.name) }
-            span class="muted" { " · " (role_word(member.role())) }
+            a href={ "/members/" (member.user_id) } {
+                span class="avatar" { (initials(&member.name)) }
+                span { (member.name) }
+            }
+            span class="muted" { (role_word(member.role())) }
         }
     }
 }
@@ -315,7 +318,7 @@ fn household_item(pair: &(&Church, &Membership)) -> Markup {
     html! {
         li {
             a href={ "/churches/" (church.id) } { (church.name) }
-            span class="muted" { " · " (household_line(membership)) }
+            span class="muted" { (household_line(membership)) }
         }
     }
 }

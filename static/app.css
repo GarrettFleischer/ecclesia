@@ -655,11 +655,32 @@ form.is-reviewing > :not(.review-wait) {
 
 .people { list-style: none; padding: 0; margin: 0; }
 .people li {
-  padding: 0.75rem 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 0;
   border-bottom: 1px solid var(--line);
 }
 
 .people li:last-child { border-bottom: 0; }
+
+.people a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.people a:hover { color: var(--clay); }
+
+.people .muted {
+  flex: 0 0 auto;
+  font-size: 0.88rem;
+}
 
 .scopes { border: 0; padding: 0; margin: 0; display: grid; gap: 0.65rem; }
 

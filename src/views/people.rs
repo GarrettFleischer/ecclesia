@@ -316,7 +316,7 @@ pub fn me(
             }
             section class="panel" {
                 h2 { "Alerts" }
-                p class="muted" { "When someone endorses you, or a need matches a gift of yours." }
+                p class="muted" { "Banners for endorsements, and for needs that match your gifts." }
                 p class="muted" { "On iPhone, add the app to your home screen first." }
                 button type="button" class="btn" data-alerts { "Turn on alerts" }
                 p class="muted" data-alerts-status hidden {}
