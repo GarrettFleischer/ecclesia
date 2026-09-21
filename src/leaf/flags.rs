@@ -52,11 +52,31 @@ impl PriorOffer {
     }
 }
 
-/// Whether an endorsement for this pair and gift is already waiting.
+/// Whether an endorsement for this pair and skill is already waiting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EndorsementQueue {
     Clear,
     Waiting,
+}
+
+/// Whether the named person already lists this catalog gift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GiftOnProfile {
+    Named,
+    Absent,
+}
+
+impl GiftOnProfile {
+    pub fn of_ids(ids: &[String], gift_id: &str) -> Self {
+        if gift_id.is_empty() {
+            return Self::Absent;
+        }
+        if ids.iter().any(|id| id == gift_id) {
+            Self::Named
+        } else {
+            Self::Absent
+        }
+    }
 }
 
 impl EndorsementQueue {

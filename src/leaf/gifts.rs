@@ -1,32 +1,85 @@
 //! Gifts, endorsements, and how a person is known.
 
-use super::flags::{CatalogPresence, EndorsementQueue};
-use super::model::{DomainError, Effect, Endorsement, User, Write};
+use super::flags::{CatalogPresence, EndorsementQueue, GiftOnProfile};
+use super::model::{DomainError, Effect, Endorsement, Gift, User, Write};
 use super::notice::notice;
 use super::rules::can_endorse;
-use super::validate::{note_field, optional_note, profile_fields, require_text};
+use super::validate::{note_field, optional_note, profile_fields, require_text, skill_field};
 
-/// US-END-01 — name a gift on someone else. They still have to wear it.
+/// A skill someone else names. Catalog gifts stay linkable to needs;
+/// anything else is stored as the words they typed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillSource<'a> {
+    Catalog { id: &'a str, name: &'a str },
+    Spoken(&'a str),
+}
+
+impl<'a> SkillSource<'a> {
+    pub fn from_catalog(catalog: &'a [Gift], typed: &'a str) -> Result<Self, DomainError> {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return Err(DomainError::InvalidInput);
+        }
+        if let Some(gift) = catalog.iter().find(|gift| skill_matches(gift, typed)) {
+            return Ok(Self::Catalog {
+                id: gift.id.as_str(),
+                name: gift.name.as_str(),
+            });
+        }
+        Ok(Self::Spoken(typed))
+    }
+
+    pub fn display(self) -> &'a str {
+        match self {
+            Self::Catalog { name, .. } => name,
+            Self::Spoken(name) => name,
+        }
+    }
+
+    pub fn gift_id(self) -> &'a str {
+        match self {
+            Self::Catalog { id, .. } => id,
+            Self::Spoken(_) => "",
+        }
+    }
+}
+
+fn skill_matches(gift: &Gift, typed: &str) -> bool {
+    gift.id == typed || same_skill(&gift.name, typed)
+}
+
+fn same_skill(left: &str, right: &str) -> bool {
+    let mut left = left.split_whitespace().flat_map(str::chars);
+    let mut right = right.split_whitespace().flat_map(str::chars);
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return true,
+            (Some(a), Some(b)) if a.eq_ignore_ascii_case(&b) => {}
+            _ => return false,
+        }
+    }
+}
+
+/// US-END-01 — name a skill on someone else. They still decide whether to publish it.
 pub fn endorse(
     from: &User,
     to: &User,
-    gift_id: &str,
-    gift: CatalogPresence,
+    skill: SkillSource<'_>,
     queue: EndorsementQueue,
     note: &str,
-    gift_name: &str,
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
     can_endorse(&from.id, &to.id)?;
-    require_listed_gift(gift)?;
     refuse_waiting_endorsement(queue)?;
+    let skill_name = skill_field(skill.display())?;
     let note = note_field(note)?;
     Ok(Effect::write(Write::InsertEndorsement(Endorsement {
         id,
         from_user_id: from.id.clone(),
         to_user_id: to.id.clone(),
-        gift_id: gift_id.into(),
+        gift_id: skill.gift_id().into(),
+        skill: skill_name.clone(),
         note,
         status: "pending".into(),
         created_at: now,
@@ -34,17 +87,10 @@ pub fn endorse(
     .with_notice(notice(
         &to.id,
         "endorsement",
-        format!("{} endorsed you for {gift_name}", from.name),
-        "Add it to your profile, or decline, from your inbox.",
+        format!("{} endorsed you for {skill_name}", from.name),
+        "Publish it from your inbox, or decline.",
         "/inbox".into(),
     )))
-}
-
-fn require_listed_gift(gift: CatalogPresence) -> Result<(), DomainError> {
-    match gift {
-        CatalogPresence::Listed => Ok(()),
-        CatalogPresence::Unknown => Err(DomainError::UnknownGift),
-    }
 }
 
 fn refuse_waiting_endorsement(queue: EndorsementQueue) -> Result<(), DomainError> {
@@ -54,39 +100,42 @@ fn refuse_waiting_endorsement(queue: EndorsementQueue) -> Result<(), DomainError
     }
 }
 
-/// US-END-02 — the named person wears the word.
+/// US-END-02 — the named person publishes the message.
 pub fn accept_endorsement(
     actor: &User,
     endorsement: &Endorsement,
-    gift_name: &str,
+    held: GiftOnProfile,
 ) -> Result<Effect, DomainError> {
     require_pending_recipient(actor, endorsement)?;
     let mut effect = set_endorsement(endorsement, "accepted");
-    effect.push(Write::UpsertMemberGift {
-        user_id: actor.id.clone(),
-        gift_id: endorsement.gift_id.clone(),
-        note: String::new(),
-    });
+    if let Some(write) = gift_to_add(endorsement, held) {
+        effect.push(write);
+    }
     effect
         .notices
-        .push(worn_endorsement_notice(actor, endorsement, gift_name));
+        .push(published_endorsement_notice(actor, endorsement));
     Ok(effect)
 }
 
-/// US-END-02 — the named person lets the word go.
-pub fn decline_endorsement(
-    actor: &User,
-    endorsement: &Endorsement,
-    gift_name: &str,
-) -> Result<Effect, DomainError> {
+/// US-END-02 — the named person keeps the message off their profile.
+pub fn decline_endorsement(actor: &User, endorsement: &Endorsement) -> Result<Effect, DomainError> {
     require_pending_recipient(actor, endorsement)?;
-    Ok(
-        set_endorsement(endorsement, "declined").with_notice(declined_endorsement_notice(
-            actor,
-            endorsement,
-            gift_name,
-        )),
-    )
+    Ok(set_endorsement(endorsement, "declined")
+        .with_notice(declined_endorsement_notice(actor, endorsement)))
+}
+
+fn gift_to_add(endorsement: &Endorsement, held: GiftOnProfile) -> Option<Write> {
+    if endorsement.gift_id.is_empty() {
+        return None;
+    }
+    match held {
+        GiftOnProfile::Named => None,
+        GiftOnProfile::Absent => Some(Write::UpsertMemberGift {
+            user_id: endorsement.to_user_id.clone(),
+            gift_id: endorsement.gift_id.clone(),
+            note: String::new(),
+        }),
+    }
 }
 
 fn require_pending_recipient(actor: &User, endorsement: &Endorsement) -> Result<(), DomainError> {
@@ -104,15 +153,17 @@ fn set_endorsement(endorsement: &Endorsement, status: &'static str) -> Effect {
     })
 }
 
-fn worn_endorsement_notice(
+fn published_endorsement_notice(
     actor: &User,
     endorsement: &Endorsement,
-    gift_name: &str,
 ) -> super::model::NoticeDraft {
     notice(
         &endorsement.from_user_id,
         "endorsement",
-        format!("{} accepted your endorsement for {gift_name}", actor.name),
+        format!(
+            "{} published your endorsement for {}",
+            actor.name, endorsement.skill
+        ),
         "It's on their profile now.",
         format!("/members/{}", actor.id),
     )
@@ -121,12 +172,14 @@ fn worn_endorsement_notice(
 fn declined_endorsement_notice(
     actor: &User,
     endorsement: &Endorsement,
-    gift_name: &str,
 ) -> super::model::NoticeDraft {
     notice(
         &endorsement.from_user_id,
         "endorsement",
-        format!("{} declined your endorsement for {gift_name}", actor.name),
+        format!(
+            "{} declined your endorsement for {}",
+            actor.name, endorsement.skill
+        ),
         "No action needed.",
         format!("/members/{}", actor.id),
     )
@@ -145,6 +198,13 @@ pub fn add_gift(
         gift_id: gift_id.into(),
         note: optional_note(note)?,
     }))
+}
+
+fn require_listed_gift(gift: CatalogPresence) -> Result<(), DomainError> {
+    match gift {
+        CatalogPresence::Listed => Ok(()),
+        CatalogPresence::Unknown => Err(DomainError::UnknownGift),
+    }
 }
 
 pub fn remove_gift(user_id: &str, gift_id: &str) -> Result<Effect, DomainError> {
@@ -178,20 +238,102 @@ mod tests {
     use super::*;
     use crate::leaf::sample::user;
 
-    #[test]
-    fn us_end_02_accept_adds_the_gift() {
-        let endorsement = Endorsement {
+    fn hospitality() -> Gift {
+        Gift {
+            id: "gift_hospitality".into(),
+            name: "Hospitality".into(),
+            category: "spiritual".into(),
+        }
+    }
+
+    fn pending(skill: &str, gift_id: &str) -> Endorsement {
+        Endorsement {
             id: "e1".into(),
             from_user_id: "james".into(),
             to_user_id: "ruth".into(),
-            gift_id: "gift_hospitality".into(),
-            note: "She stayed.".into(),
+            gift_id: gift_id.into(),
+            skill: skill.into(),
+            note: "She stayed until the last parent came.".into(),
             status: "pending".into(),
             created_at: "t0".into(),
+        }
+    }
+
+    #[test]
+    fn us_end_01_catalog_match_is_case_and_space_insensitive() {
+        let catalog = [hospitality()];
+        let source = SkillSource::from_catalog(&catalog, "  hospitality ").unwrap();
+        assert_eq!(
+            source,
+            SkillSource::Catalog {
+                id: "gift_hospitality",
+                name: "Hospitality"
+            }
+        );
+    }
+
+    #[test]
+    fn us_end_01_spoken_skill_does_not_need_the_catalog() {
+        let catalog = [hospitality()];
+        let source = SkillSource::from_catalog(&catalog, "Sitting still with people").unwrap();
+        assert_eq!(source, SkillSource::Spoken("Sitting still with people"));
+        assert_eq!(source.gift_id(), "");
+    }
+
+    #[test]
+    fn us_end_01_endorsement_is_not_limited_to_claimed_gifts() {
+        let effect = endorse(
+            &user("james"),
+            &user("daniel"),
+            SkillSource::Catalog {
+                id: "gift_counseling",
+                name: "Counseling",
+            },
+            EndorsementQueue::Clear,
+            "He sat with my cousin and didn't try to fill the silence.",
+            "e2".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        let Write::InsertEndorsement(endorsement) = &effect.writes[0] else {
+            panic!("expected insert");
         };
-        let effect = accept_endorsement(&user("ruth"), &endorsement, "Hospitality").unwrap();
+        assert_eq!(endorsement.to_user_id, "daniel");
+        assert_eq!(endorsement.gift_id, "gift_counseling");
+        assert_eq!(endorsement.skill, "Counseling");
+        assert_eq!(effect.notices[0].user_id, "daniel");
+        assert!(effect.notices[0].title.contains("Counseling"));
+    }
+
+    #[test]
+    fn us_end_02_accept_adds_a_catalog_gift_they_had_not_claimed() {
+        let endorsement = pending("Counseling", "gift_counseling");
+        let effect =
+            accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Absent).unwrap();
         assert!(effect.writes.iter().any(
-            |write| matches!(write, Write::UpsertMemberGift { gift_id, .. } if gift_id == "gift_hospitality")
+            |write| matches!(write, Write::UpsertMemberGift { gift_id, .. } if gift_id == "gift_counseling")
         ));
+    }
+
+    #[test]
+    fn us_end_02_accept_does_not_overwrite_a_gift_they_already_named() {
+        let endorsement = pending("Hospitality", "gift_hospitality");
+        let effect = accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Named).unwrap();
+        assert!(!effect
+            .writes
+            .iter()
+            .any(|write| matches!(write, Write::UpsertMemberGift { .. })));
+    }
+
+    #[test]
+    fn us_end_02_accept_spoken_skill_publishes_without_a_catalog_gift() {
+        let endorsement = pending("Sitting still with people", "");
+        let effect =
+            accept_endorsement(&user("ruth"), &endorsement, GiftOnProfile::Absent).unwrap();
+        assert!(!effect
+            .writes
+            .iter()
+            .any(|write| matches!(write, Write::UpsertMemberGift { .. })));
+        assert!(effect.notices[0].title.contains("Sitting still"));
     }
 }

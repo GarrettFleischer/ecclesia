@@ -304,6 +304,13 @@ p { margin: 0 0 0.8rem; }
   box-shadow: var(--shadow-lift);
 }
 
+.quote {
+  font-family: var(--serif);
+  font-size: 1.08rem;
+  line-height: 1.45;
+  margin: 0.35rem 0 0.55rem;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

@@ -6,7 +6,7 @@ use crate::leaf::{
 
 use super::cards::{
     catalog_name_options, household_items, member_gift_cards, my_gift_cards, notice_cards,
-    pending_endorsement_cards, unused_gift_options,
+    pending_endorsement_cards, published_endorsement_cards, unused_gift_options,
 };
 use super::flash::Flash;
 use super::layout::{csrf_input, first_name, page, Nav};
@@ -39,8 +39,9 @@ pub fn member_show(
             }
             section {
                 h2 { "Gifts" }
-                (gift_section(gifts, endorsements))
+                (gift_section(gifts))
             }
+            (from_others(endorsements))
             (endorse_panel(viewer, person, catalog, csrf))
         },
     )
@@ -72,13 +73,27 @@ fn households(churches: &[(Church, &Membership)]) -> Markup {
     }
 }
 
-fn gift_section(gifts: &[MemberGift], endorsements: &[EndorsementCard]) -> Markup {
+fn gift_section(gifts: &[MemberGift]) -> Markup {
     if gifts.is_empty() {
         return html! { p class="muted" { "None listed yet." } };
     }
     html! {
         div class="stack" {
-            (member_gift_cards(gifts, endorsements))
+            (member_gift_cards(gifts))
+        }
+    }
+}
+
+fn from_others(endorsements: &[EndorsementCard]) -> Markup {
+    if endorsements.is_empty() {
+        return html! {};
+    }
+    html! {
+        section {
+            h2 { "From others" }
+            div class="stack" {
+                (published_endorsement_cards(endorsements))
+            }
         }
     }
 }
@@ -90,16 +105,17 @@ fn endorse_panel(viewer: &Viewer, person: &User, catalog: &[Gift], csrf: &str) -
     html! {
         section class="panel" {
             h2 { "Endorse " (first_name(&person.name)) }
-            p class="muted" { "They'll get a note and can add it to their profile." }
+            p class="muted" { "They'll get a notification. They decide whether it goes on their profile." }
             form class="stack" method="post" action={ "/members/" (person.id) "/endorse" } {
                 (csrf_input(csrf))
-                label { "Gift"
-                    select name="gift_id" required {
+                label { "Skill"
+                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality, or something you've seen";
+                    datalist id="catalog-skills" {
                         (catalog_name_options(catalog))
                     }
                 }
                 label { "Why"
-                    textarea name="note" rows="3" required placeholder="Something you saw them do." {}
+                    textarea name="note" rows="5" required maxlength="600" placeholder="What you saw. Be specific." {}
                 }
                 button class="btn" type="submit" { "Send" }
             }

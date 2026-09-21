@@ -229,12 +229,18 @@ mod tests {
             from_user_id: "james".into(),
             to_user_id: "ruth".into(),
             gift_id: "gift_hospitality".into(),
+            skill: "Hospitality".into(),
             note: "She stayed.".into(),
             status: "pending".into(),
             created_at: "t0".into(),
         });
         let ruth = user("ruth", "Ruth");
-        let effect = accept_endorsement(&ruth, &world.endorsements[0], "Hospitality").unwrap();
+        let effect = accept_endorsement(
+            &ruth,
+            &world.endorsements[0],
+            crate::leaf::GiftOnProfile::Absent,
+        )
+        .unwrap();
         world.apply(effect, "t1");
         assert_eq!(world.endorsements[0].status, "accepted");
         assert_eq!(world.gifts_for("ruth").count(), 1);

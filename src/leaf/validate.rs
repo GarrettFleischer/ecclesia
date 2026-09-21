@@ -102,6 +102,10 @@ pub fn note_field(value: &str) -> Result<String, DomainError> {
     require_text(value, NOTE_MAX)
 }
 
+pub fn skill_field(value: &str) -> Result<String, DomainError> {
+    require_text(value, TITLE_MAX)
+}
+
 pub fn optional_note(value: &str) -> Result<String, DomainError> {
     optional_text(value, NOTE_MAX)
 }

@@ -52,6 +52,7 @@ pub struct Endorsement {
     pub from_user_id: String,
     pub to_user_id: String,
     pub gift_id: String,
+    pub skill: String,
     pub note: String,
     pub status: String,
     pub created_at: String,

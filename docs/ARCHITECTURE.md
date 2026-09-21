@@ -48,7 +48,7 @@ Status fields on `Write` and notice kind/body stay `&'static str`.
 | `leaf/auth.rs` | register, demo-seat impersonation |
 | `leaf/membership.rs` | join, invite, redeem, approve/decline, plant |
 | `leaf/needs.rs` | post, apply, close, receive/pass an offer |
-| `leaf/gifts.rs` | endorse, wear/decline, name a gift, profile |
+| `leaf/gifts.rs` | endorse any skill, publish/decline, name a gift, profile |
 | `leaf/rules.rs` | visibility, neighbors, invite codes |
 | `leaf/validate.rs` | field limits |
 | `leaf/directory.rs` | church counts and place grouping |

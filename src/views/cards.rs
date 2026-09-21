@@ -227,7 +227,7 @@ pub fn gift_options(gifts: &[Gift]) -> Markup {
 pub fn catalog_name_options(catalog: &[Gift]) -> Markup {
     html! {
         @for gift in catalog {
-            option value=(gift.id) { (gift.name) }
+            option value=(gift.name) {}
         }
     }
 }
@@ -306,39 +306,39 @@ fn household_item(pair: &(Church, &Membership)) -> Markup {
     }
 }
 
-pub fn member_gift_cards(gifts: &[MemberGift], endorsements: &[EndorsementCard]) -> Markup {
+pub fn member_gift_cards(gifts: &[MemberGift]) -> Markup {
     html! {
         @for gift in gifts {
-            (member_gift_card(gift, endorsements))
+            (member_gift_card(gift))
         }
     }
 }
 
-fn member_gift_card(gift: &MemberGift, endorsements: &[EndorsementCard]) -> Markup {
+fn member_gift_card(gift: &MemberGift) -> Markup {
     html! {
         article class="card" {
             p class="eyebrow" { (gift.category) }
             h3 { (gift.gift_name) }
             @if !gift.note.is_empty() { p { (gift.note) } }
-            (endorsement_byline(endorsements, &gift.gift_id))
         }
     }
 }
 
-fn endorsement_byline(endorsements: &[EndorsementCard], gift_id: &str) -> Markup {
-    let mut matching = endorsements
-        .iter()
-        .filter(|endorsement| endorsement.gift_id == gift_id)
-        .peekable();
-    if matching.peek().is_none() {
-        return html! {};
-    }
+pub fn published_endorsement_cards(endorsements: &[EndorsementCard]) -> Markup {
     html! {
-        p class="meta" {
-            "Endorsed by "
-            @for (i, endorsement) in matching.enumerate() {
-                @if i > 0 { ", " }
-                a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+        @for endorsement in endorsements {
+            (published_endorsement_card(endorsement))
+        }
+    }
+}
+
+fn published_endorsement_card(endorsement: &EndorsementCard) -> Markup {
+    html! {
+        article class="card" {
+            p class="eyebrow" { (endorsement.gift_name) }
+            p class="quote" { (endorsement.note) }
+            p class="meta" {
+                "From " a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
             }
         }
     }
@@ -359,11 +359,11 @@ fn pending_endorsement_card(endorsement: &EndorsementCard, csrf: &str) -> Markup
                 a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
                 " endorsed you for " strong { (endorsement.gift_name) } "."
             }
-            p { (endorsement.note) }
+            p class="quote" { (endorsement.note) }
             div class="row" {
                 form method="post" action={ "/endorsements/" (endorsement.id) "/accept" } {
                     (csrf_input(csrf))
-                    button class="btn" type="submit" { "Add to profile" }
+                    button class="btn" type="submit" { "Publish" }
                 }
                 form method="post" action={ "/endorsements/" (endorsement.id) "/decline" } {
                     (csrf_input(csrf))

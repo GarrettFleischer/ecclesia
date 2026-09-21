@@ -76,7 +76,7 @@ pub struct ApplyForm {
 #[derive(Deserialize)]
 pub struct EndorseForm {
     pub csrf: String,
-    pub gift_id: String,
+    pub skill: String,
     pub note: String,
 }
 

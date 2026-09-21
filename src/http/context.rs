@@ -150,10 +150,6 @@ pub fn optional_gift_id(value: &str) -> Option<&str> {
     }
 }
 
-pub fn gift_name_or_default(name: Option<String>) -> String {
-    name.unwrap_or_else(|| "a gift".into())
-}
-
 pub async fn security_headers(request: axum::extract::Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     attach_security_headers(response.headers_mut());

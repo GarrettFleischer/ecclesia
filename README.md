@@ -49,8 +49,9 @@ For anything shared: `ECCLESIA_DEMO=0` and a long random `ECCLESIA_SECRET`. Demo
 
 1. **Peter Lang** — still in the doorway at Grace Covenant.
 2. **Miriam Cole** — approve Peter. See what she opened to neighbors.
-3. **Ruth Alvarez** — Inbox: James endorsed her hospitality.
-4. **Elena Vasquez** — New Mercy. She can see Grace’s neighboring interpreter need and apply.
-5. **James Whitaker** — the ramp need is open to the valley.
+3. **Ruth Alvarez** — Inbox: James endorsed her hospitality. Publish it or decline.
+4. **Daniel Okonkwo** — Inbox: Elena endorsed him for counseling, a gift he never claimed.
+5. **Elena Vasquez** — New Mercy. She can see Grace’s neighboring interpreter need and apply.
+6. **James Whitaker** — the ramp need is open to the valley.
 
 Invite codes: `grace-k2m9`, `luke-p4r1`, `mercy-n8q2`.

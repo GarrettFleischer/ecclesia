@@ -36,8 +36,8 @@ Each story has a leaf (or a documented skin exception), a unit test, and where t
 | ID | Story | Leaf | Tests |
 | --- | --- | --- | --- |
 | US-GIFT-01 | I can name or remove a gift I practice. | `add_gift`, `remove_gift` | leaf |
-| US-END-01 | I can endorse someone else for a catalog gift. They are notified. I cannot endorse myself. | `endorse` | `us_end_01_*` |
-| US-END-02 | I can accept or decline an endorsement. Accepting may add the gift. It is not public until I accept. | `decide_endorsement` | `us_end_02_*`, HTTP |
+| US-END-01 | I can endorse someone else for any skill, including ones they have not claimed and ones not in the catalog. They are notified. I cannot endorse myself. | `endorse` | `us_end_01_*` |
+| US-END-02 | I can publish or decline an endorsement. The message is not public until I publish. Publishing a catalog skill they had not claimed adds that gift. It does not overwrite a gift they already named. | `accept_endorsement`, `decline_endorsement` | `us_end_02_*`, HTTP |
 
 ## The body
 

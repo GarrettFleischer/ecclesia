@@ -74,14 +74,16 @@ impl Db {
         &self,
         from: &str,
         to: &str,
-        gift_id: &str,
+        skill: &str,
     ) -> anyhow::Result<Option<Endorsement>> {
         Ok(sqlx::query_as::<_, Endorsement>(
-            "SELECT * FROM endorsements WHERE from_user_id = ? AND to_user_id = ? AND gift_id = ? AND status = 'pending'",
+            "SELECT * FROM endorsements
+             WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending'
+               AND lower(trim(skill)) = lower(trim(?))",
         )
         .bind(from)
         .bind(to)
-        .bind(gift_id)
+        .bind(skill)
         .fetch_optional(&self.pool)
         .await?)
     }
@@ -127,11 +129,12 @@ async fn endorsement_cards(
     Ok(sqlx::query_as::<_, EndorsementCard>(
         r#"
             SELECT e.id, e.from_user_id, f.name AS from_user_name, e.to_user_id, t.name AS to_user_name,
-                   e.gift_id, g.name AS gift_name, e.note, e.status, e.created_at
+                   e.gift_id, COALESCE(NULLIF(e.skill, ''), g.name, 'Skill') AS gift_name,
+                   e.note, e.status, e.created_at
             FROM endorsements e
             JOIN users f ON f.id = e.from_user_id
             JOIN users t ON t.id = e.to_user_id
-            JOIN gifts g ON g.id = e.gift_id
+            LEFT JOIN gifts g ON g.id = e.gift_id AND e.gift_id != ''
             WHERE e.to_user_id = ? AND e.status = ?
             ORDER BY e.created_at DESC
             "#,

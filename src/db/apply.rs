@@ -184,13 +184,14 @@ async fn insert_application(pool: &SqlitePool, application: &Application) -> any
 
 async fn insert_endorsement(pool: &SqlitePool, endorsement: &Endorsement) -> anyhow::Result<()> {
     sqlx::query(
-        "INSERT INTO endorsements (id, from_user_id, to_user_id, gift_id, note, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO endorsements (id, from_user_id, to_user_id, gift_id, skill, note, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&endorsement.id)
     .bind(&endorsement.from_user_id)
     .bind(&endorsement.to_user_id)
     .bind(&endorsement.gift_id)
+    .bind(&endorsement.skill)
     .bind(&endorsement.note)
     .bind(&endorsement.status)
     .bind(&endorsement.created_at)

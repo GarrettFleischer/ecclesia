@@ -214,6 +214,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_james",
         "user_ruth",
         "gift_hospitality",
+        "Hospitality",
         "Ruth fed 40 of our teenagers after the flood cleanup in May and stayed until the last parent showed up.",
         "pending",
         now,
@@ -225,8 +226,21 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_miriam",
         "user_elena",
         "gift_counseling",
+        "Counseling",
         "Elena met with a family from our neighborhood every week for two months when nobody else could get through to them.",
         "accepted",
+        now,
+    )
+    .await?;
+    insert_endorsement_row(
+        db,
+        "end_elena_daniel",
+        "user_elena",
+        "user_daniel",
+        "gift_counseling",
+        "Counseling",
+        "Daniel sat with my cousin after surgery and didn't try to fill the silence. I don't think he knows that's a gift.",
+        "pending",
         now,
     )
     .await?;
@@ -243,7 +257,7 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_ruth",
         "endorsement",
         "James Whitaker endorsed you for Hospitality",
-        "Add it to your profile, or decline, from your inbox.",
+        "Publish it from your inbox, or decline.",
         "/inbox",
     )
     .await?;
@@ -251,8 +265,16 @@ async fn insert_opening_stories(db: &Db, now: &str) -> anyhow::Result<()> {
         "user_elena",
         "endorsement",
         "Miriam Cole endorsed you for Counseling",
-        "You added it to your profile.",
+        "You published it on your profile.",
         "/members/user_elena",
+    )
+    .await?;
+    db.notify(
+        "user_daniel",
+        "endorsement",
+        "Elena Vasquez endorsed you for Counseling",
+        "Publish it from your inbox, or decline.",
+        "/inbox",
     )
     .await?;
     db.notify(
@@ -272,18 +294,20 @@ async fn insert_endorsement_row(
     from: &str,
     to: &str,
     gift_id: &str,
+    skill: &str,
     note: &str,
     status: &str,
     now: &str,
 ) -> anyhow::Result<()> {
     sqlx::query(
-        "INSERT INTO endorsements (id, from_user_id, to_user_id, gift_id, note, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO endorsements (id, from_user_id, to_user_id, gift_id, skill, note, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(from)
     .bind(to)
     .bind(gift_id)
+    .bind(skill)
     .bind(note)
     .bind(status)
     .bind(now)

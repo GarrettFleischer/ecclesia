@@ -223,7 +223,8 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
     assert!(inbox.contains("Hospitality"));
 
     let before = get(app.clone(), &cookie, "/members/user_ruth").await;
-    assert!(!before.contains("Endorsed by"));
+    assert!(!before.contains("From others"));
+    assert!(!before.contains("flood cleanup"));
 
     let status = post(
         app.clone(),
@@ -236,5 +237,85 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
     assert_eq!(status, StatusCode::SEE_OTHER);
 
     let after = get(app, &cookie, "/members/user_ruth").await;
+    assert!(after.contains("From others"));
     assert!(after.contains("James Whitaker"));
+    assert!(after.contains("flood cleanup"));
+}
+
+#[tokio::test]
+async fn us_end_01_can_endorse_a_skill_they_have_not_claimed() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_elena").await;
+    let (_page, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/members/user_daniel").await;
+    let csrf = csrf.expect("member csrf");
+    assert!(_page.contains(r#"name="skill""#));
+
+    let status = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/members/user_daniel/endorse",
+        "skill=Mercy&note=He+thanked+every+person+who+brought+food+and+meant+it.",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let (app, cookie) = login(app, "user_daniel").await;
+    let inbox = get(app.clone(), &cookie, "/inbox").await;
+    assert!(inbox.contains("Mercy"));
+    assert!(inbox.contains("thanked every person"));
+    assert!(inbox.contains("Publish"));
+
+    let before = get(app.clone(), &cookie, "/members/user_daniel").await;
+    assert!(!before.contains("thanked every person"));
+    assert!(!before.contains("Mercy"));
+}
+
+#[tokio::test]
+async fn us_end_01_spoken_skill_is_not_limited_to_the_catalog() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_james").await;
+    let (_page, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/members/user_ruth").await;
+    let csrf = csrf.expect("member csrf");
+
+    let status = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/members/user_ruth/endorse",
+        "skill=Staying+until+the+last+parent+left&note=She+washed+the+trays+after+the+youth+left+and+then+sat+with+the+one+kid+whose+ride+was+late.",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let (app, cookie) = login(app, "user_ruth").await;
+    let (inbox, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/inbox").await;
+    let csrf = csrf.expect("inbox csrf");
+    assert!(inbox.contains("Staying until the last parent left"));
+
+    let id = endorsement_id_near(&inbox, "Staying until the last parent left")
+        .expect("pending spoken endorsement");
+    let status = post(
+        app.clone(),
+        &cookie,
+        &csrf,
+        &format!("/endorsements/{id}/accept"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let profile = get(app, &cookie, "/members/user_ruth").await;
+    assert!(profile.contains("From others"));
+    assert!(profile.contains("Staying until the last parent left"));
+    assert!(profile.contains("washed the trays"));
+}
+
+fn endorsement_id_near(html: &str, marker: &str) -> Option<String> {
+    let start = html.find(marker)?;
+    html[start..]
+        .split("/endorsements/")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .map(ToOwned::to_owned)
 }

@@ -5,15 +5,14 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::leaf::{
     accept_endorsement, add_gift, decline_endorsement, endorse, remove_gift, update_profile,
-    CatalogPresence, Endorsement, EndorsementQueue, User,
+    CatalogPresence, Endorsement, EndorsementQueue, GiftOnProfile, SkillSource, User,
 };
 use crate::sdk::clock::{new_id, now_iso};
 use crate::views;
 
 use super::context::{
-    apply_leaf_redirect, bind_session, churches_by_place, churches_paired_with, fail_csrf,
-    gift_name_or_default, html, leaf_err, redirect_err, redirect_ok, require_user, unread,
-    viewer_for, with_cookie,
+    apply_leaf_redirect, bind_session, churches_by_place, churches_paired_with, fail_csrf, html,
+    leaf_err, redirect_err, redirect_ok, require_user, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
 use super::{AppError, AppState};
@@ -76,23 +75,23 @@ pub async fn endorse_member(
     let Some(person) = state.db.user(&id).await? else {
         return Ok(with_cookie(jar, redirect_err(&dest, "not_found")));
     };
-    let gift = state.db.gift(&form.gift_id).await?;
-    let presence = CatalogPresence::of_lookup(gift.as_ref());
-    let gift_name = gift_name_or_default(gift.map(|g| g.name));
+    let catalog = state.db.gifts().await?;
+    let skill = match SkillSource::from_catalog(&catalog, &form.skill) {
+        Ok(skill) => skill,
+        Err(error) => return Ok(with_cookie(jar, leaf_err(&dest, error))),
+    };
     let queue = EndorsementQueue::of_existing(
         state
             .db
-            .pending_endorsement(&user.id, &id, &form.gift_id)
+            .pending_endorsement(&user.id, &id, skill.display())
             .await?,
     );
     let effect = match endorse(
         &user,
         &person,
-        &form.gift_id,
-        presence,
+        skill,
         queue,
         &form.note,
-        &gift_name,
         new_id(),
         now_iso(),
     ) {
@@ -117,7 +116,7 @@ pub async fn accept_endorsement_http(
         &state.db,
         loaded.jar,
         "/inbox",
-        accept_endorsement(&loaded.user, &loaded.endorsement, &loaded.gift_name),
+        accept_endorsement(&loaded.user, &loaded.endorsement, loaded.held),
         "endorsement_accepted",
     )
     .await
@@ -137,7 +136,7 @@ pub async fn decline_endorsement_http(
         &state.db,
         loaded.jar,
         "/inbox",
-        decline_endorsement(&loaded.user, &loaded.endorsement, &loaded.gift_name),
+        decline_endorsement(&loaded.user, &loaded.endorsement),
         "endorsement_declined",
     )
     .await
@@ -147,7 +146,7 @@ struct EndorsementDecision {
     jar: CookieJar,
     user: User,
     endorsement: Endorsement,
-    gift_name: String,
+    held: GiftOnProfile,
 }
 
 async fn load_endorsement_decision(
@@ -172,19 +171,17 @@ async fn load_endorsement_decision(
     else {
         return Err(with_cookie(jar, redirect_err("/inbox", "not_found")));
     };
-    let gift_name = gift_name_or_default(
-        state
-            .db
-            .gift(&endorsement.gift_id)
-            .await
-            .map_err(|error| AppError::from(error).into_response())?
-            .map(|gift| gift.name),
-    );
+    let gift_ids = state
+        .db
+        .gift_ids_for(&user.id)
+        .await
+        .map_err(|error| AppError::from(error).into_response())?;
+    let held = GiftOnProfile::of_ids(&gift_ids, &endorsement.gift_id);
     Ok(EndorsementDecision {
         jar,
         user,
         endorsement,
-        gift_name,
+        held,
     })
 }
 

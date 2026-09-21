@@ -3,8 +3,34 @@ use super::Db;
 impl Db {
     pub(crate) async fn migrate(&self) -> anyhow::Result<()> {
         sqlx::query(SCHEMA).execute(&self.pool).await?;
+        add_endorsement_skill_column(&self.pool).await?;
+        backfill_endorsement_skills(&self.pool).await?;
         Ok(())
     }
+}
+
+async fn add_endorsement_skill_column(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    if let Err(error) =
+        sqlx::query("ALTER TABLE endorsements ADD COLUMN skill TEXT NOT NULL DEFAULT ''")
+            .execute(pool)
+            .await
+    {
+        if !error.to_string().contains("duplicate column") {
+            return Err(error.into());
+        }
+    }
+    Ok(())
+}
+
+async fn backfill_endorsement_skills(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        "UPDATE endorsements
+         SET skill = (SELECT name FROM gifts WHERE gifts.id = endorsements.gift_id)
+         WHERE skill = '' AND gift_id != ''",
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 const SCHEMA: &str = r#"
@@ -73,7 +99,8 @@ const SCHEMA: &str = r#"
                 id TEXT PRIMARY KEY,
                 from_user_id TEXT NOT NULL,
                 to_user_id TEXT NOT NULL,
-                gift_id TEXT NOT NULL,
+                gift_id TEXT NOT NULL DEFAULT '',
+                skill TEXT NOT NULL DEFAULT '',
                 note TEXT NOT NULL,
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
