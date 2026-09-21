@@ -7,9 +7,10 @@ use axum::response::Response;
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
 
-use crate::leaf::VoiceKind;
+use crate::leaf::{VoiceKind, rewrite_text};
+use crate::sdk::limit::{RateDecision, RateKind};
 
-use super::context::{bind_session, with_cookie};
+use super::context::{ClientKey, bind_session, with_cookie};
 use super::forms::RefineForm;
 use super::{AppError, AppState};
 
@@ -21,39 +22,34 @@ struct RefineReply {
 
 pub async fn refine_words(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<RefineForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
+    let (session, jar) = bind_session(jar, &state);
     if !session.check_csrf(&form.csrf) {
+        return Ok(with_cookie(jar, refine_status(StatusCode::FORBIDDEN, "")));
+    }
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Refine, &who.0) {
         return Ok(with_cookie(
             jar,
-            (
-                StatusCode::FORBIDDEN,
-                Json(RefineReply {
-                    text: String::new(),
-                    seat: "echo",
-                }),
-            ),
+            refine_status(StatusCode::TOO_MANY_REQUESTS, ""),
         ));
     }
     let Some(kind) = VoiceKind::parse(form.kind.trim()) else {
         return Ok(with_cookie(
             jar,
-            (
-                StatusCode::BAD_REQUEST,
-                Json(RefineReply {
-                    text: form.text,
-                    seat: "echo",
-                }),
-            ),
+            refine_status(StatusCode::BAD_REQUEST, &form.text),
         ));
     };
-    let text = match state.refine.rewrite(kind, &form.text).await {
+    let Ok(source) = rewrite_text(&form.text) else {
+        return Ok(with_cookie(jar, refine_status(StatusCode::BAD_REQUEST, "")));
+    };
+    let text = match state.refine.rewrite(kind, &source).await {
         Ok(text) => text,
         Err(error) => {
             tracing::warn!("rewrite failed: {error:#}");
-            form.text.trim().to_string()
+            source
         }
     };
     let seat = if state.refine.is_live() {
@@ -62,4 +58,14 @@ pub async fn refine_words(
         "echo"
     };
     Ok(with_cookie(jar, Json(RefineReply { text, seat })))
+}
+
+fn refine_status(status: StatusCode, text: &str) -> (StatusCode, Json<RefineReply>) {
+    (
+        status,
+        Json(RefineReply {
+            text: text.to_string(),
+            seat: "echo",
+        }),
+    )
 }

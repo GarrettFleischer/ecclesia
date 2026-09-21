@@ -35,7 +35,7 @@ pub fn churches_index(
             form class="row-form" method="post" action="/invites/redeem" {
                 (csrf_input(csrf))
                 label { "Have an invite code?"
-                    input name="code" placeholder="grace-k2m9" autocomplete="off";
+                    input name="code" placeholder="gracecov-k2m9p4r1" autocomplete="off";
                 }
                 button class="btn btn-quiet" type="submit" { "Use it" }
             }

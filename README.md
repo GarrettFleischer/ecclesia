@@ -15,17 +15,19 @@ cargo run
 
 Open [http://127.0.0.1:43781](http://127.0.0.1:43781). On a phone, add it to the home screen, then turn on alerts under You. Store builds live in `mobile/`. See [docs/MOBILE.md](docs/MOBILE.md).
 
+Demo seats and a published cookie key stay **off** unless you ask for them:
+
 ```bash
 PORT=43781 \
 DATABASE_URL=sqlite://ecclesia.db \
-ECCLESIA_SECRET=dev-only-change-me \
+ECCLESIA_SECRET=$(openssl rand -hex 32) \
 ECCLESIA_DEMO=1 \
 cargo run
 ```
 
 Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the demo.
 
-For a shared host: `ECCLESIA_DEMO=0`, a long random `ECCLESIA_SECRET`, and your own VAPID keys. See [docs/MOBILE.md](docs/MOBILE.md).
+For a shared host: leave `ECCLESIA_DEMO` unset, set a long random `ECCLESIA_SECRET`, set `ECCLESIA_SECURE=1` behind TLS, and use your own VAPID keys. See [docs/SECURITY.md](docs/SECURITY.md) and [docs/MOBILE.md](docs/MOBILE.md).
 
 To weigh words with Jev, set `ECCLESIA_JEV_KEY`. For hosted rewrite and
 classify while testing, set `ECCLESIA_OPENROUTER_KEY` (Free Models Router,

@@ -22,10 +22,35 @@ async fn app_with(
     router(AppState {
         db,
         secret: "test-secret".into(),
+        cookie: ecclesia::sdk::session::CookieTransport::Plain,
         demo: DemoSeat::Open,
         push: ecclesia::sdk::push::PushHub::silent(),
         judge,
         refine,
+        gate: ecclesia::sdk::limit::RateGate::new(),
+    })
+}
+
+async fn app_sealed() -> axum::Router {
+    let path = std::env::temp_dir().join(format!(
+        "ecclesia-test-{}-{}.db",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let url = format!("sqlite://{}", path.display());
+    let db = Db::connect(&url).await.expect("test database");
+    router(AppState {
+        db,
+        secret: "test-secret".into(),
+        cookie: ecclesia::sdk::session::CookieTransport::Plain,
+        demo: DemoSeat::Sealed,
+        push: ecclesia::sdk::push::PushHub::silent(),
+        judge: ecclesia::sdk::judge::JudgeHub::word_gate(),
+        refine: ecclesia::sdk::refine::RefineHub::silent(),
+        gate: ecclesia::sdk::limit::RateGate::new(),
     })
 }
 
@@ -38,17 +63,17 @@ async fn app() -> axum::Router {
 }
 
 fn cookie_from(response: &axum::http::Response<Body>) -> String {
+    try_cookie_from(response).expect("signed session cookie")
+}
+
+fn try_cookie_from(response: &axum::http::Response<Body>) -> Option<String> {
     response
         .headers()
         .get_all(header::SET_COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
         .find(|value| value.starts_with("ecclesia_sid="))
-        .expect("signed session cookie")
-        .split(';')
-        .next()
-        .unwrap()
-        .to_string()
+        .map(|value| value.split(';').next().unwrap().to_string())
 }
 
 fn csrf_from(html: &str) -> Option<String> {
@@ -79,10 +104,12 @@ async fn get_page(
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK, "GET {uri}");
-    let cookie = cookie_from(&response);
+    let next_cookie = try_cookie_from(&response)
+        .or_else(|| cookie.map(ToOwned::to_owned))
+        .expect("session cookie");
     let html = body_string(response).await;
     let csrf = csrf_from(&html);
-    (html, cookie, csrf)
+    (html, next_cookie, csrf)
 }
 
 async fn login(app: axum::Router, user_id: &str) -> (axum::Router, String) {
@@ -631,4 +658,188 @@ fn endorsement_id_near(html: &str, marker: &str) -> Option<String> {
         .nth(1)
         .and_then(|rest| rest.split('/').next())
         .map(ToOwned::to_owned)
+}
+
+#[tokio::test]
+async fn us_sec_03_forged_flash_stays_generic() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let bait = get(
+        app.clone(),
+        &cookie,
+        "/home?ok=Visit+https://evil.example+now",
+    )
+    .await;
+    assert!(bait.contains("Done."));
+    assert!(!bait.contains("evil.example"));
+    let html = get(app, &cookie, "/home?err=%3Cscript%3Ealert(1)%3C/script%3E").await;
+    assert!(html.contains("That didn't work."));
+    assert!(!html.contains("<script>"));
+    assert!(!html.contains("alert(1)"));
+}
+
+#[tokio::test]
+async fn us_sec_01_forged_cookie_cannot_sit_as_miriam() {
+    let app = app().await;
+    let response = app
+        .oneshot(
+            Request::get("/home")
+                .header(
+                    header::COOKIE,
+                    "ecclesia_sid=v1.user_miriam.aabbccddeeff00112233445566778899.00",
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("err=auth"), "got {location}");
+}
+
+#[tokio::test]
+async fn us_sec_09_sealed_demo_refuses_impersonation() {
+    let app = app_sealed().await;
+    let (landing, cookie, csrf) = get_page(app.clone(), None, "/").await;
+    let csrf = csrf.expect("landing csrf");
+    assert!(!landing.contains("Miriam Cole"));
+    assert!(!landing.contains("look around"));
+    let location = post_location(app, &cookie, &csrf, "/session", "user_id=user_miriam").await;
+    assert!(location.contains("err=demo"), "got {location}");
+}
+
+#[tokio::test]
+async fn us_sec_08_refine_rejects_overlong_text() {
+    let app = app().await;
+    let (_landing, cookie, csrf) = get_page(app.clone(), None, "/").await;
+    let csrf = csrf.expect("landing csrf");
+    let huge = "x".repeat(2001);
+    let (status, _body) = post_json(
+        app,
+        &cookie,
+        &csrf,
+        "/refine",
+        &format!("kind=bio&text={huge}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn us_sec_10_refine_budget_returns_429() {
+    let app = app().await;
+    let (_landing, cookie, csrf) = get_page(app.clone(), None, "/").await;
+    let csrf = csrf.expect("landing csrf");
+    let mut last = StatusCode::OK;
+    for _ in 0..21 {
+        let (status, _) = post_json(
+            app.clone(),
+            &cookie,
+            &csrf,
+            "/refine",
+            "kind=bio&text=She+stayed.",
+        )
+        .await;
+        last = status;
+    }
+    assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn us_sec_07_push_rejects_a_plain_http_endpoint() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let (_page, cookie, csrf) = get_page(app.clone(), Some(&cookie), "/me").await;
+    let csrf = csrf.expect("me csrf");
+    let status = post(
+        app,
+        &cookie,
+        &csrf,
+        "/push/subscribe",
+        "endpoint=http://push.example/m1&p256dh=abc&auth=def",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn us_sec_14_invite_does_not_reveal_missing_email() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_miriam").await;
+    let (_page, cookie, csrf) =
+        get_page(app.clone(), Some(&cookie), "/churches/church_grace").await;
+    let csrf = csrf.expect("church csrf");
+    let missing = post_location(
+        app.clone(),
+        &cookie,
+        &csrf,
+        "/churches/church_grace/invite",
+        "email=nobody%40example.test",
+    )
+    .await;
+    let known = post_location(
+        app,
+        &cookie,
+        &csrf,
+        "/churches/church_grace/invite",
+        "email=james%40stlukes.test",
+    )
+    .await;
+    assert!(missing.contains("ok=invited"), "got {missing}");
+    assert!(known.contains("ok=invited"), "got {known}");
+}
+
+#[tokio::test]
+async fn us_sec_15_another_profile_hides_email() {
+    let app = app().await;
+    let (app, cookie) = login(app, "user_peter").await;
+    let page = get(app, &cookie, "/members/user_miriam").await;
+    assert!(page.contains("Miriam Cole"));
+    assert!(!page.contains("miriam@gracecovenant.test"));
+}
+
+#[tokio::test]
+async fn us_sec_16_security_headers_and_cookie_flags() {
+    let app = app().await;
+    let response = app
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers = response.headers();
+    assert_eq!(
+        headers
+            .get("x-frame-options")
+            .and_then(|value| value.to_str().ok()),
+        Some("DENY")
+    );
+    assert_eq!(
+        headers
+            .get("x-content-type-options")
+            .and_then(|value| value.to_str().ok()),
+        Some("nosniff")
+    );
+    let csp = headers
+        .get("content-security-policy")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(csp.contains("default-src 'self'"));
+    assert!(csp.contains("frame-ancestors 'none'"));
+    let cookie = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find(|value| value.starts_with("ecclesia_sid="))
+        .expect("session cookie");
+    assert!(cookie.contains("HttpOnly"));
+    assert!(cookie.contains("SameSite=Lax"));
+    assert!(
+        !cookie.to_ascii_lowercase().contains("secure"),
+        "plain transport must not set Secure: {cookie}"
+    );
 }

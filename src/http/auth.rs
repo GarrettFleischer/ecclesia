@@ -8,18 +8,19 @@ use crate::sdk::session::{self, Session};
 use crate::views;
 
 use super::context::{
-    bind_session, fail_csrf, html, leaf_err, load_user, redirect_ok, signed_in, unread, viewer_for,
-    with_cookie,
+    ClientKey, bind_session, fail_csrf, html, leaf_err, load_user, redirect_err, redirect_ok,
+    signed_in, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, FlashQuery, RegisterForm, SessionForm};
 use super::{AppError, AppState};
+use crate::sdk::limit::{RateDecision, RateKind};
 
 pub async fn landing(
     State(state): State<AppState>,
     jar: CookieJar,
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
+    let (session, jar) = bind_session(jar, &state);
     if load_user(&state.db, &session).await?.is_some() && flash.err.is_none() && flash.ok.is_none()
     {
         return Ok(with_cookie(jar, Redirect::to("/home")));
@@ -46,12 +47,16 @@ async fn demo_people(state: &AppState) -> Result<Vec<crate::leaf::User>, AppErro
 
 pub async fn start_session(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<SessionForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
+    let (session, jar) = bind_session(jar, &state);
     if !session.check_csrf(&form.csrf) {
         return Ok(with_cookie(jar, fail_csrf("/")));
+    }
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Session, &who.0) {
+        return Ok(with_cookie(jar, redirect_err("/", "rate")));
     }
     if let Err(error) = may_impersonate(state.demo) {
         return Ok(with_cookie(jar, leaf_err("/", error)));
@@ -64,7 +69,7 @@ pub async fn start_session(
     };
     let next = Session::signed_in(user.id, session::fresh_csrf());
     Ok(with_cookie(
-        session::put(jar, &state.secret, &next),
+        state.put_session(jar, &next),
         Redirect::to("/home"),
     ))
 }
@@ -74,21 +79,25 @@ pub async fn logout(
     jar: CookieJar,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
+    let (session, jar) = bind_session(jar, &state);
     if !session.check_csrf(&form.csrf) {
         return Ok(with_cookie(jar, fail_csrf("/me")));
     }
-    Ok(with_cookie(session::clear(jar), Redirect::to("/")))
+    Ok(with_cookie(state.clear_session(jar), Redirect::to("/")))
 }
 
 pub async fn register_user(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, AppError> {
-    let (session, jar) = bind_session(jar, &state.secret);
+    let (session, jar) = bind_session(jar, &state);
     if !session.check_csrf(&form.csrf) {
         return Ok(with_cookie(jar, fail_csrf("/")));
+    }
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Register, &who.0) {
+        return Ok(with_cookie(jar, redirect_err("/", "rate")));
     }
     if state.awaiting_review(&form.pass, &[&form.bio]) {
         let bio = state.polish(VoiceKind::Bio, &form.bio).await;
@@ -137,7 +146,7 @@ pub async fn register_user(
     state.commit(&effect).await?;
     let next = Session::signed_in(user_id, session::fresh_csrf());
     Ok(with_cookie(
-        session::put(jar, &state.secret, &next),
+        state.put_session(jar, &next),
         redirect_ok("/home", "welcome"),
     ))
 }

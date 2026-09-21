@@ -22,9 +22,12 @@ use tower_http::trace::TraceLayer;
 use crate::db::Db;
 use crate::leaf::{DemoSeat, Effect, Posture, VoiceKind};
 use crate::sdk::judge::JudgeHub;
+use crate::sdk::limit::{RateDecision, RateGate, RateKind};
 use crate::sdk::push::PushHub;
 use crate::sdk::refine::RefineHub;
+use crate::sdk::session::{self, CookieTransport, Session};
 use crate::views;
+use axum_extra::extract::cookie::CookieJar;
 
 pub use context::security_headers;
 
@@ -32,10 +35,12 @@ pub use context::security_headers;
 pub struct AppState {
     pub db: Db,
     pub secret: String,
+    pub cookie: CookieTransport,
     pub demo: DemoSeat,
     pub push: PushHub,
     pub judge: JudgeHub,
     pub refine: RefineHub,
+    pub gate: RateGate,
 }
 
 impl AppState {
@@ -65,6 +70,18 @@ impl AppState {
                 text.trim().to_string()
             }
         }
+    }
+
+    pub(crate) fn put_session(&self, jar: CookieJar, session: &Session) -> CookieJar {
+        session::put(jar, &self.secret, session, self.cookie)
+    }
+
+    pub(crate) fn clear_session(&self, jar: CookieJar) -> CookieJar {
+        session::clear(jar, self.cookie)
+    }
+
+    pub(crate) fn decide_rate(&self, kind: RateKind, who: &str) -> RateDecision {
+        self.gate.decide(kind, who)
     }
 }
 
@@ -104,6 +121,7 @@ pub async fn serve() -> anyhow::Result<()> {
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://ecclesia.db".into());
     let secret = session_secret();
+    let cookie = CookieTransport::from_env_value(std::env::var("ECCLESIA_SECURE").ok().as_deref());
     let demo = DemoSeat::from_env_value(std::env::var("ECCLESIA_DEMO").ok().as_deref());
     let db = Db::connect(&database_url).await?;
     let push = PushHub::load();
@@ -112,10 +130,12 @@ pub async fn serve() -> anyhow::Result<()> {
     let state = AppState {
         db,
         secret,
+        cookie,
         demo,
         push,
         judge,
         refine,
+        gate: RateGate::new(),
     };
 
     let app = router(state);
@@ -123,15 +143,31 @@ pub async fn serve() -> anyhow::Result<()> {
     let addr = listen_addr();
     tracing::info!("ecclesia listening on http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
 fn session_secret() -> String {
-    std::env::var("ECCLESIA_SECRET").unwrap_or_else(|_| {
-        tracing::warn!("ECCLESIA_SECRET is unset; signing cookies with the local development key");
-        "dev-only-change-me".into()
-    })
+    match std::env::var("ECCLESIA_SECRET") {
+        Ok(value) if !value.is_empty() => {
+            if value == "dev-only-change-me" {
+                tracing::warn!(
+                    "ECCLESIA_SECRET is the published development key. Anyone who knows it can forge a cookie."
+                );
+            }
+            value
+        }
+        _ => {
+            tracing::warn!(
+                "ECCLESIA_SECRET is unset; cookies use a one-shot key. Sessions die on restart."
+            );
+            session::mint_secret()
+        }
+    }
 }
 
 fn listen_addr() -> SocketAddr {

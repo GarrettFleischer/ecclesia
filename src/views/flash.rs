@@ -53,7 +53,7 @@ fn flash_ok(code: &str) -> String {
         "saved" => "Saved.".into(),
         "church_planted" => "Church added. Share the invite code to bring people in.".into(),
         "invite_accepted" => "You're in.".into(),
-        other => other.to_string(),
+        _ => "Done.".into(),
     }
 }
 
@@ -77,6 +77,23 @@ fn flash_err(code: &str) -> String {
         "bad_email" => "Check the email address.".into(),
         "csrf" => "The form expired. Try again.".into(),
         "tone" => "Write it so it lifts someone up.".into(),
-        other => other.to_string(),
+        "demo" => "Demo seats are off.".into(),
+        "rate" => "Try again shortly.".into(),
+        _ => "That didn't work.".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn us_sec_03_unknown_flash_codes_stay_generic() {
+        let phish = flash_from(Some("<script>alert(1)</script>".into()), None);
+        assert_eq!(phish.unwrap().text(), "Done.");
+        let bait = flash_from(None, Some("Visit https://evil.example".into()));
+        assert_eq!(bait.unwrap().text(), "That didn't work.");
+        let known = flash_from(Some("saved".into()), None);
+        assert_eq!(known.unwrap().text(), "Saved.");
     }
 }

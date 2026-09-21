@@ -205,7 +205,7 @@ pub fn plant_church(
     posture: Posture,
     church_id: String,
     membership_id: String,
-    nonce4: &str,
+    nonce: &str,
     now: String,
 ) -> Result<Effect, DomainError> {
     super::flags::require_uplifting(posture)?;
@@ -219,7 +219,7 @@ pub fn plant_church(
         description,
         gathering,
         church_id,
-        nonce4,
+        nonce,
         now.clone(),
     );
     let membership = owner_membership(owner, &church.id, membership_id, now);
@@ -236,12 +236,12 @@ fn planted_church(
     description: String,
     gathering: String,
     church_id: String,
-    nonce4: &str,
+    nonce: &str,
     now: String,
 ) -> Church {
     Church {
         id: church_id,
-        invite_code: invite_code_for(&name, nonce4),
+        invite_code: invite_code_for(&name, nonce),
         name,
         city,
         region,

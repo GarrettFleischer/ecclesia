@@ -9,6 +9,7 @@
 pub mod chat;
 pub mod clock;
 pub mod judge;
+pub mod limit;
 pub mod memory;
 pub mod prompts;
 pub mod push;

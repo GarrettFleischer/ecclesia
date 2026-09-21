@@ -145,7 +145,7 @@ async fn send_fcm_list(hub: &PushHub, db: &Db, user_id: &str, key: &str, notice:
 
 async fn forget_if_gone(db: &Db, endpoint: &str, error: &str) {
     if error.contains("410") || error.contains("404") {
-        let _ = db.remove_push_subscription(endpoint).await;
+        let _ = db.forget_push_subscription(endpoint).await;
     }
 }
 

@@ -24,7 +24,10 @@ impl Db {
         sqlx::query(
             "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at)
              VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth",
+             ON CONFLICT(endpoint) DO UPDATE SET
+                p256dh = excluded.p256dh,
+                auth = excluded.auth
+             WHERE push_subscriptions.user_id = excluded.user_id",
         )
         .bind(user_id)
         .bind(endpoint)
@@ -36,7 +39,20 @@ impl Db {
         Ok(())
     }
 
-    pub async fn remove_push_subscription(&self, endpoint: &str) -> anyhow::Result<()> {
+    pub async fn remove_push_subscription(
+        &self,
+        user_id: &str,
+        endpoint: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query("DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?")
+            .bind(endpoint)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn forget_push_subscription(&self, endpoint: &str) -> anyhow::Result<()> {
         sqlx::query("DELETE FROM push_subscriptions WHERE endpoint = ?")
             .bind(endpoint)
             .execute(&self.pool)
@@ -71,7 +87,8 @@ impl Db {
         sqlx::query(
             "INSERT INTO push_devices (user_id, token, platform, created_at)
              VALUES (?, ?, ?, ?)
-             ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, platform = excluded.platform",
+             ON CONFLICT(token) DO UPDATE SET platform = excluded.platform
+             WHERE push_devices.user_id = excluded.user_id",
         )
         .bind(user_id)
         .bind(token)
@@ -80,5 +97,75 @@ impl Db {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db::Db;
+
+    async fn fresh_db() -> Db {
+        let path = std::env::temp_dir().join(format!(
+            "ecclesia-push-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        Db::connect(&format!("sqlite://{}", path.display()))
+            .await
+            .expect("test database")
+    }
+
+    #[tokio::test]
+    async fn us_sec_07_unsubscribe_stays_with_the_owner() {
+        let db = fresh_db().await;
+        db.upsert_push_subscription("user_miriam", "https://push.example/m1", "abc", "def")
+            .await
+            .unwrap();
+        db.remove_push_subscription("user_peter", "https://push.example/m1")
+            .await
+            .unwrap();
+        assert_eq!(db.push_subscriptions("user_miriam").await.unwrap().len(), 1);
+        db.remove_push_subscription("user_miriam", "https://push.example/m1")
+            .await
+            .unwrap();
+        assert!(
+            db.push_subscriptions("user_miriam")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn us_sec_07_subscribe_does_not_steal() {
+        let db = fresh_db().await;
+        db.upsert_push_subscription("user_miriam", "https://push.example/m1", "abc", "def")
+            .await
+            .unwrap();
+        db.upsert_push_subscription("user_peter", "https://push.example/m1", "zzz", "yyy")
+            .await
+            .unwrap();
+        let mine = db.push_subscriptions("user_miriam").await.unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].p256dh, "abc");
+        assert!(
+            db.push_subscriptions("user_peter")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        db.upsert_push_device("user_miriam", "fcm-1", "android")
+            .await
+            .unwrap();
+        db.upsert_push_device("user_peter", "fcm-1", "ios")
+            .await
+            .unwrap();
+        let devices = db.push_devices("user_miriam").await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].platform, "android");
+        assert!(db.push_devices("user_peter").await.unwrap().is_empty());
     }
 }

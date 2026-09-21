@@ -1,10 +1,29 @@
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use hmac::{Hmac, Mac};
+use rand::RngCore;
 use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
 
 const COOKIE: &str = "ecclesia_sid";
+const CSRF_LEN: usize = 32;
+const USER_ID_MAX: usize = 80;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CookieTransport {
+    Plain,
+    Secure,
+}
+
+impl CookieTransport {
+    pub fn from_env_value(value: Option<&str>) -> Self {
+        match value.map(str::trim) {
+            Some("1") => Self::Secure,
+            Some(value) if value.eq_ignore_ascii_case("true") => Self::Secure,
+            _ => Self::Plain,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
@@ -41,17 +60,16 @@ impl Session {
             return None;
         }
         let (user, csrf) = payload.split_once('.')?;
-        if csrf.len() != 32 || !csrf.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !csrf_ok(csrf) {
             return None;
         }
-        Some(Self {
-            user_id: if user.is_empty() {
-                None
-            } else {
-                Some(user.to_string())
-            },
-            csrf: csrf.to_string(),
-        })
+        if user.is_empty() {
+            return Some(Self::guest(csrf.to_string()));
+        }
+        if !user_id_ok(user) {
+            return None;
+        }
+        Some(Self::signed_in(user.to_string(), csrf.to_string()))
     }
 
     pub fn check_csrf(&self, submitted: &str) -> bool {
@@ -64,30 +82,62 @@ pub fn fresh_csrf() -> String {
     hex::encode(uuid::Uuid::new_v4().as_bytes())
 }
 
-pub fn from_jar(secret: &str, jar: &CookieJar) -> Session {
-    jar.get(COOKIE)
+pub fn mint_secret() -> String {
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    hex::encode(bytes)
+}
+
+pub fn from_jar(secret: &str, jar: &CookieJar) -> JarSession {
+    match jar
+        .get(COOKIE)
         .and_then(|cookie| Session::decode(secret, cookie.value()))
-        .unwrap_or_else(|| Session::guest(fresh_csrf()))
+    {
+        Some(session) => JarSession::Known(session),
+        None => JarSession::Minted(Session::guest(fresh_csrf())),
+    }
 }
 
-pub fn put(jar: CookieJar, secret: &str, session: &Session) -> CookieJar {
-    let cookie = Cookie::build((COOKIE, session.encode(secret)))
+pub enum JarSession {
+    Known(Session),
+    Minted(Session),
+}
+
+pub fn put(
+    jar: CookieJar,
+    secret: &str,
+    session: &Session,
+    transport: CookieTransport,
+) -> CookieJar {
+    jar.add(build_cookie(
+        session.encode(secret),
+        cookie::time::Duration::days(30),
+        transport,
+    ))
+}
+
+pub fn clear(jar: CookieJar, transport: CookieTransport) -> CookieJar {
+    jar.add(build_cookie(
+        String::new(),
+        cookie::time::Duration::seconds(0),
+        transport,
+    ))
+}
+
+fn build_cookie(
+    value: String,
+    max_age: cookie::time::Duration,
+    transport: CookieTransport,
+) -> Cookie<'static> {
+    let builder = Cookie::build((COOKIE, value))
         .path("/")
         .http_only(true)
         .same_site(SameSite::Lax)
-        .max_age(cookie::time::Duration::days(30))
-        .build();
-    jar.add(cookie)
-}
-
-pub fn clear(jar: CookieJar) -> CookieJar {
-    let cookie = Cookie::build((COOKIE, ""))
-        .path("/")
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .max_age(cookie::time::Duration::seconds(0))
-        .build();
-    jar.add(cookie)
+        .max_age(max_age);
+    match transport {
+        CookieTransport::Plain => builder.build(),
+        CookieTransport::Secure => builder.secure(true).build(),
+    }
 }
 
 fn sign(secret: &str, payload: &str) -> String {
@@ -103,6 +153,17 @@ fn verify(secret: &str, payload: &str, mac_hex: &str) -> bool {
         Ok(bytes) => mac.verify_slice(&bytes).is_ok(),
         Err(_) => false,
     }
+}
+
+fn csrf_ok(csrf: &str) -> bool {
+    csrf.len() == CSRF_LEN && csrf.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn user_id_ok(user: &str) -> bool {
+    (1..=USER_ID_MAX).contains(&user.len())
+        && user
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 fn constant_eq(a: &str, b: &str) -> bool {
@@ -133,10 +194,26 @@ mod tests {
     }
 
     #[test]
+    fn us_sec_01_dotted_user_id_cannot_hide_in_the_cookie() {
+        let session = Session::signed_in(
+            "user.miriam".into(),
+            "aabbccddeeff00112233445566778899".into(),
+        );
+        let raw = session.encode("secret");
+        assert_eq!(Session::decode("secret", &raw), None);
+    }
+
+    #[test]
     fn us_sec_02_csrf_must_match() {
         let session = Session::guest("aabbccddeeff00112233445566778899".into());
         assert!(session.check_csrf("aabbccddeeff00112233445566778899"));
         assert!(!session.check_csrf("bbccddeeff00112233445566778899aa"));
         assert!(!session.check_csrf(""));
+    }
+
+    #[test]
+    fn us_sec_01_minted_secret_is_long() {
+        assert_eq!(mint_secret().len(), 64);
+        assert_ne!(mint_secret(), mint_secret());
     }
 }

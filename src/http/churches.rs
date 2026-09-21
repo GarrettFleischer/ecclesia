@@ -6,12 +6,13 @@ use crate::leaf::{
     Church, Viewer, VoiceKind, accept_invite, approve_membership, decline_membership,
     invite_member, parse_invite_email, plant_church, redeem_invite, request_join,
 };
-use crate::sdk::clock::{new_id, nonce4, now_iso};
+use crate::sdk::clock::{new_id, nonce, now_iso};
+use crate::sdk::limit::{RateDecision, RateKind};
 use crate::views;
 
 use super::context::{
-    apply_leaf_redirect, church_directory, governor_ids, html, leaf_err, redirect_err, redirect_ok,
-    signed_form, signed_in, unread, viewer_for, with_cookie,
+    ClientKey, apply_leaf_redirect, church_directory, governor_ids, html, leaf_err, redirect_err,
+    redirect_ok, signed_form, signed_in, unread, viewer_for, with_cookie,
 };
 use super::forms::{ChurchForm, CsrfForm, FlashQuery, InviteForm, RedeemForm};
 use super::{AppError, AppState};
@@ -109,7 +110,7 @@ pub async fn create_church(
         posture,
         new_id(),
         new_id(),
-        &nonce4(),
+        &nonce(),
         now_iso(),
     ) {
         Ok(effect) => effect,
@@ -217,7 +218,7 @@ pub async fn invite(
         Err(error) => return Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
     };
     let Some(invitee) = state.db.user_by_email(&email).await? else {
-        return Ok(with_cookie(signed.jar, redirect_err(&dest, "not_found")));
+        return Ok(with_cookie(signed.jar, redirect_ok(&dest, "invited")));
     };
     let existing = state.db.membership_pair(&id, &invitee.id).await?;
     let effect = match invite_member(
@@ -237,6 +238,7 @@ pub async fn invite(
 
 pub async fn redeem(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<RedeemForm>,
 ) -> Result<Response, AppError> {
@@ -244,6 +246,9 @@ pub async fn redeem(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Redeem, &who.0) {
+        return Ok(with_cookie(signed.jar, redirect_err("/churches", "rate")));
+    }
     let Some(church) = state.db.church_by_invite(&form.code).await? else {
         return Ok(with_cookie(signed.jar, redirect_err("/churches", "invite")));
     };

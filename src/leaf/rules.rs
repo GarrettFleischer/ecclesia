@@ -124,8 +124,8 @@ fn church_for_card<'a>(card: &NeedCard, churches: &'a [Church]) -> Option<&'a Ch
     churches.iter().find(|church| church.id == card.church_id)
 }
 
-pub fn invite_code_for(name: &str, nonce4: &str) -> String {
-    format!("{}-{}", slug_from(name, 8), nonce_from(nonce4, 4))
+pub fn invite_code_for(name: &str, nonce: &str) -> String {
+    format!("{}-{}", slug_from(name, 8), nonce_from(nonce, 8))
 }
 
 fn slug_from(name: &str, take: usize) -> String {
@@ -136,8 +136,8 @@ fn slug_from(name: &str, take: usize) -> String {
         .collect()
 }
 
-fn nonce_from(nonce4: &str, take: usize) -> String {
-    nonce4
+fn nonce_from(nonce: &str, take: usize) -> String {
+    nonce
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
         .take(take)
@@ -304,7 +304,10 @@ mod tests {
 
     #[test]
     fn invite_code_is_pure_given_a_nonce() {
-        assert_eq!(invite_code_for("Grace Covenant", "k2m9"), "gracecov-k2m9");
+        assert_eq!(
+            invite_code_for("Grace Covenant", "k2m9p4r1"),
+            "gracecov-k2m9p4r1"
+        );
     }
 
     #[test]

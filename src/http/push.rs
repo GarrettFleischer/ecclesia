@@ -4,7 +4,10 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 use std::path::PathBuf;
 
-use super::context::{signed_form, with_cookie};
+use crate::leaf::{device_token, https_endpoint, push_key, push_platform};
+use crate::sdk::limit::{RateDecision, RateKind};
+
+use super::context::{ClientKey, signed_form, with_cookie};
 use super::forms::{PushDeviceForm, PushSubscribeForm, PushUnsubscribeForm};
 use super::{AppError, AppState};
 
@@ -41,6 +44,7 @@ pub async fn vapid_public(State(state): State<AppState>) -> impl IntoResponse {
 
 pub async fn subscribe(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<PushSubscribeForm>,
 ) -> Result<Response, AppError> {
@@ -48,15 +52,28 @@ pub async fn subscribe(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Push, &who.0) {
+        return Ok(with_cookie(signed.jar, StatusCode::TOO_MANY_REQUESTS));
+    }
+    let Ok(endpoint) = https_endpoint(&form.endpoint) else {
+        return Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST));
+    };
+    let Ok(p256dh) = push_key(&form.p256dh) else {
+        return Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST));
+    };
+    let Ok(auth) = push_key(&form.auth) else {
+        return Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST));
+    };
     state
         .db
-        .upsert_push_subscription(&signed.user.id, &form.endpoint, &form.p256dh, &form.auth)
+        .upsert_push_subscription(&signed.user.id, &endpoint, &p256dh, &auth)
         .await?;
     Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT))
 }
 
 pub async fn unsubscribe(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<PushUnsubscribeForm>,
 ) -> Result<Response, AppError> {
@@ -64,12 +81,22 @@ pub async fn unsubscribe(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    state.db.remove_push_subscription(&form.endpoint).await?;
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Push, &who.0) {
+        return Ok(with_cookie(signed.jar, StatusCode::TOO_MANY_REQUESTS));
+    }
+    let Ok(endpoint) = https_endpoint(&form.endpoint) else {
+        return Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST));
+    };
+    state
+        .db
+        .remove_push_subscription(&signed.user.id, &endpoint)
+        .await?;
     Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT))
 }
 
 pub async fn register_device(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
     Form(form): Form<PushDeviceForm>,
 ) -> Result<Response, AppError> {
@@ -77,9 +104,18 @@ pub async fn register_device(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Push, &who.0) {
+        return Ok(with_cookie(signed.jar, StatusCode::TOO_MANY_REQUESTS));
+    }
+    let Ok(token) = device_token(&form.token) else {
+        return Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST));
+    };
+    let Ok(platform) = push_platform(&form.platform) else {
+        return Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST));
+    };
     state
         .db
-        .upsert_push_device(&signed.user.id, &form.token, &form.platform)
+        .upsert_push_device(&signed.user.id, &token, platform)
         .await?;
     Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT))
 }

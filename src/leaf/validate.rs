@@ -110,6 +110,48 @@ pub fn optional_note(value: &str) -> Result<String, DomainError> {
     optional_text(value, NOTE_MAX)
 }
 
+pub fn rewrite_text(value: &str) -> Result<String, DomainError> {
+    optional_text(value, BODY_MAX)
+}
+
+pub fn https_endpoint(value: &str) -> Result<String, DomainError> {
+    let trimmed = require_text(value, 2048)?;
+    let rest = trimmed
+        .strip_prefix("https://")
+        .ok_or(DomainError::InvalidInput)?;
+    if rest.is_empty() || rest.chars().any(endpoint_forbidden) {
+        return Err(DomainError::InvalidInput);
+    }
+    Ok(trimmed)
+}
+
+fn endpoint_forbidden(ch: char) -> bool {
+    ch.is_whitespace() || ch == '<' || ch == '>' || ch == '"'
+}
+
+pub fn push_key(value: &str) -> Result<String, DomainError> {
+    let trimmed = require_text(value, 256)?;
+    if !trimmed.chars().all(push_key_char) {
+        return Err(DomainError::InvalidInput);
+    }
+    Ok(trimmed)
+}
+
+fn push_key_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '=' | '+' | '/')
+}
+
+pub fn device_token(value: &str) -> Result<String, DomainError> {
+    require_text(value, 512)
+}
+
+pub fn push_platform(value: &str) -> Result<&str, DomainError> {
+    match value.trim() {
+        "web" | "ios" | "android" => Ok(value.trim()),
+        _ => Err(DomainError::InvalidInput),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +177,24 @@ mod tests {
             normalize_email(" Miriam@Grace.Test ").unwrap(),
             "miriam@grace.test"
         );
+    }
+
+    #[test]
+    fn us_sec_08_rewrite_and_push_fields_cap() {
+        assert_eq!(
+            rewrite_text(&"x".repeat(2001)),
+            Err(DomainError::InvalidInput)
+        );
+        assert_eq!(rewrite_text("  She stayed.  ").unwrap(), "She stayed.");
+        assert_eq!(
+            https_endpoint("http://push.example/a"),
+            Err(DomainError::InvalidInput)
+        );
+        assert_eq!(
+            https_endpoint("https://push.example/a").unwrap(),
+            "https://push.example/a"
+        );
+        assert_eq!(push_platform("android").unwrap(), "android");
+        assert_eq!(push_platform("desktop"), Err(DomainError::InvalidInput));
     }
 }

@@ -97,10 +97,11 @@ pub enum DemoSeat {
 
 impl DemoSeat {
     pub fn from_env_value(value: Option<&str>) -> Self {
-        match value {
-            Some("0") => Self::Sealed,
-            Some(value) if value.eq_ignore_ascii_case("false") => Self::Sealed,
-            _ => Self::Open,
+        match value.map(str::trim) {
+            Some("1") => Self::Open,
+            Some(value) if value.eq_ignore_ascii_case("true") => Self::Open,
+            Some(value) if value.eq_ignore_ascii_case("open") => Self::Open,
+            _ => Self::Sealed,
         }
     }
 }
@@ -213,5 +214,13 @@ mod tests {
         assert_eq!(VoicePass::parse(""), VoicePass::Review);
         assert_eq!(VoicePass::parse("review"), VoicePass::Review);
         assert_eq!(VoicePass::parse("publish"), VoicePass::Publish);
+    }
+
+    #[test]
+    fn us_sec_09_demo_stays_sealed_unless_asked() {
+        assert_eq!(DemoSeat::from_env_value(None), DemoSeat::Sealed);
+        assert_eq!(DemoSeat::from_env_value(Some("0")), DemoSeat::Sealed);
+        assert_eq!(DemoSeat::from_env_value(Some("1")), DemoSeat::Open);
+        assert_eq!(DemoSeat::from_env_value(Some("true")), DemoSeat::Open);
     }
 }

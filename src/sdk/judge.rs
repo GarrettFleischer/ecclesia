@@ -320,13 +320,28 @@ pub fn word_gate(parts: &[&str]) -> Posture {
 
 fn append_folded(out: &mut String, parts: &[&str]) {
     for part in parts {
-        for ch in part.chars() {
-            if ch.is_ascii_alphabetic() {
-                out.push(ch.to_ascii_lowercase());
-            } else if !out.ends_with(' ') {
-                out.push(' ');
-            }
+        append_folded_part(out, part);
+    }
+}
+
+fn append_folded_part(out: &mut String, part: &str) {
+    for ch in part.chars() {
+        if let Some(letter) = fold_letter(ch) {
+            out.push(letter);
         }
+    }
+}
+
+fn fold_letter(ch: char) -> Option<char> {
+    match ch {
+        '0' => Some('o'),
+        '1' | '!' => Some('i'),
+        '3' => Some('e'),
+        '4' | '@' => Some('a'),
+        '5' | '$' => Some('s'),
+        '7' => Some('t'),
+        c if c.is_ascii_alphabetic() => Some(c.to_ascii_lowercase()),
+        _ => None,
     }
 }
 
@@ -343,14 +358,14 @@ fn forbidden_needles() -> &'static [&'static str] {
         "retard",
         "whore",
         "slut",
-        "you suck",
+        "yousuck",
         "worthless",
-        "hate you",
-        "kill yourself",
+        "hateyou",
+        "killyourself",
         "idiot",
         "moron",
         "dumbass",
-        "piece of crap",
+        "pieceofcrap",
     ]
 }
 
@@ -378,6 +393,9 @@ mod tests {
             Posture::TearsDown
         );
         assert_eq!(word_gate(&["What a dumbass."]), Posture::TearsDown);
+        assert_eq!(word_gate(&["f u c k off"]), Posture::TearsDown);
+        assert_eq!(word_gate(&["You are w0rthless."]), Posture::TearsDown);
+        assert_eq!(word_gate(&["k1ll yourself"]), Posture::TearsDown);
     }
 
     #[test]

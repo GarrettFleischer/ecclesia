@@ -68,7 +68,7 @@ impl DomainError {
             Self::EmailTaken => "email",
             Self::UnknownGift => "missing",
             Self::NotFound => "not_found",
-            Self::DemoDisabled => "forbidden",
+            Self::DemoDisabled => "demo",
             Self::TearsDown => "tone",
         }
     }

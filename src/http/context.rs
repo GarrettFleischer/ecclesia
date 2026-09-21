@@ -1,14 +1,17 @@
+use axum::extract::{ConnectInfo, FromRequestParts};
+use axum::http::request::Parts;
 use axum::http::{HeaderValue, header};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
+use std::net::SocketAddr;
 
 use crate::db::Db;
 use crate::leaf::{
     Church, ChurchCard, DomainError, Effect, Membership, PlaceGroup, User, Viewer,
     churches_with_counts, group_churches_by_place, unique_church_ids,
 };
-use crate::sdk::session::{self, Session};
+use crate::sdk::session::Session;
 
 use super::AppError;
 
@@ -22,14 +25,38 @@ pub fn html(markup: maud::Markup) -> Html<String> {
     Html(markup.into_string())
 }
 
-pub fn bind_session(jar: CookieJar, secret: &str) -> (Session, CookieJar) {
-    let session = session::from_jar(secret, &jar);
-    let jar = session::put(jar, secret, &session);
-    (session, jar)
+pub struct ClientKey(pub String);
+
+impl<S> FromRequestParts<S> for ClientKey
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        Ok(Self(who_from_parts(parts)))
+    }
+}
+
+fn who_from_parts(parts: &Parts) -> String {
+    match parts.extensions.get::<ConnectInfo<SocketAddr>>() {
+        Some(ConnectInfo(addr)) => addr.ip().to_string(),
+        None => String::from("local"),
+    }
+}
+
+pub fn bind_session(jar: CookieJar, state: &super::AppState) -> (Session, CookieJar) {
+    match crate::sdk::session::from_jar(&state.secret, &jar) {
+        crate::sdk::session::JarSession::Known(session) => (session, jar),
+        crate::sdk::session::JarSession::Minted(session) => {
+            let jar = state.put_session(jar, &session);
+            (session, jar)
+        }
+    }
 }
 
 pub async fn signed_in(state: &super::AppState, jar: CookieJar) -> Result<SignedIn, Response> {
-    let (session, jar) = bind_session(jar, &state.secret);
+    let (session, jar) = bind_session(jar, state);
     match require_user(&state.db, &session).await {
         Ok(user) => Ok(SignedIn { session, jar, user }),
         Err(response) => Err(with_cookie(jar, response)),
@@ -50,15 +77,40 @@ pub async fn signed_form(
 }
 
 pub fn fail_csrf(path: &str) -> Redirect {
-    Redirect::to(&format!("{path}?err=csrf"))
+    redirect_err(path, "csrf")
 }
 
 pub fn redirect_ok(path: &str, code: &str) -> Redirect {
-    Redirect::to(&format!("{path}?ok={code}"))
+    Redirect::to(&flash_location(path, "ok", code))
 }
 
 pub fn redirect_err(path: &str, code: &str) -> Redirect {
-    Redirect::to(&format!("{path}?err={code}"))
+    Redirect::to(&flash_location(path, "err", code))
+}
+
+fn flash_location(path: &str, key: &str, code: &str) -> String {
+    format!("{}?{key}={code}", same_origin_path(path))
+}
+
+fn same_origin_path(path: &str) -> &str {
+    if path.starts_with('/') && !path.starts_with("//") && !path.contains('\\') {
+        path
+    } else {
+        "/"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn us_sec_17_redirects_stay_on_this_origin() {
+        assert_eq!(same_origin_path("/churches/grace"), "/churches/grace");
+        assert_eq!(same_origin_path("//evil.example"), "/");
+        assert_eq!(same_origin_path("https://evil.example"), "/");
+        assert_eq!(same_origin_path("/\\evil"), "/");
+    }
 }
 
 pub fn leaf_err(path: &str, error: DomainError) -> Redirect {
@@ -172,5 +224,13 @@ fn attach_security_headers(headers: &mut axum::http::HeaderMap) {
         HeaderValue::from_static(
             "default-src 'self'; img-src 'self' data:; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
         ),
+    );
+    headers.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-permitted-cross-domain-policies"),
+        HeaderValue::from_static("none"),
     );
 }
