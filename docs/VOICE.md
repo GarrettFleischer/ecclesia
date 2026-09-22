@@ -6,8 +6,8 @@ person, no profanity.
 Submit is two steps. The first pass rewrites the words. The person reads that
 version, edits it, then publishes. Classification runs on what they publish.
 
-The leaf never calls a model. The skin weighs the words and hands the leaf a
-`Posture`. The leaf only knows `Lifts` or `TearsDown`.
+Domain never calls a model. The skin weighs the words and hands Domain a
+`Posture`. Domain only knows `Lifts` or `TearsDown`.
 
 ```
 words  →  RefineHub (OpenRouter free, local chat, or polish)  →  review
@@ -61,7 +61,7 @@ and is live, so the first submit is a review).
 
 ## Prompts
 
-These live in `src/sdk/prompts.rs`. Change them there.
+These live in `crates/sdk/src/prompts.rs`. Change them there.
 
 ### Classify (chat / OpenRouter)
 
@@ -108,7 +108,7 @@ Church: Rewrite this church description so it is clear. Keep where they are and 
 
 The user message for rewrite is the raw field.
 
-## What the leaf sees
+## What Domain sees
 
 `VoicePass::Review` is the first submit. `VoicePass::Publish` is the second.
 `Posture` still arrives on publish. `require_uplifting` returns

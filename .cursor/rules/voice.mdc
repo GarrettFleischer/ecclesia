@@ -1,13 +1,13 @@
 ---
-description: Classification and rewrite stay in the skin. Leaves only see Posture.
-globs: src/**/*.rs,docs/VOICE.md
+description: Classification and rewrite stay in the skin. Domain only sees Posture.
+globs: crates/**/*.rs,docs/VOICE.md
 alwaysApply: false
 ---
 
 Read `docs/VOICE.md` before changing classification or rewrite.
 
-- The leaf never calls Jev, OpenRouter, or any HTTP model. It takes `Posture`.
-- Prompts live in `src/sdk/prompts.rs`. Edit that file when the wording should change.
+- Domain never calls Jev, OpenRouter, or any HTTP model. It takes `Posture`.
+- Prompts live in `crates/sdk/src/prompts.rs`. Edit that file when the wording should change.
 - `JudgeHub` weighs words (Jev, OpenRouter `openrouter/free`, local chat, or the word gate).
 - `RefineHub` rewrites on the first submit. The person edits, then `VoicePass::Publish`.
 - Talk to OpenRouter / Ollama with `reqwest`. Do not add Rig unless the user asks.

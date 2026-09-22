@@ -15,19 +15,18 @@ cargo run
 
 Open [http://127.0.0.1:43781](http://127.0.0.1:43781). On a phone, add it to the home screen, then turn on alerts under You. Store builds live in `mobile/`. See [docs/MOBILE.md](docs/MOBILE.md).
 
-Demo seats and a published cookie key stay **off** unless you ask for them:
+For a stable local secret:
 
 ```bash
 PORT=43781 \
 DATABASE_URL=sqlite://ecclesia.db \
 ECCLESIA_SECRET=$(openssl rand -hex 32) \
-ECCLESIA_DEMO=1 \
 cargo run
 ```
 
-Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the demo.
+Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the store. An empty store seeds the gift catalog only.
 
-For a shared host: leave `ECCLESIA_DEMO` unset, set a long random `ECCLESIA_SECRET`, set `ECCLESIA_SECURE=1` behind TLS, and use your own VAPID keys. See [docs/SECURITY.md](docs/SECURITY.md) and [docs/MOBILE.md](docs/MOBILE.md).
+For a shared host: set a long random `ECCLESIA_SECRET`, set `ECCLESIA_SECURE=1` behind TLS, and use your own VAPID keys. See [docs/SECURITY.md](docs/SECURITY.md) and [docs/MOBILE.md](docs/MOBILE.md).
 
 To weigh words with Jev, set `ECCLESIA_JEV_KEY`. For hosted rewrite and
 classify while testing, set `ECCLESIA_OPENROUTER_KEY` (Free Models Router,
@@ -35,23 +34,18 @@ classify while testing, set `ECCLESIA_OPENROUTER_KEY` (Free Models Router,
 [docs/VOICE.md](docs/VOICE.md). Without those, a word gate still stops
 obvious attacks. First submit shows the rewrite. Then you publish.
 
-## Walk the demo
+## Try it
 
-1. **Peter Lang** — asked to join Grace Covenant.
-2. **Miriam Cole** — approve Peter. See the needs she posted.
-3. **Ruth Alvarez** — Inbox: James endorsed her hospitality. Accept it or decline. A declined note stays with the two of you.
-4. **Daniel Okonkwo** — Inbox: Elena endorsed him for counseling. He never listed it.
-5. **Elena Vasquez** — can see Grace's interpreter need and apply.
-6. **James Whitaker** — the ramp need is open to nearby churches.
-
-Invite codes: `grace-k2m9`, `luke-p4r1`, `mercy-n8q2`.
+1. Register on the landing page.
+2. Plant a church or redeem an invite.
+3. Post a need, apply, or endorse from another registered member.
 
 ## Docs
 
 - How to write copy: [docs/PROSE.md](docs/PROSE.md)
 - Classification and rewrite: [docs/VOICE.md](docs/VOICE.md)
 - User stories: [docs/SPEC.md](docs/SPEC.md)
-- Leaves and honest functions: [docs/LEAVES.md](docs/LEAVES.md)
-- Leaves and SDK: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Domain and honest functions: [docs/DOMAIN.md](docs/DOMAIN.md)
+- Domain and SDK: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Sessions and CSRF: [docs/SECURITY.md](docs/SECURITY.md)
 - iOS and Android: [docs/MOBILE.md](docs/MOBILE.md)

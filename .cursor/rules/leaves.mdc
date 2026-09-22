@@ -1,21 +1,21 @@
 ---
-description: Leaves, honest functions, no bool args, no wasted clones, no macros for repetition
-globs: src/**/*.rs,tests/**/*.rs,docs/**/*.md
+description: Domain stories, honest functions, no bool args, no wasted clones, no macros for repetition
+globs: crates/**/*.rs,docs/**/*.md
 alwaysApply: true
 ---
 
-Read and follow `docs/LEAVES.md` before writing or changing Rust.
+Read and follow `docs/DOMAIN.md` before writing or changing Rust.
 
 Short version:
 
-- Domain lives in `src/leaf` only. A leaf is values in, `Result<Effect, DomainError>` out.
-- Leaves never do I/O: no SQLite, clock, UUID, cookies, env, sockets, or `crate::sdk` / `crate::http` / `crate::db`.
+- Domain lives in `crates/domain` only. A story is values in, `Result<Effect, DomainError>` out.
+- Domain never does I/O: no SQLite, clock, UUID, cookies, env, sockets, or `ecclesia_sdk` / `crate::http` / `crate::db`.
 - Functions are honest. Name, arguments, and return type say what happens. No hidden side effects.
 - Never pass `bool` as a function argument. Use a descriptive enum or two functions.
 - Return a specific `DomainError`. Do not reuse `NotGovernor` for a different kind of person.
 - Do not clone a collection to walk it again. Iterate, move, or borrow (`NeedSight`).
 - Loops live in their own named function. Page bodies compose those functions.
 - Do not write macros to hide repetition (HTTP gates, write dispatch, status strings). Extract a function, an enum, or a trait after a second identical use.
-- HTTP loads values, calls a leaf, commits the effect. It does not decide membership, visibility, or endorsements. It may weigh words and pass a `Posture`; the leaf refuses `TearsDown`.
+- HTTP loads values, calls an SDK story, paints HTML. It does not decide membership, visibility, or endorsements. It may weigh words and pass a `Posture`; Domain refuses `TearsDown`.
 
-`us_clean_01`, `us_perf_01`, and `us_leaf_01` in `src/style.rs` enforce this. Run `cargo test style` after changing `src/`.
+`us_clean_01`, `us_perf_01`, and `us_domain_01` in `crates/domain/src/style.rs` enforce this. Run `cargo test style` after changing `crates/`.

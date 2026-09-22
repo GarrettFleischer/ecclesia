@@ -1,0 +1,9 @@
+{
+  "tool": "cargo test",
+  "gate": null,
+  "additionalTools": [],
+  "e2eTool": "none",
+  "testDir": "tests/",
+  "filePattern": "n/a",
+  "packageManager": "cargo"
+}

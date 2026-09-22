@@ -1,0 +1,32 @@
+[package]
+name = "ecclesia"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The ecclesia — churches connecting the members of the body"
+default-run = "ecclesia"
+
+[dependencies]
+ecclesia-sdk = { path = "../sdk" }
+anyhow = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+maud = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+
+[[bin]]
+name = "ecclesia"
+path = "src/main.rs"
+
+[[bin]]
+name = "ecclesia-worker"
+path = "src/bin/worker.rs"

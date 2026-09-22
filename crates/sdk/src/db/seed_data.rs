@@ -1,0 +1,28 @@
+//! Gift catalog. Inserts live in `seed`.
+
+pub(crate) const GIFTS: &[(&str, &str, &str)] = &[
+    ("gift_teaching", "Teaching", "spiritual"),
+    ("gift_encouragement", "Encouragement", "spiritual"),
+    ("gift_hospitality", "Hospitality", "spiritual"),
+    ("gift_intercession", "Intercession", "spiritual"),
+    ("gift_wisdom", "Wisdom", "spiritual"),
+    ("gift_mercy", "Mercy", "spiritual"),
+    ("gift_discernment", "Discernment", "spiritual"),
+    ("gift_shepherding", "Shepherding", "pastoral"),
+    ("gift_counseling", "Counseling", "pastoral"),
+    ("gift_visitation", "Visitation", "pastoral"),
+    ("gift_mentoring", "Mentoring", "pastoral"),
+    ("gift_meals", "Meals", "practical"),
+    ("gift_carpentry", "Carpentry & repairs", "practical"),
+    ("gift_childcare", "Childcare", "practical"),
+    ("gift_transport", "Transportation", "practical"),
+    ("gift_medical", "Medical care", "practical"),
+    ("gift_accounting", "Accounting", "practical"),
+    ("gift_music", "Music", "creative"),
+    ("gift_worship", "Worship leading", "creative"),
+    ("gift_art", "Art", "creative"),
+    ("gift_writing", "Writing", "creative"),
+    ("gift_admin", "Administration", "logistical"),
+    ("gift_translation", "Translation", "logistical"),
+    ("gift_tech", "Technology", "logistical"),
+];

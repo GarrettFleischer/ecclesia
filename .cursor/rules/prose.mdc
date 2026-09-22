@@ -1,6 +1,6 @@
 ---
 description: How to write any text a person reads in Ecclesia (UI copy, notifications, seed content, docs)
-globs: src/views/**,src/leaf/**,src/http/**,src/db/seed*.rs,docs/**,README.md,static/**/*.js
+globs: crates/app/src/views/**,crates/domain/**,crates/app/src/http/**,crates/sdk/src/db/seed*.rs,docs/**,README.md,crates/app/static/**/*.js
 alwaysApply: true
 ---
 
@@ -18,4 +18,4 @@ Short version:
 - Placeholders are example values, not instructions.
 - Seed content sounds like the person typing into the form.
 
-`us_prose_01` in `src/style.rs` enforces the word list. Run `cargo test style` after changing copy.
+`us_prose_01` in `crates/app/src/style.rs` enforces the word list. Run `cargo test style` after changing copy.
