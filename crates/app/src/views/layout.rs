@@ -14,6 +14,7 @@ pub enum Nav {
     Inbox,
     You,
     None,
+    Account,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,7 +109,7 @@ pub fn page(
                 @if nav == Nav::None {
                     (install_bar())
                 }
-                @if nav != Nav::None {
+                @if app_chrome(nav) {
                     (topbar(user))
                 }
                 @if let Some(flash) = flash {
@@ -117,7 +118,7 @@ pub fn page(
                 main id="content" class={ "sheet page-rise" (sheet_extra(nav)) } {
                     (main)
                 }
-                @if nav != Nav::None {
+                @if app_chrome(nav) {
                     (dock(nav, unread))
                 }
                 script src="/static/app.js" defer {}
@@ -144,7 +145,12 @@ fn site_class(nav: Nav) -> &'static str {
         Nav::Body => "site site-app site-body",
         Nav::Inbox => "site site-app site-inbox",
         Nav::You => "site site-app site-you",
+        Nav::Account => "site site-guest site-account",
     }
+}
+
+fn app_chrome(nav: Nav) -> bool {
+    !matches!(nav, Nav::None | Nav::Account)
 }
 
 fn atmosphere() -> Markup {
@@ -161,6 +167,7 @@ fn atmosphere() -> Markup {
 fn sheet_extra(nav: Nav) -> &'static str {
     match nav {
         Nav::None => " sheet-wide",
+        Nav::Account => " sheet-auth",
         _ => "",
     }
 }

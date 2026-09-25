@@ -210,18 +210,13 @@ mod tests {
 
     #[test]
     fn us_lib_02_app_manifest_depends_on_sdk_only() {
-        let manifest = fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
-        )
-        .expect("app Cargo.toml");
+        let manifest = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+            .expect("app Cargo.toml");
         assert!(manifest.contains("ecclesia-sdk"));
         assert!(
             !manifest.contains("ecclesia-domain"),
             "App must not depend on ecclesia-domain"
         );
-        assert!(
-            !manifest.contains("sqlx"),
-            "App must not depend on sqlx"
-        );
+        assert!(!manifest.contains("sqlx"), "App must not depend on sqlx");
     }
 }

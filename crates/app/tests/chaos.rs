@@ -122,7 +122,7 @@ fn enc(value: &str) -> String {
 }
 
 async fn register(world: &World, name: &str, email: &str) -> String {
-    let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/").await;
+    let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/register").await;
     let response = post_response(
         world.app.clone(),
         Some(&cookie),
@@ -162,7 +162,13 @@ async fn plant(world: &World, cookie: &str, name: &str) -> (String, String) {
     (try_cookie(&response).unwrap_or(cookie), church_id)
 }
 
-async fn post_need(world: &World, cookie: &str, church_id: &str, title: &str, body: &str) -> String {
+async fn post_need(
+    world: &World,
+    cookie: &str,
+    church_id: &str,
+    title: &str,
+    body: &str,
+) -> String {
     let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(cookie), "/needs/new").await;
     let response = post_response(
         world.app.clone(),
@@ -240,7 +246,7 @@ async fn us_chaos_01_empty_post_gets_a_human_page() {
 #[tokio::test]
 async fn us_chaos_01_double_at_email_is_refused() {
     let world = app().await;
-    let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/").await;
+    let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/register").await;
     let location = post_location(
         world.app,
         &cookie,
@@ -258,7 +264,7 @@ async fn us_chaos_01_double_at_email_is_refused() {
 #[tokio::test]
 async fn us_chaos_01_script_name_does_not_run() {
     let world = app().await;
-    let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/").await;
+    let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/register").await;
     let response = post_response(
         world.app.clone(),
         Some(&cookie),
@@ -298,8 +304,12 @@ async fn us_chaos_02_pending_member_cannot_post_a_need() {
     let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (_miriam, church_id) = plant(&world, &miriam, "Grace Covenant").await;
     let peter = register(&world, "Peter Lang", "peter@grace.test").await;
-    let (_page, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&peter), &format!("/churches/{church_id}")).await;
+    let (_page, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&peter),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let _ = post_location(
         world.app.clone(),
         &cookie,
@@ -335,8 +345,12 @@ async fn us_chaos_03_cannot_apply_to_your_own_need() {
         "Five dinners this week.",
     )
     .await;
-    let (_page, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&cookie), &format!("/needs/{need_id}")).await;
+    let (_page, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&cookie),
+        &format!("/needs/{need_id}"),
+    )
+    .await;
     let location = post_location(
         world.app,
         &cookie,
@@ -373,8 +387,12 @@ async fn us_chaos_03_neighbor_cannot_close_a_need() {
 
     let elena = register(&world, "Elena Vasquez", "elena@mercy.test").await;
     let (_elena, _) = plant(&world, &elena, "New Mercy").await;
-    let (_page, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&elena), &format!("/needs/{need_id}")).await;
+    let (_page, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&elena),
+        &format!("/needs/{need_id}"),
+    )
+    .await;
     let location = post_location(
         world.app,
         &cookie,
@@ -398,8 +416,12 @@ async fn us_chaos_04_cannot_endorse_yourself() {
         .unwrap()
         .unwrap()
         .id;
-    let (_page, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&cookie), &format!("/members/{ruth_id}")).await;
+    let (_page, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&cookie),
+        &format!("/members/{ruth_id}"),
+    )
+    .await;
     let location = post_location(
         world.app,
         &cookie,
@@ -441,8 +463,12 @@ async fn us_chaos_06_double_approve_and_empty_profile() {
     let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (miriam, church_id) = plant(&world, &miriam, "Grace Covenant").await;
     let peter = register(&world, "Peter Lang", "peter@grace.test").await;
-    let (_page, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&peter), &format!("/churches/{church_id}")).await;
+    let (_page, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&peter),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let _ = post_location(
         world.app.clone(),
         &cookie,
@@ -451,8 +477,12 @@ async fn us_chaos_06_double_approve_and_empty_profile() {
         "",
     )
     .await;
-    let (church, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&miriam), &format!("/churches/{church_id}")).await;
+    let (church, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&miriam),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let mem = church
         .split("/memberships/")
         .nth(1)
@@ -468,8 +498,12 @@ async fn us_chaos_06_double_approve_and_empty_profile() {
     )
     .await;
     assert!(first.contains("ok=approved"), "got {first}");
-    let (_page, cookie, csrf) =
-        get_ok(world.app.clone(), Some(&cookie), &format!("/churches/{church_id}")).await;
+    let (_page, cookie, csrf) = get_ok(
+        world.app.clone(),
+        Some(&cookie),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let second = post_location(
         world.app.clone(),
         &cookie,

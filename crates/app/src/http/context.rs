@@ -7,9 +7,7 @@ use axum_extra::extract::cookie::CookieJar;
 use std::net::SocketAddr;
 
 use ecclesia_sdk::db::Db;
-use ecclesia_sdk::prelude::{
-    Church, DomainError, Membership, User, Viewer, unique_church_ids,
-};
+use ecclesia_sdk::prelude::{Church, DomainError, Membership, User, Viewer, unique_church_ids};
 use ecclesia_sdk::session::Session;
 use ecclesia_sdk::story::StoryOk;
 
@@ -67,7 +65,10 @@ pub async fn bind_session(
     }
 }
 
-pub fn device_meta(headers: &axum::http::HeaderMap, who: &ClientKey) -> ecclesia_sdk::story::DeviceMeta {
+pub fn device_meta(
+    headers: &axum::http::HeaderMap,
+    who: &ClientKey,
+) -> ecclesia_sdk::story::DeviceMeta {
     let ip = headers
         .get("fly-client-ip")
         .and_then(|value| value.to_str().ok())

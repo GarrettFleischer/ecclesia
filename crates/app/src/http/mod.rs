@@ -19,12 +19,12 @@ use std::path::PathBuf;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
-use ecclesia_sdk::prelude::VoiceKind;
-use ecclesia_sdk::limit::{RateDecision, RateKind};
-use ecclesia_sdk::session::{self, CookieTransport, Session};
-use ecclesia_sdk::Sdk;
 use crate::views;
 use axum_extra::extract::cookie::CookieJar;
+use ecclesia_sdk::Sdk;
+use ecclesia_sdk::limit::{RateDecision, RateKind};
+use ecclesia_sdk::prelude::VoiceKind;
+use ecclesia_sdk::session::{self, CookieTransport, Session};
 
 pub use context::{security_headers, soften_form_errors};
 
@@ -39,7 +39,8 @@ pub struct AppState {
 impl AppState {
     pub(crate) fn awaiting_review(&self, pass: &str, parts: &[&str]) -> bool {
         self.sdk.refine.is_live()
-            && ecclesia_sdk::prelude::VoicePass::parse(pass) == ecclesia_sdk::prelude::VoicePass::Review
+            && ecclesia_sdk::prelude::VoicePass::parse(pass)
+                == ecclesia_sdk::prelude::VoicePass::Review
             && parts.iter().any(|part| !part.trim().is_empty())
     }
 
@@ -116,12 +117,7 @@ pub async fn serve() -> anyhow::Result<()> {
 
     tracing::info!("ecclesia listening on http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
-    Ok(())
+    serve_app(app, listener).await
 }
 
 fn session_secret() -> String {
@@ -143,6 +139,48 @@ fn session_secret() -> String {
     }
 }
 
+#[cfg(feature = "live-reload")]
+async fn serve_app(app: Router, listener: tokio::net::TcpListener) -> anyhow::Result<()> {
+    let livereload = tower_livereload::LiveReloadLayer::new();
+    let watcher = watch_static(livereload.reloader())?;
+    axum::serve(
+        listener,
+        app.layer(livereload)
+            .into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
+    drop(watcher);
+    Ok(())
+}
+
+#[cfg(feature = "live-reload")]
+fn watch_static(
+    reloader: tower_livereload::Reloader,
+) -> anyhow::Result<notify::RecommendedWatcher> {
+    use notify::Watcher;
+
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static");
+    let mut watcher =
+        notify::recommended_watcher(move |event: Result<notify::Event, notify::Error>| {
+            if event.is_ok_and(|evt| !evt.kind.is_access()) {
+                reloader.reload();
+            }
+        })?;
+    watcher.watch(&dir, notify::RecursiveMode::Recursive)?;
+    tracing::info!("browser reload is watching {}", dir.display());
+    Ok(watcher)
+}
+
+#[cfg(not(feature = "live-reload"))]
+async fn serve_app(app: Router, listener: tokio::net::TcpListener) -> anyhow::Result<()> {
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
+    Ok(())
+}
+
 fn listen_addr() -> SocketAddr {
     let port: u16 = std::env::var("PORT")
         .ok()
@@ -154,16 +192,25 @@ fn listen_addr() -> SocketAddr {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(auth::landing))
+        .route(
+            "/register",
+            get(auth::register_form).post(auth::register_user),
+        )
+        .route("/session/new", get(auth::sign_in_form))
+        .route("/session/link/new", get(auth::magic_link_form))
+        .route("/session/reset/new", get(auth::forgot_password_form))
         .route("/session", post(auth::start_session))
         .route("/session/logout", post(auth::logout))
         .route("/session/logout-all", post(auth::logout_all))
         .route("/session/link", post(auth::request_link))
         .route("/session/link/{id}", get(auth::consume_link))
         .route("/session/reset", post(auth::request_reset))
-        .route("/session/reset/{id}", get(auth::reset_form).post(auth::complete_reset))
+        .route(
+            "/session/reset/{id}",
+            get(auth::reset_form).post(auth::complete_reset),
+        )
         .route("/session/password", post(auth::change_password))
         .route("/session/{id}/revoke", post(auth::revoke_session))
-        .route("/register", post(auth::register_user))
         .route("/refine", post(voice::refine_words))
         .route("/home", get(auth::home))
         .route(

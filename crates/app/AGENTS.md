@@ -18,10 +18,13 @@ Axum routes and Maud pages. This crate loads values, calls one SDK story, and pa
 ## Commands
 
 ```bash
+cargo dev
 cargo run -p ecclesia
 cargo test -p ecclesia --test flows
 cargo test -p ecclesia --test chaos
 ```
+
+`cargo dev` restarts on Rust changes. Static files reload the browser on their own.
 
 ## Conventions
 
@@ -29,6 +32,7 @@ cargo test -p ecclesia --test chaos
 - `signed_in` and `signed_form` gate member pages. Domain still refuses `TearsDown`.
 - Session `ip` is `Fly-Client-IP` or the peer socket.
 - Flashes are allow listed codes in `src/views/flash.rs`.
+- Guest account UI: `/` is the public story plus CTAs, and the only page with the install bar. Account pages (`/register`, `/session/new`, `/session/link/new`, `/session/reset/new`) use `Nav::Account`: one h1, a narrow card, one form. Unsigned `/home` is CTAs, not the full landing.
 - Read `docs/PROSE.md` before changing any string a person reads.
 
 ## Agent skills

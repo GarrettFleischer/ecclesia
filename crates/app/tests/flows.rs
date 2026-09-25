@@ -141,8 +141,8 @@ async fn post_form(
 }
 
 async fn register(world: &World, name: &str, email: &str) -> String {
-    let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/").await;
-    let csrf = csrf.expect("landing csrf");
+    let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/register").await;
+    let csrf = csrf.expect("register csrf");
     let body = format!(
         "csrf={csrf}&name={}&email={}&city=Cedar+Falls&region=Iowa&bio=I+cook&password={}&pass=publish",
         enc(name),
@@ -155,13 +155,9 @@ async fn register(world: &World, name: &str, email: &str) -> String {
 }
 
 async fn sign_in(world: &World, email: &str) -> String {
-    let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/").await;
-    let csrf = csrf.expect("landing csrf");
-    let body = format!(
-        "csrf={csrf}&email={}&password={}",
-        enc(email),
-        enc(PASS)
-    );
+    let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/session/new").await;
+    let csrf = csrf.expect("sign in csrf");
+    let body = format!("csrf={csrf}&email={}&password={}", enc(email), enc(PASS));
     let response = post_form(world.app.clone(), Some(&cookie), "/session", body).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER, "sign in {email}");
     cookie_from(&response)
@@ -200,8 +196,12 @@ fn id_from_location(location: &str, prefix: &str) -> String {
 }
 
 async fn join(world: &World, cookie: &str, church_id: &str) -> String {
-    let (_page, cookie, csrf) =
-        get_page(world.app.clone(), Some(cookie), &format!("/churches/{church_id}")).await;
+    let (_page, cookie, csrf) = get_page(
+        world.app.clone(),
+        Some(cookie),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let csrf = csrf.expect("join csrf");
     let response = post_form(
         world.app.clone(),
@@ -232,7 +232,11 @@ async fn post_need(
         enc(scope)
     );
     let response = post_form(world.app.clone(), Some(&cookie), "/needs", extra).await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER, "post need {title}");
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "post need {title}"
+    );
     let location = location_of(&response);
     let need_id = id_from_location(&location, "/needs/");
     (try_cookie_from(&response).unwrap_or(cookie), need_id)
@@ -376,7 +380,7 @@ async fn us_auth_04_unknown_email_is_quiet() {
     let world = app().await;
     let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/").await;
     let csrf = csrf.expect("landing csrf");
-    let miss = post_location(
+    let (status, page) = post_page(
         &world,
         &cookie,
         &csrf,
@@ -384,7 +388,10 @@ async fn us_auth_04_unknown_email_is_quiet() {
         "email=nobody%40x.test&password=nope",
     )
     .await;
-    assert!(miss.contains("err=miss"), "got {miss}");
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("Try again."));
+    assert!(page.contains("value=\"nobody@x.test\""));
+    assert!(!page.contains("value=\"nope\""));
     let mail = post_location(
         &world,
         &cookie,
@@ -397,11 +404,11 @@ async fn us_auth_04_unknown_email_is_quiet() {
 }
 
 #[tokio::test]
-async fn us_auth_01_weak_password_stays_on_landing() {
+async fn us_auth_01_weak_password_stays_on_register() {
     let world = app().await;
-    let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/").await;
-    let csrf = csrf.expect("landing csrf");
-    let location = post_location(
+    let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/register").await;
+    let csrf = csrf.expect("register csrf");
+    let (status, page) = post_page(
         &world,
         &cookie,
         &csrf,
@@ -409,23 +416,30 @@ async fn us_auth_01_weak_password_stays_on_landing() {
         "name=Cara+Nguyen&email=cara@verify.test&city=Cedar+Falls&region=Iowa&bio=I+cook&password=password&pass=publish",
     )
     .await;
-    assert!(location.contains("err=password"), "got {location}");
-    assert!(world
-        .sdk
-        .db
-        .user_by_email("cara@verify.test")
-        .await
-        .unwrap()
-        .is_none());
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("Pick a stronger password."));
+    assert!(page.contains("value=\"Cara Nguyen\""));
+    assert!(page.contains("value=\"cara@verify.test\""));
+    assert!(page.contains("value=\"Cedar Falls\""));
+    assert!(page.contains("value=\"Iowa\""));
+    assert!(page.contains("I cook"));
+    assert!(!page.contains("value=\"password\""));
+    assert!(
+        world
+            .sdk
+            .db
+            .user_by_email("cara@verify.test")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]
 async fn us_auth_02_register_cookie_is_v2() {
     let world = app().await;
     let cookie = register(&world, "Miriam Cole", "miriam@grace.test").await;
-    let raw = cookie
-        .strip_prefix("ecclesia_sid=")
-        .expect("cookie name");
+    let raw = cookie.strip_prefix("ecclesia_sid=").expect("cookie name");
     let parts: Vec<_> = raw.split('.').collect();
     assert_eq!(parts.first().copied(), Some("v2"));
     assert_eq!(parts.len(), 4);
@@ -456,10 +470,7 @@ async fn us_auth_02_session_ip_uses_fly_client_ip() {
     let _ = post(&world, &cookie, &csrf, "/session/logout", "").await;
     let (_landing, guest, csrf) = get_page(world.app.clone(), None, "/").await;
     let csrf = csrf.expect("landing csrf");
-    let body = format!(
-        "csrf={csrf}&email=miriam@grace.test&password={}",
-        enc(PASS)
-    );
+    let body = format!("csrf={csrf}&email=miriam@grace.test&password={}", enc(PASS));
     let response = world
         .app
         .clone()
@@ -486,7 +497,10 @@ async fn us_auth_02_session_ip_uses_fly_client_ip() {
     assert!(
         sessions.iter().any(|row| row.ip == "203.0.113.9"),
         "ips {:?}",
-        sessions.iter().map(|row| row.ip.as_str()).collect::<Vec<_>>()
+        sessions
+            .iter()
+            .map(|row| row.ip.as_str())
+            .collect::<Vec<_>>()
     );
     assert!(sessions.iter().all(|row| row.ip != "198.51.100.7"));
 }
@@ -553,8 +567,12 @@ async fn us_mem_04_pastor_can_approve_a_join_request() {
 
     let peter = register(&world, "Peter Lang", "peter@grace.test").await;
     let peter = join(&world, &peter, &church_id).await;
-    let (church, miriam, csrf) =
-        get_page(world.app.clone(), Some(&miriam), &format!("/churches/{church_id}")).await;
+    let (church, miriam, csrf) = get_page(
+        world.app.clone(),
+        Some(&miriam),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let csrf = csrf.expect("church csrf");
     assert!(church.contains("Peter Lang"));
     assert!(church.contains("Asked to join"));
@@ -628,8 +646,12 @@ async fn us_need_02_apply_form_and_offer() {
 
     let elena = register(&world, "Elena Vasquez", "elena@mercy.test").await;
     let (_elena, _) = plant(&world, &elena, "New Mercy").await;
-    let (page, cookie, csrf) =
-        get_page(world.app.clone(), Some(&elena), &format!("/needs/{need_id}")).await;
+    let (page, cookie, csrf) = get_page(
+        world.app.clone(),
+        Some(&elena),
+        &format!("/needs/{need_id}"),
+    )
+    .await;
     let csrf = csrf.expect("need csrf");
     let after_open = page.split_once("<textarea").expect("apply textarea").1;
     let (inside, rest) = after_open
@@ -658,8 +680,12 @@ async fn us_end_02_endorsement_is_not_public_until_accepted() {
     let _ruth = register(&world, "Ruth Alvarez", "ruth@grace.test").await;
     let james = register(&world, "James Whitaker", "james@stlukes.test").await;
     let ruth_id = user_id(&world, "ruth@grace.test").await;
-    let (_page, james, csrf) =
-        get_page(world.app.clone(), Some(&james), &format!("/members/{ruth_id}")).await;
+    let (_page, james, csrf) = get_page(
+        world.app.clone(),
+        Some(&james),
+        &format!("/members/{ruth_id}"),
+    )
+    .await;
     let csrf = csrf.expect("member csrf");
     let status = post(
         &world,
@@ -708,8 +734,12 @@ async fn us_end_02_declined_stays_with_the_pair_and_can_be_accepted() {
     let _peter = register(&world, "Peter Lang", "peter@grace.test").await;
     let ruth_id = user_id(&world, "ruth@grace.test").await;
     let james = sign_in(&world, "james@stlukes.test").await;
-    let (_page, james, csrf) =
-        get_page(world.app.clone(), Some(&james), &format!("/members/{ruth_id}")).await;
+    let (_page, james, csrf) = get_page(
+        world.app.clone(),
+        Some(&james),
+        &format!("/members/{ruth_id}"),
+    )
+    .await;
     let csrf = csrf.expect("member csrf");
     let status = post(
         &world,
@@ -783,8 +813,12 @@ async fn us_end_01_can_endorse_a_skill_they_have_not_claimed() {
     let _daniel = register(&world, "Daniel Cole", "daniel@grace.test").await;
     let elena = register(&world, "Elena Vasquez", "elena@mercy.test").await;
     let daniel_id = user_id(&world, "daniel@grace.test").await;
-    let (_page, cookie, csrf) =
-        get_page(world.app.clone(), Some(&elena), &format!("/members/{daniel_id}")).await;
+    let (_page, cookie, csrf) = get_page(
+        world.app.clone(),
+        Some(&elena),
+        &format!("/members/{daniel_id}"),
+    )
+    .await;
     let csrf = csrf.expect("member csrf");
     assert!(_page.contains(r#"name="skill""#));
 
@@ -816,8 +850,12 @@ async fn us_end_01_spoken_skill_is_not_limited_to_the_catalog() {
     let _ruth = register(&world, "Ruth Alvarez", "ruth@grace.test").await;
     let james = register(&world, "James Whitaker", "james@stlukes.test").await;
     let ruth_id = user_id(&world, "ruth@grace.test").await;
-    let (_page, cookie, csrf) =
-        get_page(world.app.clone(), Some(&james), &format!("/members/{ruth_id}")).await;
+    let (_page, cookie, csrf) = get_page(
+        world.app.clone(),
+        Some(&james),
+        &format!("/members/{ruth_id}"),
+    )
+    .await;
     let csrf = csrf.expect("member csrf");
 
     let status = post(
@@ -875,6 +913,56 @@ async fn us_app_01_manifest_is_installable() {
     assert!(landing.contains("apple-touch-icon"));
     assert!(landing.contains("install-bar"));
     assert!(landing.contains("/static/app.js"));
+    assert!(landing.contains("site-guest"));
+}
+
+#[tokio::test]
+async fn us_app_01_guest_shell_css_respects_safe_area_for_install_bar() {
+    let world = app().await;
+    let css = get_public(&world, "/static/app.css").await;
+    assert!(
+        css.contains("body.site-guest") && css.contains("padding-top: env(safe-area-inset-top"),
+        "guest body should clear the notch"
+    );
+    assert!(
+        css.contains(".install-bar")
+            && css.contains("position: sticky")
+            && css.contains("top: env(safe-area-inset-top"),
+        "install bar should stick below the safe area"
+    );
+}
+
+#[tokio::test]
+async fn us_app_03_auth_routes_carry_one_form_each() {
+    let world = app().await;
+    let (landing, _, _) = get_page(world.app.clone(), None, "/").await;
+    assert!(
+        !landing.contains(r#"action="/register""#) && !landing.contains(r#"action="/session""#),
+        "homepage should not embed account forms"
+    );
+
+    let (register, _, _) = get_page(world.app.clone(), None, "/register").await;
+    assert_eq!(register.matches(r#"action="/register""#).count(), 1);
+    assert!(register.contains("<h1>Create an account</h1>"));
+    assert!(register.contains("sheet-auth"));
+    assert!(register.contains("site-account"));
+    assert!(!register.contains("install-bar"));
+    assert!(register.contains("href=\"/session/new\""));
+    assert!(!register.contains("We are the ecclesia"));
+
+    let (sign_in, _, _) = get_page(world.app.clone(), None, "/session/new").await;
+    assert!(sign_in.contains(r#"action="/session""#));
+    assert!(sign_in.contains("<h1>Sign in</h1>"));
+    assert!(sign_in.contains("href=\"/register\""));
+    assert!(!sign_in.contains(r#"action="/register""#));
+    assert!(!sign_in.contains("install-bar"));
+
+    let (link, _, _) = get_page(world.app.clone(), None, "/session/link/new").await;
+    assert_eq!(link.matches(r#"action="/session/link""#).count(), 1);
+    assert!(!link.contains(r#"action="/session""#));
+
+    let (reset, _, _) = get_page(world.app.clone(), None, "/session/reset/new").await;
+    assert_eq!(reset.matches(r#"action="/session/reset""#).count(), 1);
 }
 
 #[tokio::test]
@@ -962,10 +1050,10 @@ async fn us_tone_01_an_attack_is_refused() {
 #[tokio::test]
 async fn us_refine_01_silent_echoes_the_same_words() {
     let world = app().await;
-    let (landing, cookie, csrf) = get_page(world.app.clone(), None, "/").await;
-    let csrf = csrf.expect("landing csrf");
-    assert!(landing.contains("data-rewrite"));
-    assert!(landing.contains(r#"data-kind="bio""#));
+    let (register_page, cookie, csrf) = get_page(world.app.clone(), None, "/register").await;
+    let csrf = csrf.expect("register csrf");
+    assert!(register_page.contains("data-rewrite"));
+    assert!(register_page.contains(r#"data-kind="bio""#));
 
     let (status, body) = post_json(
         &world,
@@ -1048,15 +1136,15 @@ async fn us_refine_02_submit_shows_the_rewrite_before_publish() {
 async fn us_sec_03_forged_flash_stays_generic() {
     let world = app().await;
     let cookie = register(&world, "Miriam Cole", "miriam@grace.test").await;
-    let bait = get(
-        &world,
-        &cookie,
-        "/home?ok=Visit+https://evil.example+now",
-    )
-    .await;
+    let bait = get(&world, &cookie, "/home?ok=Visit+https://evil.example+now").await;
     assert!(bait.contains("Done."));
     assert!(!bait.contains("evil.example"));
-    let html = get(&world, &cookie, "/home?err=%3Cscript%3Ealert(1)%3C/script%3E").await;
+    let html = get(
+        &world,
+        &cookie,
+        "/home?err=%3Cscript%3Ealert(1)%3C/script%3E",
+    )
+    .await;
     assert!(html.contains("That didn't work."));
     assert!(!html.contains("<script>"));
     assert!(!html.contains("alert(1)"));
@@ -1073,12 +1161,18 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(landing.contains("simply because it was unseen"));
     assert!(landing.contains("Create an account"));
     assert!(landing.contains("Sign in"));
-    assert!(landing.contains("Email me a link"));
-    assert!(landing.contains("Forgot password"));
+    assert!(!landing.contains("Email me a link"));
+    assert!(!landing.contains("Forgot password"));
     assert!(!landing.contains("Ask for help"));
     assert!(!landing.contains("People in Cedar Falls"));
     assert!(!landing.contains("Open the demo"));
-    assert!(landing.contains("href=\"#account\""));
+    assert!(landing.contains("href=\"/register\""));
+    assert!(landing.contains("href=\"/session/new\""));
+    assert!(!landing.contains("method=\"post\" action=\"/register\""));
+
+    let (sign_in, _, _) = get_page(world.app.clone(), None, "/session/new").await;
+    assert!(sign_in.contains("Email me a link"));
+    assert!(sign_in.contains("Forgot password"));
 
     let (guest, _, _) = get_page(world.app.clone(), None, "/home").await;
     assert!(guest.contains("Create an account"));
@@ -1198,8 +1292,12 @@ async fn us_sec_14_invite_does_not_reveal_missing_email() {
     let cookie = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (cookie, church_id) = plant(&world, &cookie, "Grace Covenant").await;
     let _james = register(&world, "James Whitaker", "james@stlukes.test").await;
-    let (_page, cookie, csrf) =
-        get_page(world.app.clone(), Some(&cookie), &format!("/churches/{church_id}")).await;
+    let (_page, cookie, csrf) = get_page(
+        world.app.clone(),
+        Some(&cookie),
+        &format!("/churches/{church_id}"),
+    )
+    .await;
     let csrf = csrf.expect("church csrf");
     let missing = post_location(
         &world,

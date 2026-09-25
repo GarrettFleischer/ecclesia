@@ -1,20 +1,19 @@
 //! Random inputs against Domain stories. A story must return Ok or DomainError.
 //! It must not panic, and a successful write must look like the person typed.
 
-use ecclesia_sdk::prelude::{
-    Application, ApplicationStatus, CatalogPresence, Church, DomainError, Strength,
-    EmailAvailability, Endorsement, EndorsementQueue, Gift, GiftOnProfile, Membership, Need,
-    NeedScope, NeedStatus, Posture, PriorOffer, SkillSource, User, Viewer, Write,
-    accept_application, accept_endorsement, accept_invite, add_gift, apply_to_need,
-    approve_membership, can_apply, can_view_need, close_need, decline_application,
-    decline_endorsement, decline_membership, declined_visible_to, endorse, https_endpoint,
-    invite_code_for, invite_member, normalize_email, pair_memberships,
-    plant_church, post_need, redeem_invite, register, remove_gift, request_join, require_text,
-    unique_church_ids, update_profile, visible_need_cards,
-};
-use ecclesia_sdk::judge::word_gate;
-use ecclesia_sdk::session::Session;
 use ecclesia::views::flash_from;
+use ecclesia_sdk::judge::word_gate;
+use ecclesia_sdk::prelude::{
+    Application, ApplicationStatus, CatalogPresence, Church, DomainError, EmailAvailability,
+    Endorsement, EndorsementQueue, Gift, GiftOnProfile, Membership, Need, NeedScope, NeedStatus,
+    Posture, PriorOffer, SkillSource, Strength, User, Viewer, Write, accept_application,
+    accept_endorsement, accept_invite, add_gift, apply_to_need, approve_membership, can_apply,
+    can_view_need, close_need, decline_application, decline_endorsement, decline_membership,
+    declined_visible_to, endorse, https_endpoint, invite_code_for, invite_member, normalize_email,
+    pair_memberships, plant_church, post_need, redeem_invite, register, remove_gift, request_join,
+    require_text, unique_church_ids, update_profile, visible_need_cards,
+};
+use ecclesia_sdk::session::Session;
 use proptest::prelude::*;
 
 fn config() -> ProptestConfig {

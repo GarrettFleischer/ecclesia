@@ -23,9 +23,12 @@ Tracer Bullet (thin end to end slices through Domain, SDK, and App).
 ```bash
 cargo test
 cargo test style
+cargo dev
 cargo run -p ecclesia
 cargo run -p ecclesia --bin ecclesia-worker
 ```
+
+`cargo dev` needs [cargo-watch](https://github.com/watchexec/cargo-watch). Rust changes rebuild and restart. Files in `crates/app/static/` reload the open browser without a rebuild.
 
 ## Specs
 

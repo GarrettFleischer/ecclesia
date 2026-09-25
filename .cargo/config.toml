@@ -1,0 +1,2 @@
+[alias]
+dev = "watch -c --features live-reload -w crates/domain/src -w crates/sdk/src -w crates/app/src -w Cargo.toml -w crates/domain/Cargo.toml -w crates/sdk/Cargo.toml -w crates/app/Cargo.toml -x run"

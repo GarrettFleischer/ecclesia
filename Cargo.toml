@@ -54,3 +54,5 @@ argon2 = { version = "=0.5.3", features = ["std"] }
 zxcvbn = "=3.1.0"
 proptest = "=1.6.0"
 tower = { version = "=0.5.3", features = ["util"] }
+notify = "=8.2.0"
+tower-livereload = "=0.9.6"

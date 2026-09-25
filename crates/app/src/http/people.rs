@@ -3,13 +3,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
-use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind, group_churches_by_place, pair_memberships};
-use ecclesia_sdk::story;
 use crate::views;
+use ecclesia_sdk::prelude::{
+    SkillSource, User, VoiceKind, group_churches_by_place, pair_memberships,
+};
+use ecclesia_sdk::story;
 
 use super::context::{
-    bind_session, churches_for_memberships, html, leaf_err, story_redirect,
-    load_user, redirect_err, signed_form, signed_in, unread, viewer_for, with_cookie,
+    bind_session, churches_for_memberships, html, leaf_err, load_user, redirect_err, signed_form,
+    signed_in, story_redirect, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
 use super::{AppError, AppState};
@@ -183,10 +185,22 @@ pub async fn inbox(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
-    let pending = state.sdk.db.pending_endorsements_for(&viewer.user.id).await?;
-    let declined = state.sdk.db.declined_endorsements_for(&viewer.user.id).await?;
+    let pending = state
+        .sdk
+        .db
+        .pending_endorsements_for(&viewer.user.id)
+        .await?;
+    let declined = state
+        .sdk
+        .db
+        .declined_endorsements_for(&viewer.user.id)
+        .await?;
     let notes = state.sdk.db.notifications(&viewer.user.id).await?;
-    state.sdk.db.mark_notifications_read(&viewer.user.id).await?;
+    state
+        .sdk
+        .db
+        .mark_notifications_read(&viewer.user.id)
+        .await?;
     Ok(with_cookie(
         signed.jar,
         html(views::inbox(
@@ -373,7 +387,9 @@ pub async fn fallback(State(state): State<AppState>, jar: CookieJar) -> Response
     let Ok((session, jar)) = bind_session(jar, &state).await else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            html(views::error_page("Something broke on our end. Try again in a moment.")),
+            html(views::error_page(
+                "Something broke on our end. Try again in a moment.",
+            )),
         )
             .into_response();
     };

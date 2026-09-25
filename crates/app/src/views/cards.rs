@@ -4,7 +4,8 @@ use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
     ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchMember, EndorsementCard, Gift,
-    MemberGift, Membership, MembershipStatus, NeedCard, NeedScope, Notification, PlaceGroup, Viewer,
+    MemberGift, Membership, MembershipStatus, NeedCard, NeedScope, Notification, PlaceGroup,
+    Viewer,
 };
 
 use super::layout::{csrf_input, initials};

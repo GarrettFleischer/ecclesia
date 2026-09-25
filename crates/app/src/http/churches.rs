@@ -2,14 +2,14 @@ use axum::extract::{Form, Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
-use ecclesia_sdk::prelude::{Viewer, VoiceKind};
-use ecclesia_sdk::limit::{RateDecision, RateKind};
-use ecclesia_sdk::story;
 use crate::views;
+use ecclesia_sdk::limit::{RateDecision, RateKind};
+use ecclesia_sdk::prelude::{Viewer, VoiceKind};
+use ecclesia_sdk::story;
 
 use super::context::{
-    ClientKey, html, leaf_err, redirect_err, story_redirect,
-    redirect_ok, signed_form, signed_in, unread, viewer_for, with_cookie,
+    ClientKey, html, leaf_err, redirect_err, redirect_ok, signed_form, signed_in, story_redirect,
+    unread, viewer_for, with_cookie,
 };
 use super::forms::{ChurchForm, CsrfForm, FlashQuery, InviteForm, RedeemForm};
 use super::{AppError, AppState};
@@ -231,18 +231,13 @@ pub async fn redeem(
     }
     match story::redeem_invite(&state.sdk, &signed.user, &form.code).await? {
         Ok(ok) => {
-            let dest = format!(
-                "/churches/{}",
-                ok.church_id.as_deref().unwrap_or_default()
-            );
+            let dest = format!("/churches/{}", ok.church_id.as_deref().unwrap_or_default());
             Ok(with_cookie(signed.jar, redirect_ok(&dest, "redeemed")))
         }
         Err(ecclesia_sdk::prelude::DomainError::NotFound) => {
             Ok(with_cookie(signed.jar, redirect_err("/churches", "invite")))
         }
-        Err(error) => {
-            Ok(with_cookie(signed.jar, leaf_err("/churches", error)))
-        }
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err("/churches", error))),
     }
 }
 
@@ -330,10 +325,7 @@ pub async fn accept_invite_http(
     };
     match story::accept_invite(&state.sdk, &signed.user, &id).await? {
         Ok(ok) => {
-            let dest = format!(
-                "/churches/{}",
-                ok.church_id.as_deref().unwrap_or_default()
-            );
+            let dest = format!("/churches/{}", ok.church_id.as_deref().unwrap_or_default());
             Ok(with_cookie(
                 signed.jar,
                 redirect_ok(&dest, "invite_accepted"),

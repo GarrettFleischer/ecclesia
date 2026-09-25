@@ -47,7 +47,10 @@ body.site {
   color: var(--ink);
 }
 
-body.site-guest { padding-bottom: 3rem; }
+body.site-guest {
+  padding-bottom: 3rem;
+  padding-top: env(safe-area-inset-top, 0px);
+}
 body.site-app { padding-bottom: calc(5.8rem + env(safe-area-inset-bottom)); }
 body.site { overscroll-behavior-y: none; }
 body.native-shell,
@@ -73,7 +76,8 @@ body.standalone { padding-top: env(safe-area-inset-top); }
   background: var(--olive-deep);
   color: #f7f3ea;
   text-decoration: none;
-  transform: translateY(-160%);
+  white-space: nowrap;
+  transform: translateY(calc(-100% - 3rem));
 }
 
 .skip:focus {
@@ -210,19 +214,21 @@ p { margin: 0 0 0.8rem; }
 .who-name { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .install-bar {
-  position: relative;
-  z-index: 8;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
   align-items: center;
   justify-content: space-between;
   width: min(900px, calc(100% - 2rem));
-  margin: 1rem auto 0;
+  margin: 0.75rem auto 0.35rem;
   padding: 0.55rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: color-mix(in srgb, #fbf3df 86%, transparent);
+  background: color-mix(in srgb, #fbf3df 92%, #f4eee3);
+  box-shadow: 0 8px 24px rgba(42, 36, 28, 0.08);
 }
 
 .install-bar[hidden] { display: none; }
@@ -318,7 +324,25 @@ body.standalone .install-bar { display: none !important; }
   margin: 1.35rem 0 0.25rem;
 }
 
-#account { scroll-margin-top: 1.25rem; }
+.sheet-auth {
+  width: min(26rem, calc(100% - 1.5rem));
+  margin-top: 1.6rem;
+}
+
+.auth-home { margin: 0 0 1.15rem; }
+.auth-home .mark { text-decoration: none; }
+
+.auth-card { margin: 0.15rem 0 0; }
+.auth-card::before { content: none; }
+.auth-card .split { grid-template-columns: 1fr; }
+
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  margin: 1rem 0 0;
+  font-size: 0.95rem;
+}
 
 .vesica {
   width: 5.2rem;
@@ -772,6 +796,10 @@ form.is-reviewing > :not(.review-wait) {
   background: #f3d7d4;
   color: var(--err);
   box-shadow: inset 0 0 0 1px rgba(138, 44, 44, 0.12);
+}
+
+body.site-account > .flash {
+  width: min(26rem, calc(100% - 1.5rem));
 }
 
 .account-end {

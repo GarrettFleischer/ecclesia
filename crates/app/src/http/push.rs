@@ -66,9 +66,7 @@ pub async fn subscribe(
     .await?
     {
         Ok(_) => Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT)),
-        Err(DomainError::InvalidInput) => {
-            Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST))
-        }
+        Err(DomainError::InvalidInput) => Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST)),
         Err(_) => Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST)),
     }
 }
@@ -105,9 +103,7 @@ pub async fn register_device(
     if let RateDecision::Refuse = state.decide_rate(RateKind::Push, &who.0).await {
         return Ok(with_cookie(signed.jar, StatusCode::TOO_MANY_REQUESTS));
     }
-    match story::register_device(&state.sdk, &signed.user.id, &form.token, &form.platform)
-        .await?
-    {
+    match story::register_device(&state.sdk, &signed.user.id, &form.token, &form.platform).await? {
         Ok(_) => Ok(with_cookie(signed.jar, StatusCode::NO_CONTENT)),
         Err(_) => Ok(with_cookie(signed.jar, StatusCode::BAD_REQUEST)),
     }
