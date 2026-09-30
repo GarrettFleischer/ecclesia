@@ -138,8 +138,7 @@ body.standalone { padding-top: env(safe-area-inset-top); }
 
 .site > header,
 .site > .flash,
-.site > main,
-.site > .dock {
+.site > main {
   position: relative;
   z-index: 2;
 }
@@ -909,6 +908,7 @@ body.site-account > .flash {
 
 .dock {
   position: fixed;
+  z-index: 8;
   left: 0;
   right: 0;
   bottom: 0;

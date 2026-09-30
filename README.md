@@ -24,7 +24,7 @@ ECCLESIA_SECRET=$(openssl rand -hex 32) \
 cargo run
 ```
 
-Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the store. A new store seeds the gift catalog and **Grace Fellowship** so create-account search works. Sign in as `owner@seed.test` with the same password you use in integration tests (`Thursday dinners at six oclock`) to approve join requests there.
+Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the store. A new store seeds the gift catalog and **Grace Fellowship** so create-account search works. Each boot also ensures a dev governor at `admin@seed.test` with password `password` for join approvals on Grace Fellowship. `owner@seed.test` uses the same password. Restarting the app resets both seed passwords to `password`.
 
 For a shared host: set a long random `ECCLESIA_SECRET`, set `ECCLESIA_SECURE=1` behind TLS, and use your own VAPID keys. See [docs/SECURITY.md](docs/SECURITY.md) and [docs/MOBILE.md](docs/MOBILE.md).
 
@@ -37,7 +37,7 @@ obvious attacks. First submit shows the rewrite. Then you publish.
 ## Try it
 
 1. Create an account. Search **Grace Fellowship**, pick it, submit.
-2. Sign in as `owner@seed.test` to approve the join on the church page (password above).
+2. Open **Sign in**, use `admin@seed.test` and `password`, then open Grace Fellowship to approve the join.
 3. Plant another church or redeem an invite if you want a second household.
 4. Post a need, apply, or endorse from another registered member.
 

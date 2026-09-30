@@ -124,7 +124,7 @@ pub fn page(
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
-                link rel="stylesheet" href="/static/app.css?v=5";
+                link rel="stylesheet" href="/static/app.css?v=7";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }

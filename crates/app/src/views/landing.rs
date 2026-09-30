@@ -202,7 +202,7 @@ fn sign_in_form(csrf: &str, email: &str) -> Markup {
         form class="stack panel auth-card" method="post" action="/session" {
             (csrf_input(csrf))
             label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" value=(email); }
-            label { "Password" input type="password" name="password" required autocomplete="current-password"; }
+            (password_field("Password", "password", "current-password"))
             button class="btn" type="submit" { "Sign in" }
         }
     }
