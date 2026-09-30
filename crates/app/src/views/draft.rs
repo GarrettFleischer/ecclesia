@@ -42,10 +42,8 @@ pub fn review_banner(kind: DraftKind) -> Markup {
 pub struct RegisterDraft<'a> {
     pub name: &'a str,
     pub email: &'a str,
-    pub city: &'a str,
-    pub region: &'a str,
-    pub bio: &'a str,
-    pub kind: DraftKind,
+    pub church_id: &'a str,
+    pub church_query: &'a str,
 }
 
 impl RegisterDraft<'static> {
@@ -53,10 +51,8 @@ impl RegisterDraft<'static> {
         Self {
             name: "",
             email: "",
-            city: "",
-            region: "",
-            bio: "",
-            kind: DraftKind::Blank,
+            church_id: "",
+            church_query: "",
         }
     }
 }

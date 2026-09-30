@@ -554,6 +554,32 @@ pub async fn church_directory(sdk: &Sdk, after: Option<&str>) -> anyhow::Result<
     Ok(page)
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChurchSearchHit {
+    pub id: String,
+    pub name: String,
+    pub city: String,
+    pub region: String,
+}
+
+pub async fn search_churches(
+    sdk: &Sdk,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<ChurchSearchHit>> {
+    use crate::church_search::rank_churches;
+    let churches = sdk.db.churches_for_lookup().await?;
+    Ok(rank_churches(query, &churches, limit)
+        .into_iter()
+        .map(|church| ChurchSearchHit {
+            id: church.id.clone(),
+            name: church.name.clone(),
+            city: church.city.clone(),
+            region: church.region.clone(),
+        })
+        .collect())
+}
+
 pub async fn church_show(
     sdk: &Sdk,
     church_id: &str,
@@ -760,14 +786,21 @@ mod tests {
         }
     }
 
+    async fn seed_test_church(sdk: &Sdk) -> String {
+        sdk.db
+            .seed_grace_church()
+            .await
+            .expect("seed church")
+            .into()
+    }
+
     async fn register_named(sdk: &Sdk, name: &str, email: &str) -> User {
+        let church_id = seed_test_church(sdk).await;
         register(
             sdk,
             name,
             email,
-            "Cedar Falls",
-            "Iowa",
-            "I cook",
+            &church_id,
             "Thursday dinners at six oclock",
             &test_device(),
         )
@@ -788,13 +821,12 @@ mod tests {
                 .as_nanos()
         ));
         let first = sdk_on(&path).await;
+        let church_id = seed_test_church(&first).await;
         let ok = register(
             &first,
             "Ada Cole",
             "ada@share.test",
-            "Cedar Falls",
-            "Iowa",
-            "I cook",
+            &church_id,
             "Thursday dinners at six oclock",
             &test_device(),
         )
@@ -863,13 +895,12 @@ mod tests {
     #[tokio::test]
     async fn us_auth_01_weak_register_inserts_no_user() {
         let sdk = fresh_sdk().await;
+        let church_id = seed_test_church(&sdk).await;
         let error = register(
             &sdk,
             "Cara Nguyen",
             "cara@verify.test",
-            "Cedar Falls",
-            "Iowa",
-            "I cook",
+            &church_id,
             "password",
             &test_device(),
         )

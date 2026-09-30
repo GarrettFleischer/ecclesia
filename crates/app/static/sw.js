@@ -1,4 +1,4 @@
-const CACHE = "ecclesia-shell-v2";
+const CACHE = "ecclesia-shell-v6";
 const SHELL = [
   "/static/app.css",
   "/static/app.js",
@@ -47,6 +47,9 @@ async function handleFetch(request) {
   }
   const url = new URL(request.url);
   if (url.pathname.startsWith("/static/")) {
+    if (url.pathname === "/static/app.js" || url.pathname === "/static/app.css") {
+      return networkFirst(request);
+    }
     return cacheFirst(request);
   }
   try {
@@ -54,6 +57,23 @@ async function handleFetch(request) {
   } catch (error) {
     const cached = await caches.match(request);
     return cached || caches.match("/static/offline.html");
+  }
+}
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) {
+      return cached;
+    }
+    throw error;
   }
 }
 

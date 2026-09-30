@@ -191,13 +191,12 @@ mod tests {
             crate::push::PushHub::silent(),
             crate::Cache::memory(),
         );
+        db.seed_grace_church().await.expect("seed church");
         crate::story::register(
             &sdk,
             "Peter Lang",
             "peter@grace.test",
-            "Cedar Falls",
-            "Iowa",
-            "I cook",
+            "seed_grace",
             "Thursday dinners at six oclock",
             &device,
         )

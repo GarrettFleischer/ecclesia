@@ -9,6 +9,7 @@ pub enum RateKind {
     Refine,
     Redeem,
     Push,
+    Lookup,
 }
 
 impl RateKind {
@@ -19,6 +20,7 @@ impl RateKind {
             Self::Refine => "refine",
             Self::Redeem => "redeem",
             Self::Push => "push",
+            Self::Lookup => "lookup",
         }
     }
 
@@ -29,6 +31,7 @@ impl RateKind {
             Self::Refine => 20,
             Self::Redeem => 8,
             Self::Push => 30,
+            Self::Lookup => 30,
         }
     }
 }

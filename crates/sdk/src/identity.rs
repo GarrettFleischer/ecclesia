@@ -2,9 +2,9 @@
 
 use chrono::{Duration, SecondsFormat, Utc};
 use ecclesia_domain::{
-    DomainError, EmailAvailability, Strength, User, Viewer, accept_password,
+    DomainError, EmailAvailability, Strength, User, Viewer, Write, accept_password,
     invite_member as domain_invite_member, normalize_email, parse_invite_email,
-    register as domain_register, VoiceKind,
+    register as domain_register, request_join as domain_request_join, VoiceKind,
 };
 
 use crate::clock::{new_id, now_iso};
@@ -27,18 +27,23 @@ pub async fn register(
     sdk: &Sdk,
     name: &str,
     email: &str,
-    city: &str,
-    region: &str,
-    bio: &str,
+    church_id: &str,
     password: &str,
     device: &DeviceMeta,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let church_id = church_id.trim();
+    if church_id.is_empty() {
+        return Ok(Err(DomainError::InvalidInput));
+    }
+    let Some(church) = sdk.db.church(church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
     let normalized = match normalize_email(email) {
         Ok(email) => email,
         Err(error) => return Ok(Err(error)),
     };
     let availability = EmailAvailability::of_existing(sdk.db.user_by_email(&normalized).await?);
-    let posture = sdk.weigh(VoiceKind::Bio, &[name, bio]).await;
+    let posture = sdk.weigh(VoiceKind::Bio, &[name]).await;
     let strength = score(password, name, &normalized);
     let mut password = password.to_string();
     let hash = match strength {
@@ -48,22 +53,37 @@ pub async fn register(
             String::new()
         }
     };
-    let effect = match domain_register(
+    let user_id = new_id();
+    let now = now_iso();
+    let mut effect = match domain_register(
         name,
         &normalized,
-        city,
-        region,
-        bio,
+        &church.city,
+        &church.region,
+        "",
         availability,
         posture,
         strength,
-        new_id(),
-        now_iso(),
+        user_id.clone(),
+        now.clone(),
     ) {
         Ok(effect) => effect,
         Err(error) => return Ok(Err(error)),
     };
-    let user_id = effect.inserted_user_id().unwrap_or("").to_string();
+    let Some(user) = effect
+        .writes
+        .iter()
+        .find_map(|write| match write {
+            Write::InsertUser(user) => Some(user.clone()),
+            _ => None,
+        })
+    else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let governors = sdk.db.governor_ids(church_id).await?;
+    let join = domain_request_join(&user, &church, None, &governors, new_id(), now)?;
+    effect.writes.extend(join.writes);
+    effect.notices.extend(join.notices);
     let extras = session_extras(&user_id, device, StoryExtras {
         password_hash: Some(PasswordHashWrite {
             user_id: user_id.clone(),

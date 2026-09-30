@@ -1,10 +1,8 @@
 use maud::{Markup, html};
 
-use ecclesia_sdk::prelude::VoiceKind;
-
-use super::draft::{RegisterDraft, review_banner, voice_pass_input};
+use super::draft::RegisterDraft;
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row};
+use super::layout::{Nav, csrf_input, page, page_lead, password_field};
 
 pub fn landing(flash: Option<Flash>, csrf: &str) -> Markup {
     page(
@@ -234,20 +232,19 @@ fn register_form(csrf: &str, draft: &RegisterDraft<'_>) -> Markup {
     html! {
         form class="stack panel auth-card" method="post" action="/register" {
             (csrf_input(csrf))
-            (voice_pass_input(draft.kind))
-            (review_banner(draft.kind))
             label { "Name" input name="name" required autocomplete="name" autocapitalize="words" placeholder="Miriam Cole" maxlength="80" value=(draft.name); }
             label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" maxlength="120" value=(draft.email); }
-            div class="split" {
-                label { "City" input name="city" required autocomplete="address-level2" autocapitalize="words" placeholder="Cedar Falls" maxlength="80" value=(draft.city); }
-                label { "State or region" input name="region" required autocomplete="address-level1" autocapitalize="words" placeholder="Iowa" maxlength="80" value=(draft.region); }
+            div class="church-search" data-church-search {
+                label for="church_query" { "Church" }
+                div class="church-search-input-wrap" {
+                    input type="text" id="church_query" name="church_query" data-church-search-input autocomplete="off" autocapitalize="words" placeholder="Grace Fellowship" maxlength="120" value=(draft.church_query) role="combobox" aria-expanded="false" aria-controls="church_suggestions";
+                    ul id="church_suggestions" class="church-suggestions" data-church-search-list role="listbox" hidden {}
+                }
+                p class="church-search-status" data-church-search-status hidden {}
+                input type="hidden" name="church_id" value=(draft.church_id);
             }
-            label { "About you"
-                textarea name="bio" rows="3" maxlength="800" placeholder="Two kids. I have a van on Saturdays." { (draft.bio) }
-                (rewrite_row(VoiceKind::Bio))
-            }
-            label { "Password" input type="password" name="password" required autocomplete="new-password"; }
-            button class="btn" type="submit" { (draft.kind.submit_label("Create account")) }
+            (password_field("Password", "password", "new-password"))
+            button class="btn" type="submit" { "Create account" }
         }
     }
 }

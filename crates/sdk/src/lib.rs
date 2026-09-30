@@ -4,6 +4,7 @@
 //! and story functions sit here.
 
 pub mod cache;
+pub mod church_search;
 pub mod chat;
 pub mod clock;
 pub mod db;

@@ -4,6 +4,13 @@ use super::Db;
 use ecclesia_domain::{Church, ChurchMember, Membership};
 
 impl Db {
+    pub async fn churches_for_lookup(&self) -> anyhow::Result<Vec<Church>> {
+        Ok(map_all(
+            self.fetch_all::<ChurchRow>("SELECT * FROM churches ORDER BY name, id", &[])
+                .await?,
+        ))
+    }
+
     pub async fn churches_page(
         &self,
         after: Option<(&str, &str, &str)>,

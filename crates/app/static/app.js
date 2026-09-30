@@ -13,6 +13,8 @@
   hookShare(native);
   hookRewrite(csrf);
   hookReview(csrf);
+  hookChurchSearch();
+  hookPasswordToggle();
   hookHaptics(native);
   hookAlerts(csrf, native);
   if (native) {
@@ -498,4 +500,226 @@ function urlBase64ToBytes(value) {
     bytes[i] = raw.charCodeAt(i);
   }
   return bytes;
+}
+
+function hookPasswordToggle() {
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-password-toggle]");
+    if (!btn) {
+      return;
+    }
+    const row = btn.closest(".password-row");
+    if (!row) {
+      return;
+    }
+    const input = row.querySelector('input[type="password"], input[type="text"]');
+    if (!input) {
+      return;
+    }
+    const showIcon = btn.querySelector(".password-icon-show");
+    const hideIcon = btn.querySelector(".password-icon-hide");
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    btn.setAttribute("aria-pressed", showing ? "false" : "true");
+    btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+    if (showIcon) {
+      showIcon.hidden = !showing;
+    }
+    if (hideIcon) {
+      hideIcon.hidden = showing;
+    }
+  });
+}
+
+function hookChurchSearch() {
+  document.addEventListener("input", (event) => {
+    const query = event.target.closest("[data-church-search-input]");
+    if (!query) {
+      return;
+    }
+    const root = query.closest("[data-church-search]");
+    if (!root) {
+      return;
+    }
+    scheduleChurchSearch(root, query);
+  });
+
+  document.addEventListener("click", (event) => {
+    const pick = event.target.closest("[data-church-pick]");
+    if (!pick) {
+      return;
+    }
+    const root = pick.closest("[data-church-search]");
+    if (!root) {
+      return;
+    }
+    const hidden = root.querySelector('input[name="church_id"]');
+    const query = root.querySelector("[data-church-search-input]");
+    if (!hidden || !query) {
+      return;
+    }
+    hidden.value = pick.getAttribute("data-church-id") || "";
+    query.value = pick.getAttribute("data-church-name") || "";
+    cancelChurchSearch(root);
+    clearChurchSuggestions(root);
+  });
+}
+
+const churchSearchTimers = new WeakMap();
+const churchSearchTokens = new WeakMap();
+const churchSearchAbort = new WeakMap();
+const churchSearchSent = new WeakMap();
+const CHURCH_SEARCH_PAUSE_MS = 400;
+
+function cancelChurchSearch(root) {
+  const prior = churchSearchTimers.get(root);
+  if (prior) {
+    window.clearTimeout(prior);
+    churchSearchTimers.delete(root);
+  }
+  const inflight = churchSearchAbort.get(root);
+  if (inflight) {
+    inflight.abort();
+    churchSearchAbort.delete(root);
+  }
+}
+
+function scheduleChurchSearch(root, query) {
+  const hidden = root.querySelector('input[name="church_id"]');
+  if (hidden) {
+    hidden.value = "";
+  }
+  const prior = churchSearchTimers.get(root);
+  if (prior) {
+    window.clearTimeout(prior);
+  }
+  const timer = window.setTimeout(() => {
+    churchSearchTimers.delete(root);
+    void runChurchSearch(root, query.value.trim());
+  }, CHURCH_SEARCH_PAUSE_MS);
+  churchSearchTimers.set(root, timer);
+}
+
+async function runChurchSearch(root, text) {
+  const list = root.querySelector("[data-church-search-list]");
+  const status = root.querySelector("[data-church-search-status]");
+  const query = root.querySelector("[data-church-search-input]");
+  if (!list || !status) {
+    return;
+  }
+  if (!text) {
+    cancelChurchSearch(root);
+    churchSearchSent.delete(root);
+    clearChurchSuggestions(root);
+    return;
+  }
+  if (churchSearchSent.get(root) === text) {
+    return;
+  }
+  const previous = churchSearchAbort.get(root);
+  if (previous) {
+    previous.abort();
+  }
+  const token = (churchSearchTokens.get(root) || 0) + 1;
+  churchSearchTokens.set(root, token);
+  const controller = new AbortController();
+  churchSearchAbort.set(root, controller);
+  churchSearchSent.set(root, text);
+  if (list.hidden) {
+    status.hidden = false;
+    status.textContent = "Searching…";
+  }
+  try {
+    const response = await fetch(`/register/churches?q=${encodeURIComponent(text)}`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (token !== churchSearchTokens.get(root)) {
+      return;
+    }
+    if (response.status === 429) {
+      churchSearchSent.delete(root);
+      status.hidden = false;
+      status.textContent = "Wait a moment.";
+      return;
+    }
+    if (!response.ok) {
+      churchSearchSent.delete(root);
+      status.hidden = false;
+      status.textContent = "Search failed. Try again.";
+      return;
+    }
+    const hits = await response.json();
+    if (token !== churchSearchTokens.get(root)) {
+      return;
+    }
+    paintChurchHits(root, hits);
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      if (churchSearchSent.get(root) === text) {
+        churchSearchSent.delete(root);
+      }
+      return;
+    }
+    if (token !== churchSearchTokens.get(root)) {
+      return;
+    }
+    status.hidden = false;
+    status.textContent = "Search failed. Try again.";
+  }
+}
+
+function paintChurchHits(root, hits) {
+  const list = root.querySelector("[data-church-search-list]");
+  const status = root.querySelector("[data-church-search-status]");
+  const query = root.querySelector("[data-church-search-input]");
+  if (!list || !status) {
+    return;
+  }
+  list.replaceChildren();
+  if (!hits.length) {
+    status.hidden = false;
+    status.textContent = "No churches match that name.";
+    list.hidden = true;
+    if (query) {
+      query.setAttribute("aria-expanded", "false");
+    }
+    return;
+  }
+  status.hidden = true;
+  status.textContent = "";
+  for (const hit of hits) {
+    const item = document.createElement("li");
+    item.setAttribute("role", "option");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "church-suggestion";
+    btn.setAttribute("data-church-pick", "");
+    btn.setAttribute("data-church-id", hit.id);
+    btn.setAttribute("data-church-name", hit.name);
+    btn.textContent = `${hit.name} · ${hit.city}, ${hit.region}`;
+    item.appendChild(btn);
+    list.appendChild(item);
+  }
+  list.hidden = false;
+  if (query) {
+    query.setAttribute("aria-expanded", "true");
+  }
+}
+
+function clearChurchSuggestions(root) {
+  const list = root.querySelector("[data-church-search-list]");
+  const status = root.querySelector("[data-church-search-status]");
+  const query = root.querySelector("[data-church-search-input]");
+  if (list) {
+    list.hidden = true;
+    list.replaceChildren();
+  }
+  if (status) {
+    status.hidden = true;
+    status.textContent = "";
+  }
+  if (query) {
+    query.setAttribute("aria-expanded", "false");
+  }
 }

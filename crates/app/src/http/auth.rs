@@ -1,9 +1,10 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::response::{Redirect, Response};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::Json;
 use axum_extra::extract::cookie::CookieJar;
 
 use ecclesia_sdk::limit::{RateDecision, RateKind};
-use ecclesia_sdk::prelude::VoiceKind;
 use ecclesia_sdk::session::{self, Session};
 use ecclesia_sdk::story::{self, MailOrigin, StoryOk};
 
@@ -14,7 +15,8 @@ use super::context::{
     redirect_ok, unread, viewer_for, with_cookie,
 };
 use super::forms::{
-    CsrfForm, FlashQuery, PasswordForm, RegisterForm, ResetCompleteForm, SessionForm, TokenQuery,
+    ChurchSearchQuery, CsrfForm, FlashQuery, PasswordForm, RegisterForm, ResetCompleteForm,
+    SessionForm, TokenQuery,
 };
 use super::{AppError, AppState};
 
@@ -202,6 +204,18 @@ pub async fn revoke_session(
     Ok(with_cookie(jar, Redirect::to("/me")))
 }
 
+pub async fn register_church_search(
+    State(state): State<AppState>,
+    who: ClientKey,
+    Query(query): Query<ChurchSearchQuery>,
+) -> Result<Response, AppError> {
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Lookup, &who.0).await {
+        return Ok(StatusCode::TOO_MANY_REQUESTS.into_response());
+    }
+    let hits = story::search_churches(&state.sdk, &query.q, 5).await?;
+    Ok(Json(hits).into_response())
+}
+
 pub async fn register_user(
     State(state): State<AppState>,
     who: ClientKey,
@@ -216,31 +230,11 @@ pub async fn register_user(
     if let RateDecision::Refuse = state.decide_rate(RateKind::Register, &who.0).await {
         return Ok(with_cookie(jar, redirect_err("/register", "rate")));
     }
-    if state.awaiting_review(&form.pass, &[&form.bio]) {
-        let bio = state.polish(VoiceKind::Bio, &form.bio).await;
-        return Ok(with_cookie(
-            jar,
-            html(views::register_page(
-                None,
-                &session.csrf,
-                &views::RegisterDraft {
-                    name: &form.name,
-                    email: &form.email,
-                    city: &form.city,
-                    region: &form.region,
-                    bio: &bio,
-                    kind: views::DraftKind::Review,
-                },
-            )),
-        ));
-    }
     match story::register(
         &state.sdk,
         &form.name,
         &form.email,
-        &form.city,
-        &form.region,
-        &form.bio,
+        &form.church_id,
         &form.password,
         &device_meta(&headers, &who),
     )
@@ -258,10 +252,8 @@ pub async fn register_user(
                 &views::RegisterDraft {
                     name: &form.name,
                     email: &form.email,
-                    city: &form.city,
-                    region: &form.region,
-                    bio: &form.bio,
-                    kind: views::DraftKind::Blank,
+                    church_id: &form.church_id,
+                    church_query: &form.church_query,
                 },
             )),
         )),

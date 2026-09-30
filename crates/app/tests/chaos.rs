@@ -32,12 +32,13 @@ async fn app() -> World {
         .await
         .expect("test database");
     let sdk = ecclesia_sdk::Sdk::assemble(
-        db,
+        db.clone(),
         ecclesia_sdk::judge::JudgeHub::word_gate(),
         ecclesia_sdk::refine::RefineHub::silent(),
         ecclesia_sdk::push::PushHub::silent(),
         ecclesia_sdk::Cache::memory(),
     );
+    sdk.db.seed_grace_church().await.expect("seed church");
     World {
         app: router(AppState {
             sdk: sdk.clone(),
@@ -128,7 +129,7 @@ async fn register(world: &World, name: &str, email: &str) -> String {
         Some(&cookie),
         "/register",
         format!(
-            "csrf={csrf}&name={}&email={}&city=Cedar+Falls&region=Iowa&bio=I+cook&password={}",
+            "csrf={csrf}&name={}&email={}&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
             enc(name),
             enc(email),
             enc(PASS)
@@ -253,7 +254,7 @@ async fn us_chaos_01_double_at_email_is_refused() {
         &csrf,
         "/register",
         &format!(
-            "name=Ada&email=ada@@nope.com&city=Waterloo&region=Iowa&bio=I+cook&password={}",
+            "name=Ada&email=ada@@nope.com&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
             enc(PASS)
         ),
     )
@@ -270,7 +271,7 @@ async fn us_chaos_01_script_name_does_not_run() {
         Some(&cookie),
         "/register",
         format!(
-            "csrf={csrf}&name=%3Cscript%3Ealert(1)%3C/script%3E&email=escaped@nope.test&city=Waterloo&region=Iowa&bio=I+cook&password={}",
+            "csrf={csrf}&name=%3Cscript%3Ealert(1)%3C/script%3E&email=escaped@nope.test&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
             enc(PASS)
         ),
     )

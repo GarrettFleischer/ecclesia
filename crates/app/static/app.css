@@ -332,9 +332,108 @@ body.standalone .install-bar { display: none !important; }
 .auth-home { margin: 0 0 1.15rem; }
 .auth-home .mark { text-decoration: none; }
 
-.auth-card { margin: 0.15rem 0 0; }
+.auth-card { margin: 0.15rem 0 0; overflow: visible; }
 .auth-card::before { content: none; }
 .auth-card .split { grid-template-columns: 1fr; }
+
+.password-field { display: grid; gap: 0.35rem; }
+
+.password-row {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.password-row input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 2.85rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0.35rem;
+  bottom: 0;
+  height: 2.35rem;
+  width: 2.35rem;
+  margin: auto 0;
+  transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+
+.password-icon { display: inline-flex; }
+
+.password-icon[hidden] { display: none; }
+
+.church-search {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.church-search-input-wrap {
+  position: relative;
+}
+
+.church-search-status {
+  margin: 0;
+  min-height: 1.15rem;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.church-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf9;
+  overflow: hidden;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 40;
+  box-shadow: var(--shadow);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.church-suggestion {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.church-suggestion:last-child { border-bottom: 0; }
+
+.church-suggestion:hover,
+.church-suggestion:focus-visible {
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+}
 
 .auth-links {
   display: flex;

@@ -52,6 +52,7 @@ Per client, per minute, shared in Upstash (`rate:{kind}:{who}`). Local work with
 - Rewrite: 20
 - Redeem an invite code: 8
 - Push subscribe / unsubscribe / device: 30
+- Church lookup: 30
 
 Invite codes for new churches use an 8-character nonce when a church is planted.
 

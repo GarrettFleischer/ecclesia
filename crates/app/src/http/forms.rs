@@ -45,14 +45,16 @@ pub struct RegisterForm {
     pub csrf: String,
     pub name: String,
     pub email: String,
-    pub city: String,
-    pub region: String,
+    pub church_id: String,
     #[serde(default)]
-    pub bio: String,
-    #[serde(default)]
-    pub pass: String,
-    #[serde(default)]
+    pub church_query: String,
     pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChurchSearchQuery {
+    #[serde(default)]
+    pub q: String,
 }
 
 #[derive(Deserialize)]

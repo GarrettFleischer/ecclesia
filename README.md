@@ -24,7 +24,7 @@ ECCLESIA_SECRET=$(openssl rand -hex 32) \
 cargo run
 ```
 
-Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the store. An empty store seeds the gift catalog only.
+Delete `ecclesia.db` (and `-wal` / `-shm`) to reset the store. A new store seeds the gift catalog and **Grace Fellowship** so create-account search works. Sign in as `owner@seed.test` with the same password you use in integration tests (`Thursday dinners at six oclock`) to approve join requests there.
 
 For a shared host: set a long random `ECCLESIA_SECRET`, set `ECCLESIA_SECURE=1` behind TLS, and use your own VAPID keys. See [docs/SECURITY.md](docs/SECURITY.md) and [docs/MOBILE.md](docs/MOBILE.md).
 
@@ -36,9 +36,10 @@ obvious attacks. First submit shows the rewrite. Then you publish.
 
 ## Try it
 
-1. Register on the landing page.
-2. Plant a church or redeem an invite.
-3. Post a need, apply, or endorse from another registered member.
+1. Create an account. Search **Grace Fellowship**, pick it, submit.
+2. Sign in as `owner@seed.test` to approve the join on the church page (password above).
+3. Plant another church or redeem an invite if you want a second household.
+4. Post a need, apply, or endorse from another registered member.
 
 ## Docs
 

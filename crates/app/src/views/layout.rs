@@ -55,6 +55,31 @@ pub fn rewrite_row(kind: VoiceKind) -> Markup {
     }
 }
 
+pub fn password_field(label: &str, name: &str, autocomplete: &str) -> Markup {
+    html! {
+        div class="password-field" {
+            label for=(name) { (label) }
+            div class="password-row" {
+                input type="password" id=(name) name=(name) required autocomplete=(autocomplete);
+                button type="button" class="password-toggle" data-password-toggle aria-label="Show password" aria-pressed="false" {
+                    span class="password-icon password-icon-show" aria-hidden="true" {
+                        svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {
+                            path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" {}
+                            circle cx="12" cy="12" r="3" {}
+                        }
+                    }
+                    span class="password-icon password-icon-hide" hidden aria-hidden="true" {
+                        svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {
+                            path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" {}
+                            line x1="1" y1="1" x2="23" y2="23" {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn page_lead(title: &str) -> Markup {
     html! {
         h1 { (title) }
@@ -99,7 +124,7 @@ pub fn page(
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
-                link rel="stylesheet" href="/static/app.css";
+                link rel="stylesheet" href="/static/app.css?v=5";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
@@ -121,7 +146,7 @@ pub fn page(
                 @if app_chrome(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js" defer {}
+                script src="/static/app.js?v=6" defer {}
             }
         }
     }

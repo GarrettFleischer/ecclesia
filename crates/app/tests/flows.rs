@@ -31,12 +31,13 @@ async fn app_with(
         .await
         .expect("test database");
     let sdk = ecclesia_sdk::Sdk::assemble(
-        db,
+        db.clone(),
         judge,
         refine,
         ecclesia_sdk::push::PushHub::silent(),
         ecclesia_sdk::Cache::memory(),
     );
+    sdk.db.seed_grace_church().await.expect("seed church");
     World {
         app: router(AppState {
             sdk: sdk.clone(),
@@ -144,7 +145,7 @@ async fn register(world: &World, name: &str, email: &str) -> String {
     let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/register").await;
     let csrf = csrf.expect("register csrf");
     let body = format!(
-        "csrf={csrf}&name={}&email={}&city=Cedar+Falls&region=Iowa&bio=I+cook&password={}&pass=publish",
+        "csrf={csrf}&name={}&email={}&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
         enc(name),
         enc(email),
         enc(PASS)
@@ -376,6 +377,43 @@ async fn us_auth_01_register_then_sign_in() {
 }
 
 #[tokio::test]
+async fn us_auth_01_register_church_search_finds_grace() {
+    let world = app().await;
+    let response = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/register/churches?q=grace")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(body.contains("Grace Fellowship"));
+    assert!(body.contains("seed_grace"));
+    for _ in 0..24 {
+        let again = world
+            .app
+            .clone()
+            .oneshot(
+                Request::get("/register/churches?q=gra")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(again.status(), StatusCode::OK);
+        let again_body = body_string(again).await;
+        assert!(
+            again_body.contains("Grace Fellowship"),
+            "later lookups still match, got {again_body}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn us_auth_04_unknown_email_is_quiet() {
     let world = app().await;
     let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/").await;
@@ -413,16 +451,14 @@ async fn us_auth_01_weak_password_stays_on_register() {
         &cookie,
         &csrf,
         "/register",
-        "name=Cara+Nguyen&email=cara@verify.test&city=Cedar+Falls&region=Iowa&bio=I+cook&password=password&pass=publish",
+        "name=Cara+Nguyen&email=cara@verify.test&church_id=seed_grace&church_query=Grace+Fellowship&password=password",
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(page.contains("Pick a stronger password."));
     assert!(page.contains("value=\"Cara Nguyen\""));
     assert!(page.contains("value=\"cara@verify.test\""));
-    assert!(page.contains("value=\"Cedar Falls\""));
-    assert!(page.contains("value=\"Iowa\""));
-    assert!(page.contains("I cook"));
+    assert!(page.contains("value=\"Grace Fellowship\""));
     assert!(!page.contains("value=\"password\""));
     assert!(
         world
@@ -1052,8 +1088,9 @@ async fn us_refine_01_silent_echoes_the_same_words() {
     let world = app().await;
     let (register_page, cookie, csrf) = get_page(world.app.clone(), None, "/register").await;
     let csrf = csrf.expect("register csrf");
-    assert!(register_page.contains("data-rewrite"));
-    assert!(register_page.contains(r#"data-kind="bio""#));
+    assert!(!register_page.contains("data-rewrite"));
+    assert!(register_page.contains("data-church-search-input"));
+    assert!(register_page.contains("data-password-toggle"));
 
     let (status, body) = post_json(
         &world,

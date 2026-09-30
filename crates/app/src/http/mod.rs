@@ -196,6 +196,7 @@ pub fn router(state: AppState) -> Router {
             "/register",
             get(auth::register_form).post(auth::register_user),
         )
+        .route("/register/churches", get(auth::register_church_search))
         .route("/session/new", get(auth::sign_in_form))
         .route("/session/link/new", get(auth::magic_link_form))
         .route("/session/reset/new", get(auth::forgot_password_form))
