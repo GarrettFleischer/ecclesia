@@ -3,13 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f0e8">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0c1411">
   <title>Offline · Ecclesia</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="site site-guest">
-  <main class="sheet page-rise">
+  <div class="backdrop" aria-hidden="true"><span class="glow glow-a"></span><span class="glow glow-b"></span></div>
+  <main id="content" class="sheet sheet-auth page-rise">
     <h1>You're offline.</h1>
-    <p>Needs and messages will be here when you reconnect.</p>
+    <p class="lede">Needs and messages will be here when you reconnect.</p>
     <a class="btn" href="/home">Try again</a>
   </main>
 </body>

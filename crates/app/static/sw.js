@@ -1,10 +1,15 @@
-const CACHE = "ecclesia-shell-v6";
+const CACHE = "ecclesia-shell-v7";
 const SHELL = [
   "/static/app.css",
   "/static/app.js",
   "/static/icon-192.png",
   "/static/apple-touch-icon.png",
   "/static/offline.html",
+  "/static/fonts/inter-latin.woff2",
+  "/static/fonts/instrument-serif-normal-latin.woff2",
+  "/static/fonts/instrument-serif-italic-latin.woff2",
+  "/static/img/wallpaper-tall.webp",
+  "/static/img/wallpaper-wide.webp",
 ];
 
 self.addEventListener("install", (event) => {
@@ -69,7 +74,7 @@ async function networkFirst(request) {
     }
     return response;
   } catch (error) {
-    const cached = await caches.match(request);
+    const cached = await caches.match(request, { ignoreSearch: true });
     if (cached) {
       return cached;
     }
