@@ -1,4 +1,4 @@
-//! Chrome: document shell, dock, avatars, CSRF field.
+//! Chrome: document shell, backdrop, top bar, dock, icons, monograms, CSRF field.
 
 use maud::{DOCTYPE, Markup, html};
 
@@ -8,6 +8,7 @@ use super::flash::Flash;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Nav {
+    Landing,
     Home,
     Churches,
     Body,
@@ -34,13 +35,45 @@ impl DockState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum DockIcon {
+pub enum Icon {
     Home,
     Church,
-    Body,
+    Pin,
     Inbox,
-    You,
+    Person,
+    Globe,
+    Clock,
+    Plus,
+    Check,
+    Alert,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Monogram {
+    PersonSmall,
+    Person,
+    PersonLarge,
+    ChurchSmall,
+    Church,
+    ChurchLarge,
+}
+
+impl Monogram {
+    fn class(self) -> &'static str {
+        match self {
+            Self::PersonSmall => "avatar avatar-sm",
+            Self::Person => "avatar",
+            Self::PersonLarge => "avatar avatar-xl",
+            Self::ChurchSmall => "church-mark church-mark-sm",
+            Self::Church => "church-mark",
+            Self::ChurchLarge => "church-mark church-mark-lg",
+        }
+    }
+}
+
+const TONES: [&str; 8] = [
+    "tone-0", "tone-1", "tone-2", "tone-3", "tone-4", "tone-5", "tone-6", "tone-7",
+];
 
 pub fn csrf_input(csrf: &str) -> Markup {
     html! { input type="hidden" name="csrf" value=(csrf); }
@@ -63,13 +96,13 @@ pub fn password_field(label: &str, name: &str, autocomplete: &str) -> Markup {
                 input type="password" id=(name) name=(name) required autocomplete=(autocomplete);
                 button type="button" class="password-toggle" data-password-toggle aria-label="Show password" aria-pressed="false" {
                     span class="password-icon password-icon-show" aria-hidden="true" {
-                        svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {
-                            path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" {}
+                        svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" {
+                            path d="M1.75 12S5.5 4.75 12 4.75 22.25 12 22.25 12 18.5 19.25 12 19.25 1.75 12 1.75 12z" {}
                             circle cx="12" cy="12" r="3" {}
                         }
                     }
                     span class="password-icon password-icon-hide" hidden aria-hidden="true" {
-                        svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {
+                        svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" {
                             path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" {}
                             line x1="1" y1="1" x2="23" y2="23" {}
                         }
@@ -81,10 +114,7 @@ pub fn password_field(label: &str, name: &str, autocomplete: &str) -> Markup {
 }
 
 pub fn page_lead(title: &str) -> Markup {
-    html! {
-        h1 { (title) }
-        hr class="gold-rule";
-    }
+    html! { h1 { (title) } }
 }
 
 pub fn share_button(label: &str, title: &str, text: &str) -> Markup {
@@ -93,6 +123,82 @@ pub fn share_button(label: &str, title: &str, text: &str) -> Markup {
             (label)
         }
     }
+}
+
+pub fn icon(glyph: Icon) -> Markup {
+    html! {
+        svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" {
+            (icon_paths(glyph))
+        }
+    }
+}
+
+fn icon_paths(glyph: Icon) -> Markup {
+    match glyph {
+        Icon::Home => html! {
+            path d="M4 10.2 12 4l8 6.2V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" {}
+        },
+        Icon::Church => html! {
+            path d="M12 2.75v3.5M10.4 4.25h3.2" {}
+            path d="M5 20.25V11.5L12 7l7 4.5v8.75" {}
+            path d="M3 20.25h18" {}
+            path d="M10 20.25v-3.5a2 2 0 0 1 4 0v3.5" {}
+        },
+        Icon::Pin => html! {
+            path d="M12 21s-6.25-5.6-6.25-10.75a6.25 6.25 0 1 1 12.5 0C18.25 15.4 12 21 12 21z" {}
+            circle cx="12" cy="10.25" r="2.25" {}
+        },
+        Icon::Inbox => html! {
+            path d="M3.75 13.5 6.1 6.2a1.5 1.5 0 0 1 1.4-.95h9a1.5 1.5 0 0 1 1.4.95l2.35 7.3" {}
+            path d="M3.75 13.5v4.75a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5V13.5h-4.6l-1.4 2.25h-4.5L8.35 13.5z" {}
+        },
+        Icon::Person => html! {
+            circle cx="12" cy="8.25" r="3.75" {}
+            path d="M4.75 20c.9-3.6 3.8-5.75 7.25-5.75S18.35 16.4 19.25 20" {}
+        },
+        Icon::Globe => html! {
+            circle cx="12" cy="12" r="8.5" {}
+            path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5S9.6 5.8 12 3.5z" {}
+        },
+        Icon::Clock => html! {
+            circle cx="12" cy="12" r="8.5" {}
+            path d="M12 7.5V12l3 2" {}
+        },
+        Icon::Plus => html! {
+            path d="M12 5.5v13M5.5 12h13" {}
+        },
+        Icon::Check => html! {
+            path d="m5.5 12.5 4.25 4.25L18.5 8" {}
+        },
+        Icon::Alert => html! {
+            path d="M12 7.5v5.5M12 16.5h.01" {}
+        },
+    }
+}
+
+pub fn mark_glyph() -> Markup {
+    html! {
+        svg class="mark-glyph" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" {
+            circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" {}
+            circle cx="12" cy="12" r="3.2" fill="currentColor" {}
+        }
+    }
+}
+
+pub fn monogram(seed: &str, name: &str, shape: Monogram) -> Markup {
+    html! {
+        span class={ (shape.class()) " " (tone_class(seed)) } aria-hidden="true" { (initials(name)) }
+    }
+}
+
+fn tone_class(seed: &str) -> &'static str {
+    TONES[seed_number(seed) % TONES.len()]
+}
+
+fn seed_number(seed: &str) -> usize {
+    seed.bytes().fold(17usize, |sum, byte| {
+        sum.wrapping_mul(31).wrapping_add(usize::from(byte))
+    })
 }
 
 pub fn page(
@@ -110,7 +216,9 @@ pub fn page(
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
-                meta name="theme-color" content="#f4eee3";
+                meta name="color-scheme" content="light dark";
+                meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f0e8";
+                meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0c1411";
                 meta name="mobile-web-app-capable" content="yes";
                 meta name="apple-mobile-web-app-capable" content="yes";
                 meta name="apple-mobile-web-app-status-bar-style" content="default";
@@ -121,24 +229,24 @@ pub fn page(
                 link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192";
                 link rel="apple-touch-icon" href="/static/apple-touch-icon.png";
                 title { (document_title(title)) }
-                link rel="preconnect" href="https://fonts.googleapis.com";
-                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
-                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap";
-                link rel="stylesheet" href="/static/app.css?v=7";
+                link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
+                link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
+                (scene_preload(nav))
+                link rel="stylesheet" href="/static/app.css?v=8";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
             body class=(site_class(nav)) {
                 a class="skip" href="#content" { "Skip to content" }
-                (atmosphere())
-                @if nav == Nav::None {
+                (backdrop())
+                @if nav == Nav::Landing {
                     (install_bar())
                 }
                 @if app_chrome(nav) {
                     (topbar(user))
                 }
                 @if let Some(flash) = flash {
-                    div class=(flash.class_name()) role="status" { (flash.text()) }
+                    (flash_note(&flash))
                 }
                 main id="content" class={ "sheet page-rise" (sheet_extra(nav)) } {
                     (main)
@@ -146,8 +254,27 @@ pub fn page(
                 @if app_chrome(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=6" defer {}
+                script src="/static/app.js?v=7" defer {}
             }
+        }
+    }
+}
+
+fn scene_preload(nav: Nav) -> Markup {
+    if !matches!(nav, Nav::Landing | Nav::Account) {
+        return html! {};
+    }
+    html! {
+        link rel="preload" href="/static/img/dawn-tall.webp" as="image" type="image/webp" media="(orientation: portrait), (max-width: 699px)" fetchpriority="high";
+        link rel="preload" href="/static/img/dawn-wide.webp" as="image" type="image/webp" media="(orientation: landscape) and (min-width: 700px)" fetchpriority="high";
+    }
+}
+
+fn backdrop() -> Markup {
+    html! {
+        div class="backdrop" aria-hidden="true" {
+            span class="glow glow-a" {}
+            span class="glow glow-b" {}
         }
     }
 }
@@ -155,6 +282,7 @@ pub fn page(
 fn install_bar() -> Markup {
     html! {
         div class="install-bar" hidden {
+            (mark_glyph())
             p { "Add Ecclesia to your home screen." }
             button class="btn" type="button" data-install { "Install" }
             button class="btn btn-quiet" type="button" data-install-dismiss { "Not now" }
@@ -162,8 +290,22 @@ fn install_bar() -> Markup {
     }
 }
 
+fn flash_note(flash: &Flash) -> Markup {
+    html! {
+        div class=(flash.class_name()) role="status" {
+            span class="flash-icon" aria-hidden="true" { (icon(flash_icon(flash))) }
+            span class="flash-text" { (flash.text()) }
+        }
+    }
+}
+
+fn flash_icon(flash: &Flash) -> Icon {
+    if flash.is_ok() { Icon::Check } else { Icon::Alert }
+}
+
 fn site_class(nav: Nav) -> &'static str {
     match nav {
+        Nav::Landing => "site site-guest site-landing",
         Nav::None => "site site-guest",
         Nav::Home => "site site-app site-home",
         Nav::Churches => "site site-app site-churches",
@@ -175,23 +317,12 @@ fn site_class(nav: Nav) -> &'static str {
 }
 
 fn app_chrome(nav: Nav) -> bool {
-    !matches!(nav, Nav::None | Nav::Account)
-}
-
-fn atmosphere() -> Markup {
-    html! {
-        div class="atmosphere" aria-hidden="true" {
-            span class="orb orb-a" {}
-            span class="orb orb-b" {}
-            span class="orb orb-c" {}
-        }
-        div class="grain" aria-hidden="true" {}
-    }
+    !matches!(nav, Nav::Landing | Nav::None | Nav::Account)
 }
 
 fn sheet_extra(nav: Nav) -> &'static str {
     match nav {
-        Nav::None => " sheet-wide",
+        Nav::Landing => " sheet-landing",
         Nav::Account => " sheet-auth",
         _ => "",
     }
@@ -200,10 +331,10 @@ fn sheet_extra(nav: Nav) -> &'static str {
 fn topbar(user: Option<&User>) -> Markup {
     html! {
         header class="topbar" {
-            a class="mark" href="/home" { span class="mark-dot" aria-hidden="true" {} span { "Ecclesia" } }
+            a class="mark" href="/home" { (mark_glyph()) span { "Ecclesia" } }
             @if let Some(user) = user {
                 a class="who" href="/me" {
-                    span class="avatar" { (initials(&user.name)) }
+                    (monogram(&user.id, &user.name, Monogram::Person))
                     span class="who-name" { (user.name) }
                 }
             }
@@ -214,11 +345,11 @@ fn topbar(user: Option<&User>) -> Markup {
 fn dock(nav: Nav, unread: i64) -> Markup {
     html! {
         nav class="dock" aria-label="Primary" {
-            (dock_link("/home", "Home", DockIcon::Home, DockState::for_nav(nav, Nav::Home), None))
-            (dock_link("/churches", "Churches", DockIcon::Church, DockState::for_nav(nav, Nav::Churches), None))
-            (dock_link("/the-body", "Nearby", DockIcon::Body, DockState::for_nav(nav, Nav::Body), None))
-            (dock_link("/inbox", "Inbox", DockIcon::Inbox, DockState::for_nav(nav, Nav::Inbox), unread_badge(unread)))
-            (dock_link("/me", "You", DockIcon::You, DockState::for_nav(nav, Nav::You), None))
+            (dock_link("/home", "Home", Icon::Home, DockState::for_nav(nav, Nav::Home), None))
+            (dock_link("/churches", "Churches", Icon::Church, DockState::for_nav(nav, Nav::Churches), None))
+            (dock_link("/the-body", "Nearby", Icon::Pin, DockState::for_nav(nav, Nav::Body), None))
+            (dock_link("/inbox", "Inbox", Icon::Inbox, DockState::for_nav(nav, Nav::Inbox), unread_badge(unread)))
+            (dock_link("/me", "You", Icon::Person, DockState::for_nav(nav, Nav::You), None))
         }
     }
 }
@@ -230,18 +361,26 @@ fn unread_badge(unread: i64) -> Option<i64> {
 fn dock_link(
     href: &str,
     label: &str,
-    icon: DockIcon,
+    glyph: Icon,
     state: DockState,
     badge: Option<i64>,
 ) -> Markup {
     html! {
         a class={ "dock-link" (dock_class(state)) } href=(href) aria-current=[dock_current(state)] {
-            span class="dock-icon" aria-hidden="true" { (dock_svg(icon)) }
-            span { (label) }
+            (dock_pill(state))
+            span class="dock-icon" aria-hidden="true" { (icon(glyph)) }
+            span class="dock-label" { (label) }
             @if let Some(n) = badge {
                 span class="badge" { (n) }
             }
         }
+    }
+}
+
+fn dock_pill(state: DockState) -> Markup {
+    match state {
+        DockState::Current => html! { span class="dock-pill" aria-hidden="true" {} },
+        DockState::Idle => html! {},
     }
 }
 
@@ -264,26 +403,6 @@ fn document_title(title: &str) -> String {
         "Ecclesia".into()
     } else {
         format!("{title} · Ecclesia")
-    }
-}
-
-fn dock_svg(icon: DockIcon) -> Markup {
-    match icon {
-        DockIcon::Home => {
-            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M12 4.2 3.8 11h2.1v8.2h5.1v-5h2v5h5.1V11h2.1L12 4.2z" {} } }
-        }
-        DockIcon::Church => {
-            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M11.2 2.5h1.6v1.6h1.6v1.6h-1.6v1.3L18 9.4V21h-5.1v-5.2h-1.8V21H6V9.4l5.2-2.4V5.7H9.6V4.1h1.6V2.5z" {} } }
-        }
-        DockIcon::Body => {
-            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M8 6.2a2.3 2.3 0 1 1 0 4.6 2.3 2.3 0 0 1 0-4.6zm8 0a2.3 2.3 0 1 1 0 4.6 2.3 2.3 0 0 1 0-4.6zM12 13.4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm-2.7-3.1 1.4 3.3h2.6l1.4-3.3-1.5-.7-1.2 2.1-1.2-2.1z" {} } }
-        }
-        DockIcon::Inbox => {
-            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M3.8 6.2h16.4v4.2h-4.1l-1.3 2.3H9.2L7.9 10.4H3.8V6.2zm0 5.8h3.3l1.4 2.4h6.8l1.4-2.4h3.3v6.8H3.8V12z" {} } }
-        }
-        DockIcon::You => {
-            html! { svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" { path fill="currentColor" d="M12 4.6a3.6 3.6 0 1 1 0 7.2 3.6 3.6 0 0 1 0-7.2zM5.2 19.8c.9-3.4 4-5.1 6.8-5.1s5.9 1.7 6.8 5.1v1.1H5.2z" {} } }
-        }
     }
 }
 
@@ -357,7 +476,7 @@ fn more_param(path: &str, name: &str, label: &str, value: Option<&str>) -> Marku
     };
     let href = format!("{path}?{name}={}", encode_cursor(value));
     html! {
-        p { a class="btn btn-quiet" href=(href) { (label) } }
+        p class="more" { a class="btn btn-quiet" href=(href) { (label) } }
     }
 }
 

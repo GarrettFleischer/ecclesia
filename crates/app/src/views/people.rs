@@ -13,7 +13,9 @@ use super::cards::{
 };
 use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, first_name, page, page_lead, rewrite_row};
+use super::layout::{
+    Monogram, Nav, csrf_input, first_name, monogram, page, page_lead, rewrite_row,
+};
 
 pub fn member_show(
     viewer: &Viewer,
@@ -37,8 +39,7 @@ pub fn member_show(
         flash,
         csrf,
         html! {
-            p class="eyebrow" { (person.city) ", " (person.region) }
-            (page_lead(&person.name))
+            (profile_head(person))
             (bio_lede(person))
             section {
                 h2 { "Churches" }
@@ -53,6 +54,18 @@ pub fn member_show(
             (endorse_panel(viewer, person, catalog, csrf, draft))
         },
     )
+}
+
+fn profile_head(person: &User) -> Markup {
+    html! {
+        div class="profile-head" {
+            (monogram(&person.id, &person.name, Monogram::PersonLarge))
+            div {
+                p class="eyebrow" { (person.city) ", " (person.region) }
+                (page_lead(&person.name))
+            }
+        }
+    }
 }
 
 fn nav_for_person(viewer: &Viewer, person: &User) -> Nav {
@@ -284,7 +297,7 @@ pub fn me(
         flash,
         csrf,
         html! {
-            (page_lead(&viewer.user.name))
+            (profile_head(&viewer.user))
             section {
                 h2 { "Profile" }
                 form class="stack" method="post" action="/me" {
@@ -365,12 +378,12 @@ fn device_list(devices: &[SessionRow], current_session: Option<&str>, csrf: &str
     html! {
         div class="stack" {
             @for device in devices {
-                article class="card" {
-                    p { (short_agent(&device.user_agent)) }
-                    p class="muted" { (device.last_seen_at) }
+                article class="card device-card" {
                     @if current_session == Some(device.id.as_str()) {
-                        p class="muted" { "This device" }
+                        span class="chip chip-accent" { "This device" }
                     }
+                    p class="device-name" { (short_agent(&device.user_agent)) }
+                    p class="muted" { "Last seen " time datetime=(device.last_seen_at) { (device.last_seen_at) } }
                     form method="post" action={"/session/" (device.id) "/revoke"} {
                         (csrf_input(csrf))
                         button class="btn btn-quiet" type="submit" { "Sign out this device" }

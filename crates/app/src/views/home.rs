@@ -4,7 +4,7 @@ use ecclesia_sdk::prelude::{Church, Membership, NeedCard, Viewer, visible_need_c
 
 use super::cards::{NeedCardPlace, need_card_stack, pending_door_cards};
 use super::flash::Flash;
-use super::layout::{Nav, page, page_lead};
+use super::layout::{Icon, Nav, icon, page, page_lead};
 
 pub fn home(
     viewer: &Viewer,
@@ -24,11 +24,15 @@ pub fn home(
         flash,
         csrf,
         html! {
-            p class="eyebrow" { (viewer.user.city) ", " (viewer.user.region) }
-            (page_lead("Open needs"))
+            div class="page-head" {
+                div {
+                    p class="eyebrow" { (viewer.user.city) ", " (viewer.user.region) }
+                    (page_lead("Open needs"))
+                }
+                (post_need_action(viewer))
+            }
             (no_church_yet(viewer, pending))
             (pending_section(pending, csrf))
-            (active_toolbar(viewer))
             section {
                 (needs_or_empty(needs, churches, viewer, pending, next_cursor))
             }
@@ -55,18 +59,21 @@ fn pending_section(pending: &[(&Church, &Membership)], csrf: &str) -> Markup {
     html! {
         section {
             h2 { "Waiting" }
-            (pending_door_cards(pending, csrf))
+            div class="stack" {
+                (pending_door_cards(pending, csrf))
+            }
         }
     }
 }
 
-fn active_toolbar(viewer: &Viewer) -> Markup {
+fn post_need_action(viewer: &Viewer) -> Markup {
     if !viewer.is_active_anywhere() {
         return html! {};
     }
     html! {
-        div class="toolbar" {
-            a class="btn" href="/needs/new" { "Post a need" }
+        a class="btn" href="/needs/new" {
+            span class="btn-icon" aria-hidden="true" { (icon(Icon::Plus)) }
+            "Post a need"
         }
     }
 }

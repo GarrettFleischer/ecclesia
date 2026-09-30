@@ -11,7 +11,9 @@ use super::cards::{
 };
 use super::draft::{ChurchDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row, share_button};
+use super::layout::{
+    Icon, Monogram, Nav, csrf_input, icon, monogram, page, page_lead, rewrite_row, share_button,
+};
 
 pub fn churches_index(
     viewer: &Viewer,
@@ -33,7 +35,10 @@ pub fn churches_index(
                 div {
                     (page_lead("Churches"))
                 }
-                a class="btn btn-quiet" href="/churches/new" { "Add your church" }
+                a class="btn btn-quiet" href="/churches/new" {
+                    span class="btn-icon" aria-hidden="true" { (icon(Icon::Plus)) }
+                    "Add your church"
+                }
             }
             form class="row-form invite-form" method="post" action="/invites/redeem" {
                 (csrf_input(csrf))
@@ -120,10 +125,20 @@ pub fn church_show(
         flash,
         csrf,
         html! {
-            p class="eyebrow" { (church.city) ", " (church.region) }
-            (page_lead(&church.name))
+            div class="profile-head" {
+                (monogram(&church.id, &church.name, Monogram::ChurchLarge))
+                div {
+                    p class="eyebrow" { (church.city) ", " (church.region) }
+                    (page_lead(&church.name))
+                }
+            }
             p class="lede" { (church.description) }
-            @if !church.gathering.is_empty() { p class="meta" { (church.gathering) } }
+            @if !church.gathering.is_empty() {
+                p class="meta meta-line" {
+                    span class="meta-icon" aria-hidden="true" { (icon(Icon::Clock)) }
+                    (church.gathering)
+                }
+            }
             (membership_status(mine, church, csrf))
             (governor_door(church, door, csrf))
             (people_section(members, door, csrf, &church_path, next_member_cursor))
@@ -264,7 +279,10 @@ fn needs_section(
             div class="toolbar" {
                 h2 { "Needs" }
                 @if viewer.is_active_in(&church.id) {
-                    a class="btn btn-quiet" href={ "/needs/new?church_id=" (church.id) } { "Post a need" }
+                    a class="btn btn-quiet" href={ "/needs/new?church_id=" (church.id) } {
+                        span class="btn-icon" aria-hidden="true" { (icon(Icon::Plus)) }
+                        "Post a need"
+                    }
                 }
             }
             (church_needs(needs, viewer, church))

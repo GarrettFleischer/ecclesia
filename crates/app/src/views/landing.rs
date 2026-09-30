@@ -2,14 +2,14 @@ use maud::{Markup, html};
 
 use super::draft::RegisterDraft;
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, page_lead, password_field};
+use super::layout::{Nav, csrf_input, mark_glyph, page, page_lead, password_field};
 
 pub fn landing(flash: Option<Flash>, csrf: &str) -> Markup {
     page(
         "Ecclesia",
         None,
         0,
-        Nav::None,
+        Nav::Landing,
         flash,
         csrf,
         html! {
@@ -129,7 +129,7 @@ fn account_mark() -> Markup {
     html! {
         p class="auth-home" {
             a class="mark" href="/" {
-                span class="mark-dot" aria-hidden="true" {}
+                (mark_glyph())
                 span { "Ecclesia" }
             }
         }
@@ -146,17 +146,37 @@ fn auth_links(links: &[(&str, &str)]) -> Markup {
     }
 }
 
+fn landing_cta() -> Markup {
+    html! {
+        div class="landing-cta" {
+            a class="btn btn-light" href="/register" { "Create an account" }
+            a class="btn btn-glass" href="/session/new" { "Sign in" }
+        }
+    }
+}
+
 fn landing_story() -> Markup {
     html! {
-        section class="hero hero-illum" {
-            div class="vesica" aria-hidden="true" {
-                svg viewBox="0 0 80 80" width="80" height="80" {
-                    circle cx="40" cy="40" r="30" fill="none" stroke="#b1842c" stroke-width="1.4" {}
-                    circle cx="40" cy="40" r="22" fill="none" stroke="#3a4d39" stroke-width="1.1" opacity="0.55" {}
-                    path fill="#b1842c" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
-                }
+        section class="hero" {
+            div class="hero-scene" aria-hidden="true" {
+                span class="hero-rays" {}
             }
-            (page_lead("The Body of Christ"))
+            p class="hero-brand" {
+                (mark_glyph())
+                span { "Ecclesia" }
+            }
+            div class="hero-inner" {
+                div class="vesica" aria-hidden="true" {
+                    svg viewBox="0 0 80 80" width="80" height="80" {
+                        circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="1.2" pathLength="1" {}
+                        circle cx="40" cy="40" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" pathLength="1" {}
+                        path fill="currentColor" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
+                    }
+                }
+                (page_lead("The Body of Christ"))
+                (landing_cta())
+            }
+            span class="hero-cue" aria-hidden="true" {}
         }
         section class="landing-story" {
             p {
@@ -182,6 +202,7 @@ fn landing_story() -> Markup {
             }
         }
         section class="landing-ways" {
+            div class="ways-scene" aria-hidden="true" {}
             h2 { "Needs and Gifts" }
             p {
                 "A member names what they lack. Others answer with what they carry. "
@@ -189,10 +210,7 @@ fn landing_story() -> Markup {
                 "within a single congregation's walls. It is seen by the wider body, by every church "
                 "bound together in this family, so that no need goes unmet simply because it was unseen."
             }
-            div class="landing-cta" {
-                a class="btn" href="/register" { "Create an account" }
-                a class="btn btn-quiet" href="/session/new" { "Sign in" }
-            }
+            (landing_cta())
         }
     }
 }

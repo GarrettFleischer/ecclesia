@@ -245,7 +245,7 @@ fn attach_security_headers(headers: &mut axum::http::HeaderMap) {
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
         HeaderValue::from_static(
-            "default-src 'self'; img-src 'self' data:; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
+            "default-src 'self'; img-src 'self' data:; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; frame-ancestors 'none'",
         ),
     );
     headers.insert(

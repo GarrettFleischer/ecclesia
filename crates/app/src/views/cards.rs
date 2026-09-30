@@ -8,7 +8,7 @@ use ecclesia_sdk::prelude::{
     Viewer,
 };
 
-use super::layout::{csrf_input, initials};
+use super::layout::{Icon, Monogram, csrf_input, icon, monogram};
 use super::words::{category_label, census_line, household_line, offer_status_word, role_word};
 
 #[derive(Clone, Copy)]
@@ -19,15 +19,21 @@ pub enum NeedCardPlace {
 
 pub fn need_card(need: &NeedCard, viewer: &Viewer, place: NeedCardPlace) -> Markup {
     html! {
-        a class="card card-link" href={ "/needs/" (need.id) } {
-            p class="eyebrow" { (need_card_eyebrow(need, place)) }
+        a class="card card-link need-card" href={ "/needs/" (need.id) } {
+            div class="card-top" {
+                (scope_mark(&need.scope))
+                p class="eyebrow" { (need_card_eyebrow(need, place)) }
+            }
             h3 { (need.title) }
             p class="clamp" { (need.body) }
-            p class="meta" {
-                @if let Some(gift) = &need.gift_name { (gift) " · " }
-                (need.author_name)
+            div class="card-foot" {
+                span class="byline" {
+                    (monogram(&need.author_id, &need.author_name, Monogram::PersonSmall))
+                    span { (need.author_name) }
+                }
+                @if let Some(gift) = &need.gift_name { span class="chip" { (gift) } }
                 @if let Some(gift_id) = &need.gift_id {
-                    @if viewer.has_gift(gift_id) { span class="chip" { "Your gift" } }
+                    @if viewer.has_gift(gift_id) { span class="chip chip-accent" { "Your gift" } }
                 }
             }
         }
@@ -54,6 +60,17 @@ pub fn scope_label(scope: &str) -> &'static str {
         .unwrap_or("Need")
 }
 
+pub fn scope_mark(scope: &str) -> Markup {
+    let (class, glyph) = match NeedScope::parse(scope) {
+        Some(NeedScope::Neighboring) => ("scope-mark scope-neighboring", Icon::Pin),
+        Some(NeedScope::Body) => ("scope-mark scope-body", Icon::Globe),
+        Some(NeedScope::Church) | None => ("scope-mark scope-church", Icon::Church),
+    };
+    html! {
+        span class=(class) aria-hidden="true" { (icon(glyph)) }
+    }
+}
+
 pub fn need_card_stack<'a>(
     needs: impl IntoIterator<Item = &'a NeedCard>,
     viewer: &Viewer,
@@ -78,13 +95,21 @@ pub fn pending_door_cards(pending: &[(&Church, &Membership)], csrf: &str) -> Mar
 
 fn pending_door_card(pair: &(&Church, &Membership), csrf: &str) -> Markup {
     let (church, membership) = pair;
+    let asked = membership.status() == Some(MembershipStatus::PendingRequest);
     html! {
         article class="card" {
-            @if membership.status() == Some(MembershipStatus::PendingRequest) {
-                p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } }
-                p class="muted" { "Waiting on the pastor." }
-            } @else {
-                p { (church.name) " invited you." }
+            div class="person-line" {
+                (monogram(&church.id, &church.name, Monogram::ChurchSmall))
+                div {
+                    @if asked {
+                        p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } }
+                        p class="muted" { "Waiting on the pastor." }
+                    } @else {
+                        p { (church.name) " invited you." }
+                    }
+                }
+            }
+            @if !asked {
                 form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
                     (csrf_input(csrf))
                     button class="btn" type="submit" { "Accept invite" }
@@ -105,11 +130,14 @@ pub fn church_index_cards(churches: &[ChurchCard]) -> Markup {
 fn church_index_card(card: &ChurchCard) -> Markup {
     let (church, members, needs) = card;
     html! {
-        a class="card card-link" href={ "/churches/" (church.id) } {
-            h3 { (church.name) }
-            p class="muted" { (church.city) ", " (church.region) }
-            p class="clamp-2" { (church.description) }
-            p class="meta" { (census_line(*members, *needs)) }
+        a class="card card-link church-card" href={ "/churches/" (church.id) } {
+            (monogram(&church.id, &church.name, Monogram::Church))
+            div {
+                h3 { (church.name) }
+                p class="muted" { (church.city) ", " (church.region) }
+                p class="clamp-2" { (church.description) }
+                p class="meta" { (census_line(*members, *needs)) }
+            }
         }
     }
 }
@@ -128,8 +156,13 @@ pub fn pending_member_cards<'a>(
 fn pending_member_card(member: &ChurchMember, csrf: &str) -> Markup {
     html! {
         article class="card" {
-            a href={ "/members/" (member.user_id) } { strong { (member.name) } }
-            p class="muted" { (pending_member_line(member)) }
+            div class="person-line" {
+                (monogram(&member.user_id, &member.name, Monogram::Person))
+                div {
+                    a href={ "/members/" (member.user_id) } { strong { (member.name) } }
+                    p class="muted" { (pending_member_line(member)) }
+                }
+            }
             @if member.status() == Some(MembershipStatus::PendingRequest) {
                 div class="row" {
                     form method="post" action={ "/memberships/" (member.membership_id) "/approve" } {
@@ -170,7 +203,7 @@ fn active_member_item(member: &ChurchMember) -> Markup {
     html! {
         li {
             a href={ "/members/" (member.user_id) } {
-                span class="avatar" { (initials(&member.name)) }
+                (monogram(&member.user_id, &member.name, Monogram::Person))
                 span { (member.name) }
             }
             span class="muted" { (role_word(member.role())) }
@@ -235,9 +268,14 @@ pub enum StewardView {
 fn application_card(application: &ApplicationCard, steward: StewardView, csrf: &str) -> Markup {
     html! {
         article class="card" {
-            a href={ "/members/" (application.user_id) } { strong { (application.user_name) } }
+            div class="person-line" {
+                (monogram(&application.user_id, &application.user_name, Monogram::Person))
+                div {
+                    a href={ "/members/" (application.user_id) } { strong { (application.user_name) } }
+                    p class="meta" { (offer_status_word(application.status())) }
+                }
+            }
             p { (application.message) }
-            p class="meta" { (offer_status_word(application.status())) }
             @if matches!(steward, StewardView::Steward)
                 && application.status() == Some(ApplicationStatus::Pending)
             {
@@ -274,7 +312,10 @@ fn household_item(pair: &(&Church, &Membership)) -> Markup {
     let (church, membership) = pair;
     html! {
         li {
-            a href={ "/churches/" (church.id) } { (church.name) }
+            a href={ "/churches/" (church.id) } {
+                (monogram(&church.id, &church.name, Monogram::ChurchSmall))
+                span { (church.name) }
+            }
             span class="muted" { (household_line(membership)) }
         }
     }
@@ -293,7 +334,7 @@ fn member_gift_card(gift: &MemberGift) -> Markup {
         article class="card" {
             p class="cat" { (category_label(&gift.category)) }
             h3 { (gift.gift_name) }
-            @if !gift.note.is_empty() { p { (gift.note) } }
+            @if !gift.note.is_empty() { p class="muted" { (gift.note) } }
         }
     }
 }
@@ -315,9 +356,18 @@ pub fn accepted_endorsement_cards(endorsements: &[EndorsementCard]) -> Markup {
 fn accepted_endorsement_card(endorsement: &EndorsementCard) -> Markup {
     html! {
         article class="card" {
-            p class="eyebrow" { (endorsement.gift_name) }
+            p class="cat" { (endorsement.gift_name) }
             p class="quote" { (endorsement.note) }
-            p class="meta" {
+            (endorsement_from(endorsement))
+        }
+    }
+}
+
+fn endorsement_from(endorsement: &EndorsementCard) -> Markup {
+    html! {
+        p class="meta byline" {
+            (monogram(&endorsement.from_user_id, &endorsement.from_user_name, Monogram::PersonSmall))
+            span {
                 "From " a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
             }
         }
@@ -335,9 +385,12 @@ pub fn pending_endorsement_cards(pending: &[EndorsementCard], csrf: &str) -> Mar
 fn pending_endorsement_card(endorsement: &EndorsementCard, csrf: &str) -> Markup {
     html! {
         article class="card" {
-            p {
-                a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
-                " endorsed you for " strong { (endorsement.gift_name) } "."
+            div class="person-line" {
+                (monogram(&endorsement.from_user_id, &endorsement.from_user_name, Monogram::Person))
+                p {
+                    a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
+                    " endorsed you for " strong { (endorsement.gift_name) } "."
+                }
             }
             p class="quote" { (endorsement.note) }
             div class="row" {
@@ -373,11 +426,9 @@ fn declined_endorsement_card(
 ) -> Markup {
     html! {
         article class="card card-dim" {
-            p class="eyebrow" { (endorsement.gift_name) }
+            p class="cat" { (endorsement.gift_name) }
             p class="quote" { (endorsement.note) }
-            p class="meta" {
-                "From " a href={ "/members/" (endorsement.from_user_id) } { (endorsement.from_user_name) }
-            }
+            (endorsement_from(endorsement))
             (declined_accept(endorsement, csrf, action))
         }
     }
@@ -405,9 +456,9 @@ pub fn notice_cards<'a>(notes: impl IntoIterator<Item = &'a Notification>) -> Ma
 
 fn notice_card(note: &Notification) -> Markup {
     html! {
-        a class="card card-link" href=(note.href) {
+        a class="card card-link notice-card" href=(note.href) {
             h3 { (note.title) }
-            p { (note.body) }
+            p class="muted" { (note.body) }
         }
     }
 }
@@ -448,7 +499,7 @@ fn place_section(group: &PlaceGroup) -> Markup {
         return html! {};
     };
     html! {
-        section class="panel" {
+        section class="place" {
             h2 { (church.city) ", " (church.region) }
             div class="stack" {
                 (place_church_cards(group))
@@ -468,10 +519,13 @@ fn place_church_cards(churches: &[ChurchCard]) -> Markup {
 fn place_church_card(card: &ChurchCard) -> Markup {
     let (church, members, needs) = card;
     html! {
-        a class="card card-link" href={ "/churches/" (church.id) } {
-            h3 { (church.name) }
-            p class="clamp-2" { (church.description) }
-            p class="meta" { (census_line(*members, *needs)) }
+        a class="card card-link church-card" href={ "/churches/" (church.id) } {
+            (monogram(&church.id, &church.name, Monogram::Church))
+            div {
+                h3 { (church.name) }
+                p class="clamp-2" { (church.description) }
+                p class="meta" { (census_line(*members, *needs)) }
+            }
         }
     }
 }

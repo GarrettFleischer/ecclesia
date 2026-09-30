@@ -5,10 +5,14 @@ use ecclesia_sdk::prelude::{
     VoiceKind, is_need_steward,
 };
 
-use super::cards::{StewardView, application_cards, church_options, gift_options, scope_label};
+use super::cards::{
+    StewardView, application_cards, church_options, gift_options, scope_label, scope_mark,
+};
 use super::draft::{NeedDraft, OfferDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row, share_button};
+use super::layout::{
+    Monogram, Nav, csrf_input, monogram, page, page_lead, rewrite_row, share_button,
+};
 
 pub fn need_new(
     viewer: &Viewer,
@@ -112,16 +116,22 @@ pub fn need_show(
         flash,
         csrf,
         html! {
-            p class="eyebrow" {
-                (scope_label(&need.scope)) " · "
-                a href={ "/churches/" (church.id) } { (church.name) }
+            div class="card-top" {
+                (scope_mark(&need.scope))
+                p class="eyebrow" {
+                    (scope_label(&need.scope)) " · "
+                    a href={ "/churches/" (church.id) } { (church.name) }
+                }
             }
             (page_lead(&need.title))
             p class="lede" { (need.body) }
-            p class="meta" {
-                "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) }
-                @if let Some(gift) = &need.gift_name { " · " (gift) }
-                (closed_mark(need))
+            div class="card-foot need-meta" {
+                span class="byline" {
+                    (monogram(&need.author_id, &need.author_name, Monogram::PersonSmall))
+                    span { "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) } }
+                }
+                @if let Some(gift) = &need.gift_name { span class="chip" { (gift) } }
+                (closed_chip(need))
             }
             (matching_gift_pill(viewer, need))
             div class="page-actions" {
@@ -138,9 +148,9 @@ pub fn need_show(
     )
 }
 
-fn closed_mark(need: &NeedCard) -> Markup {
+fn closed_chip(need: &NeedCard) -> Markup {
     if need.status() == Some(NeedStatus::Closed) {
-        html! { " · Closed" }
+        html! { span class="chip chip-closed" { "Closed" } }
     } else {
         html! {}
     }
