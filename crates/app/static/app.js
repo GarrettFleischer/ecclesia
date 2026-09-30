@@ -7,12 +7,16 @@
   if (sendInstalledToHome(native)) {
     return;
   }
+  clearFlashParams();
   registerShell();
   paintBadge(unread);
+  paintTimes();
   hookInstall(native);
   hookShare(native);
   hookRewrite(csrf);
   hookReview(csrf);
+  hookBusySubmit();
+  hookTitleMorph();
   hookChurchSearch();
   hookPasswordToggle();
   hookHaptics(native);
@@ -474,6 +478,110 @@ function bootNative(native) {
         window.location.href = path;
       }
     });
+  }
+}
+
+function clearFlashParams() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("ok") && !url.searchParams.has("err")) {
+    return;
+  }
+  url.searchParams.delete("ok");
+  url.searchParams.delete("err");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}
+
+function paintTimes() {
+  const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+  for (const node of document.querySelectorAll("time[datetime]")) {
+    const moment = new Date(node.dateTime);
+    if (!Number.isNaN(moment.getTime())) {
+      node.textContent = format.format(moment);
+    }
+  }
+}
+
+function hookBusySubmit() {
+  document.addEventListener("submit", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    const button = event.submitter;
+    if (button && button.classList.contains("btn")) {
+      button.classList.add("is-busy");
+      event.target.setAttribute("aria-busy", "true");
+    }
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) {
+      return;
+    }
+    for (const button of document.querySelectorAll(".btn.is-busy")) {
+      button.classList.remove("is-busy");
+    }
+    for (const form of document.querySelectorAll("form[aria-busy]")) {
+      form.removeAttribute("aria-busy");
+    }
+  });
+}
+
+function hookTitleMorph() {
+  let morphHref = "";
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    const card = event.target.closest("a.card-link");
+    const title = card ? card.querySelector("h3") : null;
+    if (!title) {
+      return;
+    }
+    clearMorph();
+    const heading = document.querySelector("main h1");
+    if (heading) {
+      heading.style.viewTransitionName = "none";
+    }
+    title.style.viewTransitionName = "page-title";
+    morphHref = card.pathname;
+  });
+  window.addEventListener("pageswap", (event) => {
+    if (!event.viewTransition) {
+      return;
+    }
+    const destination = destinationPath(event);
+    if (morphHref && destination && morphHref !== destination) {
+      clearMorph();
+      morphHref = "";
+    }
+    const heading = document.querySelector("main h1");
+    if (!morphHref && heading && !onScreen(heading)) {
+      heading.style.viewTransitionName = "none";
+    }
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      clearMorph();
+      morphHref = "";
+    }
+  });
+}
+
+function destinationPath(event) {
+  const entry = event.activation && event.activation.entry;
+  if (!entry || !entry.url) {
+    return "";
+  }
+  return new URL(entry.url).pathname;
+}
+
+function onScreen(node) {
+  const box = node.getBoundingClientRect();
+  return box.bottom > 0 && box.top < window.innerHeight;
+}
+
+function clearMorph() {
+  for (const node of document.querySelectorAll("main h1, a.card-link h3")) {
+    node.style.removeProperty("view-transition-name");
   }
 }
 
