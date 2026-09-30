@@ -6,12 +6,12 @@ const config: CapacitorConfig = {
   appId: "app.ecclesia.mobile",
   appName: "Ecclesia",
   webDir: "www",
-  backgroundColor: "#f4eee3",
+  backgroundColor: "#f4f0e8",
   plugins: {
     SplashScreen: {
       launchAutoHide: true,
       launchShowDuration: 400,
-      backgroundColor: "#f4eee3",
+      backgroundColor: "#f4f0e8",
     },
     StatusBar: {
       style: "DARK",

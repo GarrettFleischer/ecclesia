@@ -458,8 +458,8 @@ async function enableNativePush(csrf, native) {
 
 function bootNative(native) {
   if (native.StatusBar) {
-    native.StatusBar.setStyle({ style: "LIGHT" });
-    native.StatusBar.setBackgroundColor({ color: "#f4eee3" });
+    paintStatusBar(native);
+    darkScheme().addEventListener("change", () => paintStatusBar(native));
   }
   if (native.SplashScreen) {
     native.SplashScreen.hide();
@@ -479,6 +479,16 @@ function bootNative(native) {
       }
     });
   }
+}
+
+function darkScheme() {
+  return window.matchMedia("(prefers-color-scheme: dark)");
+}
+
+function paintStatusBar(native) {
+  const dark = darkScheme().matches;
+  native.StatusBar.setStyle({ style: dark ? "DARK" : "LIGHT" });
+  native.StatusBar.setBackgroundColor({ color: dark ? "#0c1411" : "#f4f0e8" });
 }
 
 function clearFlashParams() {
