@@ -2,45 +2,70 @@
 
 Decisions for the painted pages. Tokens live in `crates/app/static/app.css`.
 
+## Theme
+
+Light is the default. Dark follows the device through `prefers-color-scheme`. One `@media` block redefines the same token names, so rules never branch on the scheme. Each scheme gets its own `theme-color` meta.
+
 ## Tokens
 
 | Token | Job |
 |---|---|
-| `--ink` | Body text, headings, field values |
-| `--ink-soft` | Labels, secondary lines, ledes |
-| `--gold-ink` | Small eyebrows only |
-| `--paper`, `--paper-deep`, `--card` | Page and card surfaces |
-| `--olive`, `--olive-deep` | Primary buttons, focus rings, links |
-| `--olive-mist` | Chips |
-| `--gold`, `--gold-soft` | Ornament: the rule under an h1, the mark glow. Not body text |
-| `--clay` | Link hover |
-| `--line` | Borders, quiet button outline |
-| `--ok`, `--err` | Status text |
-| `--shadow`, `--shadow-lift` | Cards at rest, cards on hover |
+| `--bg` | Page ground under the wallpaper |
+| `--ink`, `--ink-2`, `--ink-3` | Headings and body, ledes and secondary lines, labels and eyebrows |
+| `--accent`, `--accent-hover`, `--on-accent` | Primary button fill and its text. Evergreen in light, cream in dark |
+| `--accent-ink`, `--accent-soft` | Links, the current dock item, status pills |
+| `--gold`, `--gold-soft`, `--gold-line` | Ornament: the mark, meta icons, the empty mark, gold chips, Rewrite. Not body text |
+| `--gold-ink` | Text on gold fills, gift categories, link hover |
+| `--lake-ink`, `--lake-soft` | The nearby-churches scope mark |
+| `--ok`, `--err`, `--err-soft` | Status text and the error banner |
+| `--focus`, `--focus-ring` | Focus outline and the field ring |
+| `--surface`, `--surface-2`, `--surface-3` | Card, raised control, near-solid menu |
+| `--sunk`, `--field` | Rows nested in a panel, chips, empty states; form fields |
+| `--line`, `--line-2`, `--line-3` | Hairlines, control outlines, link underlines |
+| `--bar`, `--glass`, `--toast`, `--pill` | Top bar and dock, auth card, toast and install bar, the dock pill |
+| `--glow-a`, `--glow-b` | The two lights drifting in the backdrop |
+| `--veil-*`, `--scene-*` | Scrims over the wallpaper and the scene photos |
+| `--shadow-1`, `--shadow-2`, `--shadow-3` | Card at rest, card on hover, the landing panel |
+| `--r-sm` to `--r-xl`, `--sheet` | Radii, and the 44rem reading column |
+| `--ease-out`, `--spring`, `--t-fast`, `--t-med`, `--t-slow` | Motion curves and durations |
 
-Text uses `--ink`, `--ink-soft`, `--gold-ink`, `--ok`, or `--err`. Gold and olive fills are for marks, rules, and buttons, not for a sentence.
+Text uses `--ink`, `--ink-2`, `--ink-3`, `--accent-ink`, `--gold-ink`, `--ok`, or `--err`. Check contrast in both schemes when a token changes.
 
 ## Type and structure
 
-One h1 per page, from `page_lead`. The gold rule sits under that h1 and nowhere else on the same page.
+Instrument Serif for h1 to h3 and the landing essay. Inter for everything else. Both are self-hosted in `static/fonts/`, split into latin and latin-ext, and the two latin files are preloaded.
 
-The document title is the h1, then ` · Ecclesia`. The landing title is `Ecclesia` alone.
+One h1 per page, from `page_lead`. The document title is the h1, then ` · Ecclesia`. The landing title is `Ecclesia` alone.
+
+An eyebrow above the h1 gives context when the h1 needs it: the city on Home, the scope and church on a need. People and churches get a monogram from `monogram(seed, name, shape)`. The seed is the id, so a person keeps one color everywhere.
+
+Icons come from `icon(Icon)` in `layout.rs`: 24px, 1.8 stroke, `currentColor`. A new icon is a new `Icon` variant. No icon fonts.
 
 Human words for roles, offers, and gifts come from `crates/app/src/views/words.rs`. Stored values are not printed.
 
+## Imagery and glass
+
+Scenes hold no people: dawn light, mist, water, fields, linen. They live in `static/img/` as WebP. `dawn-tall` and `dawn-wide` are the landing hero and the account backdrop. `linen` sits behind Needs and Gifts. `wallpaper-*` are the same dawn scene pre-blurred for member pages.
+
+Cards are translucent over the pre-blurred wallpaper and carry no `backdrop-filter`. Live blur is for chrome that floats over moving content: top bar, dock, toast, install bar, `.btn-glass`, and the auth card. Reduced transparency makes `--surface`, `--bar`, `--glass`, and `--toast` solid and drops the live blur.
+
 ## Motion
 
-`.page-rise` fades the page in once. Fields inside `.stack` do not rise again.
+`.page-rise` staggers the page in once. The h1 stays put because it is the shared element.
 
-Hover lift on cards, buttons, and the dock is inside `@media (hover: hover)`.
+Cross-document view transitions (`@view-transition`). The page title morphs between pages. The dock pill glides to the new tab on `--spring`. Opening a card moves the `page-title` name onto that card's h3 (`hookTitleMorph` in `app.js`), so the card title becomes the next page's h1.
+
+Scroll-driven, inside `@supports (animation-timeline: view())`: cards and people rows reveal as they enter, the top bar frosts after the first 4rem, and the hero drifts and fades. Browsers without it get the settled state.
+
+Hover lift on card links and buttons is inside `@media (hover: hover)`. `prefers-reduced-motion: reduce` turns off view transitions and cuts every animation and transition to nothing. Forced colors outline each surface in `CanvasText` and mark the current tab and the checked choice with `Highlight`.
 
 ## Chrome seats
 
 | Seat | Nav | What you see |
 |---|---|---|
-| Landing | `Nav::None` | Essay, wide sheet, install bar. No dock |
-| Account | `Nav::Account` | Mark home, one h1, narrow card, one form. No dock, no install bar |
-| App | `Nav::Home` and the other member items | Top bar, dock, member pages |
+| Landing | `Nav::Landing` | Scene hero, essay, Needs and Gifts, install bar. No top bar, no dock |
+| Account | `Nav::Account` | Dawn backdrop, glass card with the mark, one h1, one form. No dock, no install bar |
+| App | `Nav::Home` and the other member items | Top bar, dock, member pages over the wallpaper |
 | Sorry, guest | `Nav::None` | Guest shell, link home |
 | Sorry, member | `Nav::Home` | App chrome stays |
 

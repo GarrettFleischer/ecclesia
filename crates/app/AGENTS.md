@@ -13,7 +13,7 @@ Axum routes and Maud pages. This crate loads values, calls one SDK story, and pa
 | `src/http/auth.rs` | Register, sign in, mail links, devices |
 | `src/views/` | Maud pages |
 | `src/bin/worker.rs` | Outbox worker, no HTTP |
-| `static/` | CSS, service worker, icons |
+| `static/` | CSS, JS, service worker, fonts, scene images, icons. Visual rules in `design.md` |
 
 ## Commands
 
