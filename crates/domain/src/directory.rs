@@ -44,19 +44,20 @@ fn push_card_into_place(groups: &mut Vec<PlaceGroup>, card: ChurchCard) {
 }
 
 fn same_place(a: &Church, b: &Church) -> bool {
-    a.city == b.city && a.region == b.region
+    a.address == b.address
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn church(id: &str, city: &str, region: &str) -> Church {
+    fn church(id: &str, address: &str) -> Church {
         Church {
             id: id.into(),
             name: id.into(),
-            city: city.into(),
-            region: region.into(),
+            address: address.into(),
+            latitude: 42.53,
+            longitude: -92.45,
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),
@@ -67,12 +68,12 @@ mod tests {
     }
 
     #[test]
-    fn us_body_01_groups_the_valley_by_city() {
+    fn us_body_01_groups_churches_by_address() {
         let cards = churches_with_counts(
             [
-                church("grace", "Cedar Falls", "Iowa"),
-                church("luke", "Cedar Falls", "Iowa"),
-                church("mercy", "Waterloo", "Iowa"),
+                church("grace", "100 Main Street"),
+                church("luke", "100 Main Street"),
+                church("mercy", "200 Oak Street"),
             ],
             &[
                 ("grace".into(), 3, 2),
@@ -82,8 +83,8 @@ mod tests {
         );
         let groups = group_churches_by_place(cards);
         assert_eq!(groups.len(), 2);
-        assert_eq!(groups[0][0].0.city, "Cedar Falls");
+        assert_eq!(groups[0][0].0.address, "100 Main Street");
         assert_eq!(groups[0].len(), 2);
-        assert_eq!(groups[1][0].0.city, "Waterloo");
+        assert_eq!(groups[1][0].0.address, "200 Oak Street");
     }
 }

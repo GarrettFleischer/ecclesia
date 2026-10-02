@@ -52,43 +52,34 @@ impl Db {
         let hash = seed_password_hash()?;
         let now = "2020-01-01T00:00:00Z";
         self.execute(
-            "INSERT INTO users (id, name, email, city, region, bio, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, first_name, last_name, email, bio, password_hash, created_at, church_id, church_status, church_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             &[
                 Bind::Text(SEED_OWNER_ID),
-                Bind::Text("Seed Owner"),
+                Bind::Text("Seed"),
+                Bind::Text("Owner"),
                 Bind::Text("owner@seed.test"),
-                Bind::Text("Cedar Falls"),
-                Bind::Text("Iowa"),
                 Bind::Text(""),
                 Bind::Text(&hash),
                 Bind::Text(now),
+                Bind::Text(SEED_CHURCH_ID),
+                Bind::Text("active"),
+                Bind::Text("owner"),
             ],
         )
         .await?;
         self.execute(
-            "INSERT INTO churches (id, name, city, region, country, description, gathering, owner_id, invite_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO churches (id, name, address, latitude, longitude, country, description, gathering, owner_id, invite_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             &[
                 Bind::Text(SEED_CHURCH_ID),
                 Bind::Text("Grace Fellowship"),
-                Bind::Text("Cedar Falls"),
-                Bind::Text("Iowa"),
+                Bind::Text("100 Main Street\nCedar Falls, IA 50613"),
+                Bind::F64(42.5349),
+                Bind::F64(-92.4453),
                 Bind::Text("US"),
                 Bind::Text("Seed church for registration."),
                 Bind::Text("Sunday at 10."),
                 Bind::Text(SEED_OWNER_ID),
                 Bind::Text("GRACESEED"),
-                Bind::Text(now),
-            ],
-        )
-        .await?;
-        self.execute(
-            "INSERT INTO memberships (id, church_id, user_id, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            &[
-                Bind::Text("seed_owner_mem"),
-                Bind::Text(SEED_CHURCH_ID),
-                Bind::Text(SEED_OWNER_ID),
-                Bind::Text("owner"),
-                Bind::Text("active"),
                 Bind::Text(now),
             ],
         )
@@ -105,36 +96,29 @@ impl Db {
         if self.user(SEED_ADMIN_ID).await?.is_none() {
             let hash = seed_password_hash()?;
             self.execute(
-                "INSERT INTO users (id, name, email, city, region, bio, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO users (id, first_name, last_name, email, bio, password_hash, created_at, church_id, church_status, church_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 &[
                     Bind::Text(SEED_ADMIN_ID),
-                    Bind::Text("Grace Admin"),
+                    Bind::Text("Grace"),
+                    Bind::Text("Admin"),
                     Bind::Text(SEED_ADMIN_EMAIL),
-                    Bind::Text("Cedar Falls"),
-                    Bind::Text("Iowa"),
                     Bind::Text(""),
                     Bind::Text(&hash),
                     Bind::Text(now),
+                    Bind::Text(SEED_CHURCH_ID),
+                    Bind::Text("active"),
+                    Bind::Text("owner"),
                 ],
             )
             .await?;
         } else {
             self.set_seed_password(SEED_ADMIN_ID).await?;
-        }
-        let memberships = self.memberships_for_user(SEED_ADMIN_ID).await?;
-        let governs_grace = memberships
-            .iter()
-            .any(|m| m.church_id == SEED_CHURCH_ID && m.can_govern());
-        if !governs_grace {
             self.execute(
-                "INSERT INTO memberships (id, church_id, user_id, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                "UPDATE users SET church_id = ?, church_status = 'active', church_role = 'owner' WHERE id = ? AND (church_id IS NULL OR church_id = ?)",
                 &[
-                    Bind::Text("seed_admin_mem"),
                     Bind::Text(SEED_CHURCH_ID),
                     Bind::Text(SEED_ADMIN_ID),
-                    Bind::Text("owner"),
-                    Bind::Text("active"),
-                    Bind::Text(now),
+                    Bind::Text(SEED_CHURCH_ID),
                 ],
             )
             .await?;

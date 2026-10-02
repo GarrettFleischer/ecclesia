@@ -11,6 +11,7 @@ impl Db {
         add_password_hash_column(self).await?;
         add_auth_tables(self).await?;
         add_session_api_columns(self).await?;
+        reshape_account_place(self).await?;
         Ok(())
     }
 }
@@ -46,37 +47,30 @@ const SCHEMA: &[&str] = &[
     r#"
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE,
-                city TEXT NOT NULL,
-                region TEXT NOT NULL,
                 bio TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                church_id TEXT,
+                church_status TEXT,
+                church_role TEXT,
+                password_hash TEXT
             )
             "#,
     r#"
             CREATE TABLE IF NOT EXISTS churches (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
-                city TEXT NOT NULL,
-                region TEXT NOT NULL,
+                address TEXT NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
                 country TEXT NOT NULL DEFAULT 'US',
                 description TEXT NOT NULL,
                 gathering TEXT NOT NULL DEFAULT '',
                 owner_id TEXT NOT NULL,
                 invite_code TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL
-            )
-            "#,
-    r#"
-            CREATE TABLE IF NOT EXISTS memberships (
-                id TEXT PRIMARY KEY,
-                church_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(church_id, user_id)
             )
             "#,
     r#"
@@ -172,10 +166,8 @@ const SCHEMA: &[&str] = &[
             "#,
     "CREATE INDEX IF NOT EXISTS idx_needs_status_created ON needs (status, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_needs_church_status ON needs (church_id, status)",
-    "CREATE INDEX IF NOT EXISTS idx_churches_region_city ON churches (region, city)",
-    "CREATE INDEX IF NOT EXISTS idx_churches_city_name_id ON churches (city, name, id)",
-    "CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships (user_id)",
-    "CREATE INDEX IF NOT EXISTS idx_memberships_church_status ON memberships (church_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_churches_name_id ON churches (name, id)",
+    "CREATE INDEX IF NOT EXISTS idx_users_church ON users (church_id)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_outbox_available ON outbox (available_at) WHERE status != 'done'",
 ];
@@ -252,4 +244,86 @@ async fn add_auth_tables(db: &Db) -> anyhow::Result<()> {
         db.execute(statement, &[]).await?;
     }
     Ok(())
+}
+
+async fn reshape_account_place(db: &Db) -> anyhow::Result<()> {
+    let legacy_users = count_sql(
+        db,
+        if db.driver().is_postgres() {
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'name'"
+        } else {
+            "SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'name'"
+        },
+    )
+    .await?;
+    let memberships = count_sql(
+        db,
+        if db.driver().is_postgres() {
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'memberships'"
+        } else {
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'memberships'"
+        },
+    )
+    .await?;
+    if !legacy_users && !memberships {
+        return Ok(());
+    }
+    if memberships {
+        db.execute("DROP TABLE IF EXISTS memberships", &[]).await?;
+    }
+    if !legacy_users {
+        return Ok(());
+    }
+    db.execute("DROP TABLE IF EXISTS users", &[]).await?;
+    db.execute("DROP TABLE IF EXISTS churches", &[]).await?;
+    for statement in USERS_AND_CHURCHES {
+        db.execute(statement, &[]).await?;
+    }
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_churches_name_id ON churches (name, id)",
+        &[],
+    )
+    .await?;
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_users_church ON users (church_id)",
+        &[],
+    )
+    .await?;
+    Ok(())
+}
+
+const USERS_AND_CHURCHES: &[&str] = &[
+    r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                bio TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                church_id TEXT,
+                church_status TEXT,
+                church_role TEXT,
+                password_hash TEXT
+            )
+            "#,
+    r#"
+            CREATE TABLE IF NOT EXISTS churches (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                address TEXT NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                country TEXT NOT NULL DEFAULT 'US',
+                description TEXT NOT NULL,
+                gathering TEXT NOT NULL DEFAULT '',
+                owner_id TEXT NOT NULL,
+                invite_code TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL
+            )
+            "#,
+];
+
+async fn count_sql(db: &Db, sql: &str) -> anyhow::Result<bool> {
+    Ok(db.fetch_scalar_i64(sql, &[]).await? > 0)
 }

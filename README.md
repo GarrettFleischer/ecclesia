@@ -15,6 +15,15 @@ cargo run
 
 Open [http://127.0.0.1:43781](http://127.0.0.1:43781). On a phone, add it to the home screen, then turn on alerts under You. Store builds live in `mobile/`. See [docs/MOBILE.md](docs/MOBILE.md).
 
+**Local store:** Load order is `.env`, then `.env.local` (overrides). Default store is `sqlite://ecclesia.db`. Remote `DATABASE_URL` values (Neon, etc.) are **ignored** on a local host; put `DATABASE_URL=sqlite://ecclesia.db` in `.env.local` to override a shared `.env` that still lists production. Set `ECCLESIA_ALLOW_REMOTE_DATABASE=1` only when you mean to hit a remote database from your laptop.
+
+Optional local Postgres (`compose.yml`):
+
+```bash
+docker compose up -d
+DATABASE_URL=postgres://ecclesia:ecclesia@127.0.0.1:5432/ecclesia cargo run
+```
+
 For a stable local secret:
 
 ```bash

@@ -20,25 +20,4 @@ impl Db {
             .await?
             .map(User::from))
     }
-
-    pub async fn update_user(
-        &self,
-        id: &str,
-        name: &str,
-        city: &str,
-        region: &str,
-        bio: &str,
-    ) -> anyhow::Result<()> {
-        self.execute(
-            "UPDATE users SET name = ?, city = ?, region = ?, bio = ? WHERE id = ?",
-            &[
-                Bind::Text(name.trim()),
-                Bind::Text(city.trim()),
-                Bind::Text(region.trim()),
-                Bind::Text(bio.trim()),
-                Bind::Text(id),
-            ],
-        )
-        .await
-    }
 }

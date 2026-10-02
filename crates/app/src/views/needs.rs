@@ -42,15 +42,14 @@ fn need_form_or_empty(
     csrf: &str,
     draft: &NeedDraft<'_>,
 ) -> Markup {
-    let mut churches = viewer.active_churches().peekable();
-    if churches.peek().is_none() {
+    let Some(church) = viewer.active_church() else {
         return html! {
             div class="empty" {
                 p { "Join a church first, then post from there." }
-                a class="btn" href="/churches" { "Find your church" }
+                a class="btn" href="/churches/join" { "Find your church" }
             }
         };
-    }
+    };
     html! {
         form class="stack" method="post" action="/needs" {
             (csrf_input(csrf))
@@ -58,7 +57,7 @@ fn need_form_or_empty(
             (review_banner(draft.kind))
             label { "Church"
                 select name="church_id" required {
-                    (church_options(churches, Some(draft.church_id).filter(|id| !id.is_empty())))
+                    (church_options(std::iter::once(church), Some(draft.church_id).filter(|id| !id.is_empty())))
                 }
             }
             label { "Title"
@@ -83,7 +82,7 @@ fn need_form_or_empty(
                 }
                 label class="choice" {
                     input type="radio" name="scope" value="neighboring" checked[draft.scope == "neighboring"];
-                    span { strong { "Nearby churches" } " Same city or region." }
+                    span { strong { "Nearby churches" } " Within 40 km." }
                 }
                 label class="choice" {
                     input type="radio" name="scope" value="body" checked[draft.scope == "body"];

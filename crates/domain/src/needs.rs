@@ -7,6 +7,7 @@ use super::model::{
 };
 use super::notice::notice;
 use super::rules::{can_apply, is_need_steward};
+use super::person::display_name;
 use super::validate::{need_fields, note_field};
 
 /// US-NEED-01 — post a need from a household you already belong to.
@@ -77,7 +78,11 @@ pub fn apply_to_need(
     .with_notice(notice(
         &need.author_id,
         "application",
-        format!("{} offered to help with {}", viewer.user.name, need.title),
+        format!(
+            "{} offered to help with {}",
+            display_name(&viewer.user.first_name, &viewer.user.last_name),
+            need.title
+        ),
         "Accept or decline on the need.",
         format!("/needs/{}", need.id),
     )))
@@ -190,21 +195,13 @@ fn passed_application_notice(need: &Need, application: &Application) -> super::m
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Church;
-    use crate::sample::{church, membership, user, viewer_of};
+    use crate::sample::{church, church_at, user_in_church, viewer_of};
 
     #[test]
     fn us_need_01_requires_active_membership() {
         let peter = viewer_of(
-            user("peter"),
-            vec![membership(
-                "m1",
-                "grace",
-                "peter",
-                "member",
-                "pending_request",
-            )],
-            vec![church("grace")],
+            user_in_church("peter", "grace", "member", "pending"),
+            Some(church("grace")),
         );
         assert_eq!(
             post_need(
@@ -225,21 +222,10 @@ mod tests {
 
     #[test]
     fn us_need_02_apply_notifies_author() {
+        let mercy = church_at("mercy", 42.4928, -92.3426);
         let elena = viewer_of(
-            user("elena"),
-            vec![membership("m1", "mercy", "elena", "member", "active")],
-            vec![Church {
-                id: "mercy".into(),
-                name: "Mercy".into(),
-                city: "Waterloo".into(),
-                region: "Iowa".into(),
-                country: "US".into(),
-                description: String::new(),
-                gathering: String::new(),
-                owner_id: "keisha".into(),
-                invite_code: "x".into(),
-                created_at: "t0".into(),
-            }],
+            user_in_church("elena", "mercy", "member", "active"),
+            Some(mercy),
         );
         let need = Need {
             id: "need_spanish".into(),
@@ -269,19 +255,16 @@ mod tests {
     #[test]
     fn us_need_06_offers_stay_with_steward_or_applicant() {
         let author = viewer_of(
-            user("miriam"),
-            vec![membership("m0", "grace", "miriam", "owner", "active")],
-            vec![church("grace")],
+            user_in_church("miriam", "grace", "owner", "active"),
+            Some(church("grace")),
         );
         let neighbor = viewer_of(
-            user("james"),
-            vec![membership("m1", "luke", "james", "member", "active")],
-            vec![church("luke")],
+            user_in_church("james", "luke", "member", "active"),
+            Some(church("luke")),
         );
         let applicant = viewer_of(
-            user("elena"),
-            vec![membership("m2", "mercy", "elena", "member", "active")],
-            vec![church("mercy")],
+            user_in_church("elena", "mercy", "member", "active"),
+            Some(church_at("mercy", 42.4928, -92.3426)),
         );
         let need = Need {
             id: "need_spanish".into(),

@@ -23,11 +23,10 @@ fn normalize_query(query: &str) -> String {
 
 fn score_church(needle: &str, church: &Church) -> Option<i32> {
     let name = church.name.to_lowercase();
-    let city = church.city.to_lowercase();
-    let region = church.region.to_lowercase();
-    let hay = format!("{name} {city} {region}");
+    let address = church.address.to_lowercase();
+    let hay = format!("{name} {address}");
     let mut best = field_score(needle, &name);
-    best = best.max(field_score(needle, &city) / 2);
+    best = best.max(field_score(needle, &address) / 2);
     best = best.max(field_score(needle, &hay) / 2);
     if best > 0 {
         Some(best)
@@ -90,12 +89,13 @@ mod tests {
     use super::*;
     use ecclesia_domain::Church;
 
-    fn church(name: &str, city: &str) -> Church {
+    fn church(name: &str, address: &str) -> Church {
         Church {
             id: name.into(),
             name: name.into(),
-            city: city.into(),
-            region: "Iowa".into(),
+            address: address.into(),
+            latitude: 42.53,
+            longitude: -92.45,
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),

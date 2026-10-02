@@ -2,25 +2,25 @@ use maud::{Markup, html};
 
 use ecclesia_sdk::db::SessionRow;
 use ecclesia_sdk::prelude::{
-    Church, EndorsementCard, Gift, MemberGift, Membership, Notification, User, Viewer, VoiceKind,
+    Church, EndorsementCard, Gift, MemberGift, Notification, User, Viewer, VoiceKind,
     declined_visible_to,
 };
 
 use super::cards::{
-    DeclineAction, accepted_endorsement_cards, catalog_name_options, declined_endorsement_cards,
-    household_items, member_gift_cards, my_gift_cards, notice_cards, pending_endorsement_cards,
-    unused_gift_options,
+    DeclineAction, accepted_endorsement_cards, catalog_name_options, church_link_item,
+    declined_endorsement_cards, member_gift_cards, my_gift_cards, notice_cards,
+    pending_endorsement_cards, unused_gift_options,
 };
 use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
 use super::layout::{
-    Monogram, Nav, csrf_input, first_name, monogram, page, page_lead, rewrite_row,
+    Monogram, Nav, csrf_input, monogram, page, page_lead, rewrite_row, shown_name,
 };
 
 pub fn member_show(
     viewer: &Viewer,
     person: &User,
-    churches: &[(&Church, &Membership)],
+    church: Option<&Church>,
     gifts: &[MemberGift],
     endorsements: &[EndorsementCard],
     declined: &[EndorsementCard],
@@ -31,8 +31,9 @@ pub fn member_show(
     draft: &EndorseDraft<'_>,
 ) -> Markup {
     let nav = nav_for_person(viewer, person);
+    let name = shown_name(person);
     page(
-        &person.name,
+        &name,
         Some(&viewer.user),
         unread,
         nav,
@@ -42,8 +43,8 @@ pub fn member_show(
             (profile_head(person))
             (bio_lede(person))
             section {
-                h2 { "Churches" }
-                (households(churches))
+                h2 { "Church" }
+                (households(person, church))
             }
             section {
                 h2 { "Gifts" }
@@ -57,12 +58,12 @@ pub fn member_show(
 }
 
 fn profile_head(person: &User) -> Markup {
+    let name = shown_name(person);
     html! {
         div class="profile-head" {
-            (monogram(&person.id, &person.name, Monogram::PersonLarge))
+            (monogram(&person.id, &name, Monogram::PersonLarge))
             div {
-                p class="eyebrow" { (person.city) ", " (person.region) }
-                (page_lead(&person.name))
+                (page_lead(&name))
             }
         }
     }
@@ -83,13 +84,13 @@ fn bio_lede(person: &User) -> Markup {
     html! { p class="lede" { (person.bio) } }
 }
 
-fn households(churches: &[(&Church, &Membership)]) -> Markup {
-    if churches.is_empty() {
+fn households(person: &User, church: Option<&Church>) -> Markup {
+    let Some(church) = church else {
         return html! { p class="muted" { "None yet." } };
-    }
+    };
     html! {
         ul class="people" {
-            (household_items(churches))
+            (church_link_item(church, person.link_status(), person.link_role()))
         }
     }
 }
@@ -163,7 +164,7 @@ fn endorse_panel(
     }
     html! {
         section class="panel" {
-            h2 { "Endorse " (first_name(&person.name)) }
+            h2 { "Endorse " (person.first_name) }
             form class="stack" method="post" action={ "/members/" (person.id) "/endorse" } {
                 (csrf_input(csrf))
                 (voice_pass_input(draft.kind))
@@ -280,7 +281,6 @@ pub fn me(
     viewer: &Viewer,
     gifts: &[MemberGift],
     catalog: &[Gift],
-    memberships: &[(&Church, &Membership)],
     devices: &[SessionRow],
     current_session: Option<&str>,
     unread: i64,
@@ -304,11 +304,8 @@ pub fn me(
                     (csrf_input(csrf))
                     (voice_pass_input(profile.kind))
                     (review_banner(profile.kind))
-                    label { "Name" input name="name" required autocomplete="name" autocapitalize="words" value=(profile.name) maxlength="80"; }
-                    div class="split" {
-                        label { "City" input name="city" required autocomplete="address-level2" maxlength="80" value=(profile.city); }
-                        label { "State or region" input name="region" required autocomplete="address-level1" maxlength="80" value=(profile.region); }
-                    }
+                    label { "First name" input name="first_name" required autocomplete="given-name" autocapitalize="words" placeholder="Miriam" value=(profile.first_name) maxlength="80"; }
+                    label { "Last name" input name="last_name" required autocomplete="family-name" autocapitalize="words" placeholder="Cole" value=(profile.last_name) maxlength="80"; }
                     label { "About you"
                         textarea name="bio" rows="3" maxlength="800" { (profile.bio) }
                         (rewrite_row(VoiceKind::Bio))
@@ -336,8 +333,8 @@ pub fn me(
                 }
             }
             section {
-                h2 { "Your churches" }
-                (my_churches(memberships))
+                h2 { "Your church" }
+                (my_church(viewer))
             }
             section class="panel" {
                 h2 { "Alerts" }
@@ -415,16 +412,17 @@ fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
     }
 }
 
-fn my_churches(memberships: &[(&Church, &Membership)]) -> Markup {
-    if memberships.is_empty() {
+fn my_church(viewer: &Viewer) -> Markup {
+    let Some(church) = viewer.church.as_ref() else {
         return html! {
-            p class="muted" { "None yet." }
-            a href="/churches" { "Find your church" }
+            p { "You're not in a church on Ecclesia yet." }
+            a href="/churches/join" { "Find your church" }
         };
-    }
+    };
     html! {
         ul class="people" {
-            (household_items(memberships))
+            (church_link_item(church, viewer.user.link_status(), viewer.user.link_role()))
         }
+        a href="/churches/join" { "Find your church" }
     }
 }

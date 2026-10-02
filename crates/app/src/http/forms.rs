@@ -43,31 +43,44 @@ pub struct CsrfForm {
 #[derive(Deserialize)]
 pub struct RegisterForm {
     pub csrf: String,
-    pub name: String,
+    pub first_name: String,
+    pub last_name: String,
     pub email: String,
-    pub church_id: String,
-    #[serde(default)]
-    pub church_query: String,
     pub password: String,
-}
-
-#[derive(Deserialize)]
-pub struct ChurchSearchQuery {
-    #[serde(default)]
-    pub q: String,
 }
 
 #[derive(Deserialize)]
 pub struct ChurchForm {
     pub csrf: String,
     pub name: String,
-    pub city: String,
-    pub region: String,
+    pub address: String,
+    pub latitude: String,
+    pub longitude: String,
     #[serde(default)]
     pub gathering: String,
     pub description: String,
     #[serde(default)]
     pub pass: String,
+}
+
+#[derive(Deserialize)]
+pub struct JoinChurchForm {
+    pub csrf: String,
+    pub church_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct JoinQuery {
+    #[serde(default)]
+    pub ok: Option<String>,
+    #[serde(default)]
+    pub err: Option<String>,
+    #[serde(default)]
+    pub q: String,
+    #[serde(default)]
+    pub lat: String,
+    #[serde(default)]
+    pub lng: String,
 }
 
 #[derive(Deserialize)]
@@ -120,9 +133,8 @@ pub struct EndorseForm {
 #[derive(Deserialize)]
 pub struct ProfileForm {
     pub csrf: String,
-    pub name: String,
-    pub city: String,
-    pub region: String,
+    pub first_name: String,
+    pub last_name: String,
     #[serde(default)]
     pub bio: String,
     #[serde(default)]

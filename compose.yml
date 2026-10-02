@@ -1,0 +1,18 @@
+# Local Postgres for `cargo run` (optional). Default local store is still SQLite.
+#
+#   docker compose up -d
+#   DATABASE_URL=postgres://ecclesia:ecclesia@127.0.0.1:5432/ecclesia cargo run
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: ecclesia
+      POSTGRES_PASSWORD: ecclesia
+      POSTGRES_DB: ecclesia
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ecclesia_pg:/var/lib/postgresql/data
+
+volumes:
+  ecclesia_pg:

@@ -2,7 +2,7 @@
 
 use maud::{DOCTYPE, Markup, html};
 
-use ecclesia_sdk::prelude::{User, VoiceKind};
+use ecclesia_sdk::prelude::{User, VoiceKind, display_name};
 
 use super::flash::Flash;
 
@@ -376,8 +376,8 @@ fn topbar(user: Option<&User>) -> Markup {
             a class="mark" href="/home" { (mark_glyph()) span { "Ecclesia" } }
             @if let Some(user) = user {
                 a class="who" href="/me" {
-                    (monogram(&user.id, &user.name, Monogram::Person))
-                    span class="who-name" { (user.name) }
+                    (monogram(&user.id, &shown_name(user), Monogram::Person))
+                    span class="who-name" { (shown_name(user)) }
                 }
             }
         }
@@ -460,8 +460,8 @@ fn take_initials<'a>(parts: impl Iterator<Item = &'a str>) -> String {
         .to_uppercase()
 }
 
-pub fn first_name(name: &str) -> &str {
-    name.split_whitespace().next().unwrap_or(name)
+pub fn shown_name(user: &User) -> String {
+    display_name(&user.first_name, &user.last_name)
 }
 
 pub enum SorrySeat<'a> {

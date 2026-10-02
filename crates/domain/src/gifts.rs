@@ -5,6 +5,7 @@ use super::model::{
     DomainError, Effect, Endorsement, EndorsementCard, EndorsementStatus, Gift, User, Write,
 };
 use super::notice::notice;
+use super::person::display_name;
 use super::rules::can_endorse;
 use super::validate::{note_field, optional_note, profile_fields, require_text, skill_field};
 
@@ -78,7 +79,10 @@ pub fn endorse(
     refuse_waiting_endorsement(queue)?;
     let skill_name = skill_field(skill.display())?;
     let note = note_field(note)?;
-    let title = format!("{} endorsed you for {skill_name}", from.name);
+    let title = format!(
+        "{} endorsed you for {skill_name}",
+        display_name(&from.first_name, &from.last_name)
+    );
     Ok(Effect::write(Write::InsertEndorsement(Endorsement {
         id,
         from_user_id: from.id.clone(),
@@ -196,7 +200,8 @@ fn accepted_endorsement_notice(
         "endorsement",
         format!(
             "{} accepted your endorsement for {}",
-            actor.name, endorsement.skill
+            display_name(&actor.first_name, &actor.last_name),
+            endorsement.skill
         ),
         "It's on their profile.",
         format!("/members/{}", actor.id),
@@ -212,7 +217,8 @@ fn declined_endorsement_notice(
         "endorsement",
         format!(
             "{} declined your endorsement for {}",
-            actor.name, endorsement.skill
+            display_name(&actor.first_name, &actor.last_name),
+            endorsement.skill
         ),
         "You can still see it on their profile.",
         format!("/members/{}", actor.id),
@@ -254,19 +260,17 @@ pub fn remove_gift(user_id: &str, gift_id: &str) -> Result<Effect, DomainError> 
 /// US-PROF-01 — update how you are known.
 pub fn update_profile(
     user_id: &str,
-    name: &str,
-    city: &str,
-    region: &str,
+    first_name: &str,
+    last_name: &str,
     bio: &str,
     posture: Posture,
 ) -> Result<Effect, DomainError> {
     super::flags::require_uplifting(posture)?;
-    let (name, city, region, bio) = profile_fields(name, city, region, bio)?;
+    let (first_name, last_name, bio) = profile_fields(first_name, last_name, bio)?;
     Ok(Effect::write(Write::UpdateUser {
         id: user_id.into(),
-        name,
-        city,
-        region,
+        first_name,
+        last_name,
         bio,
     }))
 }

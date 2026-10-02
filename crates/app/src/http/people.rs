@@ -4,13 +4,11 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::views;
-use ecclesia_sdk::prelude::{
-    SkillSource, User, VoiceKind, group_churches_by_place, pair_memberships,
-};
+use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind, group_churches_by_place};
 use ecclesia_sdk::story;
 
 use super::context::{
-    bind_session, churches_for_memberships, html, leaf_err, load_user, redirect_err, signed_form,
+    bind_session, html, leaf_err, linked_church, load_user, redirect_err, signed_form,
     signed_in, story_redirect, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
@@ -41,9 +39,7 @@ pub async fn member_show(
             )),
         ));
     };
-    let memberships = state.sdk.db.memberships_for_user(&person.id).await?;
-    let churches = churches_for_memberships(&state.sdk.db, &memberships).await?;
-    let paired: Vec<_> = pair_memberships(&memberships, &churches).collect();
+    let church = linked_church(&state.sdk.db, &person).await?;
     let gifts = state.sdk.db.member_gifts(&person.id).await?;
     let endorsements = state.sdk.db.accepted_endorsements_for(&person.id).await?;
     let declined = state.sdk.db.declined_endorsements_for(&person.id).await?;
@@ -54,7 +50,7 @@ pub async fn member_show(
         html(views::member_show(
             &viewer,
             &person,
-            &paired,
+            church.as_ref(),
             &gifts,
             &endorsements,
             &declined,
@@ -227,7 +223,6 @@ pub async fn me(
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
     let gifts = state.sdk.db.member_gifts(&viewer.user.id).await?;
     let catalog = story::gift_catalog(&state.sdk).await?;
-    let memberships: Vec<_> = pair_memberships(&viewer.memberships, &viewer.churches).collect();
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let devices = state.sdk.db.sessions_for_user(&viewer.user.id).await?;
     Ok(with_cookie(
@@ -236,16 +231,14 @@ pub async fn me(
             &viewer,
             &gifts,
             &catalog,
-            &memberships,
             &devices,
             signed.session.session_id.as_deref(),
             count,
             views::flash_from(flash.ok, flash.err),
             &signed.session.csrf,
             &views::ProfileDraft {
-                name: &viewer.user.name,
-                city: &viewer.user.city,
-                region: &viewer.user.region,
+                first_name: &viewer.user.first_name,
+                last_name: &viewer.user.last_name,
                 bio: &viewer.user.bio,
                 kind: views::DraftKind::Blank,
             },
@@ -263,7 +256,7 @@ pub async fn update_me(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    if state.awaiting_review(&form.pass, &[&form.bio]) {
+    if state.awaiting_review(&form.pass, &[&form.first_name, &form.last_name, &form.bio]) {
         let bio = state.polish(VoiceKind::Bio, &form.bio).await;
         let viewer = viewer_for(&state.sdk.db, signed.user).await?;
         return paint_me(
@@ -273,9 +266,8 @@ pub async fn update_me(
             None,
             &signed.session.csrf,
             &views::ProfileDraft {
-                name: &form.name,
-                city: &form.city,
-                region: &form.region,
+                first_name: &form.first_name,
+                last_name: &form.last_name,
                 bio: &bio,
                 kind: views::DraftKind::Review,
             },
@@ -289,9 +281,8 @@ pub async fn update_me(
         story::update_profile(
             &state.sdk,
             &signed.user.id,
-            &form.name,
-            &form.city,
-            &form.region,
+            &form.first_name,
+            &form.last_name,
             &form.bio,
         )
         .await?,
@@ -318,9 +309,8 @@ pub async fn add_gift_http(
             None,
             &signed.session.csrf,
             &views::ProfileDraft {
-                name: &viewer.user.name,
-                city: &viewer.user.city,
-                region: &viewer.user.region,
+                first_name: &viewer.user.first_name,
+                last_name: &viewer.user.last_name,
                 bio: &viewer.user.bio,
                 kind: views::DraftKind::Blank,
             },
@@ -431,9 +421,7 @@ async fn paint_member(
     csrf: &str,
     draft: &views::EndorseDraft<'_>,
 ) -> Result<Response, AppError> {
-    let memberships = state.sdk.db.memberships_for_user(&person.id).await?;
-    let churches = churches_for_memberships(&state.sdk.db, &memberships).await?;
-    let paired: Vec<_> = pair_memberships(&memberships, &churches).collect();
+    let church = linked_church(&state.sdk.db, person).await?;
     let gifts = state.sdk.db.member_gifts(&person.id).await?;
     let endorsements = state.sdk.db.accepted_endorsements_for(&person.id).await?;
     let declined = state.sdk.db.declined_endorsements_for(&person.id).await?;
@@ -444,7 +432,7 @@ async fn paint_member(
         html(views::member_show(
             &viewer,
             person,
-            &paired,
+            church.as_ref(),
             &gifts,
             &endorsements,
             &declined,
@@ -468,7 +456,6 @@ async fn paint_me(
 ) -> Result<Response, AppError> {
     let gifts = state.sdk.db.member_gifts(&viewer.user.id).await?;
     let catalog = story::gift_catalog(&state.sdk).await?;
-    let memberships: Vec<_> = pair_memberships(&viewer.memberships, &viewer.churches).collect();
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let devices = state.sdk.db.sessions_for_user(&viewer.user.id).await?;
     Ok(with_cookie(
@@ -477,7 +464,6 @@ async fn paint_me(
             viewer,
             &gifts,
             &catalog,
-            &memberships,
             &devices,
             None,
             count,

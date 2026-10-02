@@ -1,15 +1,14 @@
 use maud::{Markup, html};
 
-use ecclesia_sdk::prelude::{Church, Membership, NeedCard, Viewer, visible_need_cards};
+use ecclesia_sdk::prelude::{Church, NeedCard, Viewer, visible_need_cards};
 
-use super::cards::{NeedCardPlace, need_card_stack, pending_door_cards};
+use super::cards::{NeedCardPlace, need_card_stack, waiting_church_card};
 use super::flash::Flash;
 use super::layout::{Icon, Nav, icon, page, page_lead};
 
 pub fn home(
     viewer: &Viewer,
     flash: Option<Flash>,
-    pending: &[(&Church, &Membership)],
     needs: &[NeedCard],
     churches: &[Church],
     next_cursor: Option<&str>,
@@ -26,41 +25,40 @@ pub fn home(
         html! {
             div class="page-head" {
                 div {
-                    p class="eyebrow" { (viewer.user.city) ", " (viewer.user.region) }
                     (page_lead("Open needs"))
                 }
                 (post_need_action(viewer))
             }
-            (no_church_yet(viewer, pending))
-            (pending_section(pending, csrf))
+            (no_church_yet(viewer))
+            (pending_section(viewer, csrf))
             section {
-                (needs_or_empty(needs, churches, viewer, pending, next_cursor))
+                (needs_or_empty(needs, churches, viewer, next_cursor))
             }
         },
     )
 }
 
-fn no_church_yet(viewer: &Viewer, pending: &[(&Church, &Membership)]) -> Markup {
-    if viewer.is_active_anywhere() || !pending.is_empty() {
+fn no_church_yet(viewer: &Viewer) -> Markup {
+    if viewer.is_active_anywhere() || viewer.user.is_waiting() {
         return html! {};
     }
     html! {
         div class="empty" {
             p { "You're not in a church on Ecclesia yet." }
-            a class="btn" href="/churches" { "Find your church" }
+            a class="btn" href="/churches/join" { "Find your church" }
         }
     }
 }
 
-fn pending_section(pending: &[(&Church, &Membership)], csrf: &str) -> Markup {
-    if pending.is_empty() {
+fn pending_section(viewer: &Viewer, csrf: &str) -> Markup {
+    let Some(church) = viewer.waiting_church() else {
         return html! {};
-    }
+    };
     html! {
         section {
             h2 { "Waiting" }
             div class="stack" {
-                (pending_door_cards(pending, csrf))
+                (waiting_church_card(church, viewer.user.link_status(), csrf))
             }
         }
     }
@@ -82,12 +80,11 @@ fn needs_or_empty(
     needs: &[NeedCard],
     churches: &[Church],
     viewer: &Viewer,
-    pending: &[(&Church, &Membership)],
     next_cursor: Option<&str>,
 ) -> Markup {
     let mut visible = visible_need_cards(viewer, needs, churches).peekable();
     if visible.peek().is_none() {
-        return empty_needs(viewer, pending);
+        return empty_needs(viewer);
     }
     html! {
         (need_card_stack(visible, viewer, NeedCardPlace::Feed))
@@ -95,13 +92,13 @@ fn needs_or_empty(
     }
 }
 
-fn empty_needs(viewer: &Viewer, pending: &[(&Church, &Membership)]) -> Markup {
+fn empty_needs(viewer: &Viewer) -> Markup {
     if viewer.is_active_anywhere() {
         return html! {
             div class="empty" { p { "No open needs." } }
         };
     }
-    if !pending.is_empty() {
+    if viewer.user.is_waiting() {
         return html! {};
     }
     html! {

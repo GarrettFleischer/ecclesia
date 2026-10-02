@@ -5,13 +5,13 @@ use ecclesia::views::flash_from;
 use ecclesia_sdk::judge::word_gate;
 use ecclesia_sdk::prelude::{
     Application, ApplicationStatus, CatalogPresence, Church, DomainError, EmailAvailability,
-    Endorsement, EndorsementQueue, Gift, GiftOnProfile, Membership, Need, NeedScope, NeedStatus,
-    Posture, PriorOffer, SkillSource, Strength, User, Viewer, Write, accept_application,
-    accept_endorsement, accept_invite, add_gift, apply_to_need, approve_membership, can_apply,
-    can_view_need, close_need, decline_application, decline_endorsement, decline_membership,
-    declined_visible_to, endorse, https_endpoint, invite_code_for, invite_member, normalize_email,
-    pair_memberships, plant_church, post_need, redeem_invite, register, remove_gift, request_join,
-    require_text, unique_church_ids, update_profile, visible_need_cards,
+    Endorsement, EndorsementQueue, Gift, GiftOnProfile, Need, NeedScope, NeedStatus, Posture,
+    PriorOffer, SkillSource, Strength, User, Viewer, Write, accept_application, accept_endorsement,
+    accept_invite, add_gift, apply_to_need, approve_membership, can_apply, can_view_need,
+    close_need, decline_application, decline_endorsement, decline_membership, declined_visible_to,
+    endorse, https_endpoint, invite_code_for, invite_member, normalize_email, plant_church,
+    post_need, register, remove_gift, replace_with_code, replace_with_pending, require_text,
+    update_profile, visible_need_cards,
 };
 use ecclesia_sdk::session::Session;
 use proptest::prelude::*;
@@ -45,24 +45,31 @@ fn junk() -> impl Strategy<Value = String> {
     ]
 }
 
-fn person() -> impl Strategy<Value = User> {
-    "[A-Za-z]{1,12}".prop_map(|id| User {
-        id: id.clone(),
-        name: id.clone(),
+fn blank_user(id: &str, first: &str, last: &str) -> User {
+    User {
+        id: id.into(),
+        first_name: first.into(),
+        last_name: last.into(),
         email: format!("{id}@ecclesia.test"),
-        city: "Cedar Falls".into(),
-        region: "Iowa".into(),
         bio: String::new(),
         created_at: "t0".into(),
-    })
+        church_id: None,
+        church_status: None,
+        church_role: None,
+    }
 }
 
-fn church_at(id: &str, city: &str, region: &str) -> Church {
+fn person() -> impl Strategy<Value = User> {
+    "[A-Za-z]{1,12}".prop_map(|id| blank_user(&id, &id, "Lane"))
+}
+
+fn church_here(id: &str, latitude: f64, longitude: f64) -> Church {
     Church {
         id: id.into(),
         name: id.into(),
-        city: city.into(),
-        region: region.into(),
+        address: "100 Main Street".into(),
+        latitude,
+        longitude,
         country: "US".into(),
         description: String::new(),
         gathering: String::new(),
@@ -72,22 +79,25 @@ fn church_at(id: &str, city: &str, region: &str) -> Church {
     }
 }
 
-fn membership_of(user_id: &str, church_id: &str, role: &str, status: &str) -> Membership {
-    Membership {
-        id: format!("{church_id}-{user_id}"),
-        church_id: church_id.into(),
-        user_id: user_id.into(),
-        role: role.into(),
-        status: status.into(),
-        created_at: "t0".into(),
-    }
+fn cedar(id: &str) -> Church {
+    church_here(id, 42.5349, -92.4453)
 }
 
-fn viewer_of(user: User, memberships: Vec<Membership>, churches: Vec<Church>) -> Viewer {
+fn waterloo(id: &str) -> Church {
+    church_here(id, 42.4928, -92.3426)
+}
+
+fn in_church(mut user: User, church_id: &str, role: &str, status: &str) -> User {
+    user.church_id = Some(church_id.into());
+    user.church_status = Some(status.into());
+    user.church_role = Some(role.into());
+    user
+}
+
+fn viewer_of(user: User, church: Option<Church>) -> Viewer {
     Viewer {
         user,
-        memberships,
-        churches,
+        church,
         gift_ids: vec![],
     }
 }
@@ -111,11 +121,9 @@ proptest! {
 
     #[test]
     fn us_prop_01_register_is_total(
-        name in junk(),
+        first in junk(),
+        last in junk(),
         email in junk(),
-        city in junk(),
-        region in junk(),
-        bio in junk(),
         taken in any::<bool>(),
         tears in any::<bool>(),
     ) {
@@ -126,7 +134,7 @@ proptest! {
         };
         let posture = if tears { Posture::TearsDown } else { Posture::Lifts };
         let result = register(
-            &name, &email, &city, &region, &bio, availability, posture, Strength::Acceptable, "u1".into(), "t1".into(),
+            &first, &last, &email, availability, posture, Strength::Acceptable, "u1".into(), "t1".into(),
         );
         match (posture, availability, result) {
             (Posture::TearsDown, _, Err(DomainError::TearsDown)) => {}
@@ -136,12 +144,15 @@ proptest! {
                     panic!("register wrote something else");
                 };
                 assert_eq!(user.id, "u1");
-                assert_eq!(user.name, name.trim());
+                assert_eq!(user.first_name, first.trim());
+                assert_eq!(user.last_name, last.trim());
                 assert_eq!(user.email, email.trim().to_lowercase());
                 assert!(user.email.contains('@'));
                 assert!(!user.email.contains("@@"));
-                assert!(user.name.chars().count() <= 80);
-                assert!(user.bio.chars().count() <= 800);
+                assert!(user.first_name.chars().count() <= 80);
+                assert!(user.last_name.chars().count() <= 80);
+                assert!(user.bio.is_empty());
+                assert!(user.church_id.is_none());
             }
             (Posture::Lifts, EmailAvailability::Free, Err(DomainError::InvalidInput | DomainError::InvalidEmail)) => {}
             other => panic!("unexpected register outcome: {other:?}"),
@@ -179,26 +190,17 @@ proptest! {
     #[test]
     fn us_prop_03_plant_church_is_total(
         name in junk(),
-        city in junk(),
-        region in junk(),
+        address in junk(),
         description in junk(),
         gathering in junk(),
         tears in any::<bool>(),
         nonce in "[a-f0-9]{0,16}",
     ) {
-        let owner = User {
-            id: "owner".into(),
-            name: "Owner".into(),
-            email: "owner@ecclesia.test".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            bio: String::new(),
-            created_at: "t0".into(),
-        };
+        let owner = blank_user("owner", "Owner", "Lane");
         let posture = if tears { Posture::TearsDown } else { Posture::Lifts };
         let result = plant_church(
-            &owner, &name, &city, &region, &description, &gathering, posture,
-            "c1".into(), "m1".into(), &nonce, "t1".into(),
+            &owner, &name, &address, 42.5349, -92.4453, &description, &gathering, posture,
+            "c1".into(), &nonce, "t1".into(),
         );
         match (posture, result) {
             (Posture::TearsDown, Err(DomainError::TearsDown)) => {}
@@ -234,20 +236,10 @@ proptest! {
         tears in any::<bool>(),
         active in any::<bool>(),
     ) {
-        let user = User {
-            id: "miriam".into(),
-            name: "Miriam".into(),
-            email: "miriam@ecclesia.test".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            bio: String::new(),
-            created_at: "t0".into(),
-        };
-        let status = if active { "active" } else { "pending_request" };
+        let status = if active { "active" } else { "pending" };
         let viewer = viewer_of(
-            user,
-            vec![membership_of("miriam", "grace", "owner", status)],
-            vec![church_at("grace", "Cedar Falls", "Iowa")],
+            in_church(blank_user("miriam", "Miriam", "Lane"), "grace", "owner", status),
+            Some(cedar("grace")),
         );
         let posture = if tears { Posture::TearsDown } else { Posture::Lifts };
         let result = post_need(
@@ -287,20 +279,11 @@ proptest! {
         let author_id = "miriam";
         let actor_id = if same_person { "miriam" } else { "elena" };
         let actor = viewer_of(
-            User {
-                id: actor_id.into(),
-                name: actor_id.into(),
-                email: format!("{actor_id}@ecclesia.test"),
-                city: "Waterloo".into(),
-                region: "Iowa".into(),
-                bio: String::new(),
-                created_at: "t0".into(),
-            },
-            vec![membership_of(actor_id, "mercy", "member", "active")],
-            vec![church_at("mercy", "Waterloo", "Iowa")],
+            in_church(blank_user(actor_id, actor_id, "Lane"), "mercy", "member", "active"),
+            Some(waterloo("mercy")),
         );
         let need = need_of(scope, status, "grace", author_id);
-        let church = church_at("grace", "Cedar Falls", "Iowa");
+        let church = cedar("grace");
         let posture = if tears { Posture::TearsDown } else { Posture::Lifts };
         let result = apply_to_need(
             &actor, &need, &church, PriorOffer::Fresh, &message, posture, "a1".into(), "t1".into(),
@@ -326,17 +309,8 @@ proptest! {
         let actor_id = if steward { "miriam" } else { "peter" };
         let role = if steward { "owner" } else { "member" };
         let viewer = viewer_of(
-            User {
-                id: actor_id.into(),
-                name: actor_id.into(),
-                email: format!("{actor_id}@ecclesia.test"),
-                city: "Cedar Falls".into(),
-                region: "Iowa".into(),
-                bio: String::new(),
-                created_at: "t0".into(),
-            },
-            vec![membership_of(actor_id, "grace", role, "active")],
-            vec![church_at("grace", "Cedar Falls", "Iowa")],
+            in_church(blank_user(actor_id, actor_id, "Lane"), "grace", role, "active"),
+            Some(cedar("grace")),
         );
         let status = if open { NeedStatus::Open } else { NeedStatus::Closed };
         let need = need_of(NeedScope::Church, status, "grace", "miriam");
@@ -374,25 +348,9 @@ proptest! {
         waiting in any::<bool>(),
         tears in any::<bool>(),
     ) {
-        let from = User {
-            id: "james".into(),
-            name: "James".into(),
-            email: "james@ecclesia.test".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            bio: String::new(),
-            created_at: "t0".into(),
-        };
+        let from = blank_user("james", "James", "Lane");
         let to_id = if same { "james" } else { "ruth" };
-        let to = User {
-            id: to_id.into(),
-            name: to_id.into(),
-            email: format!("{to_id}@ecclesia.test"),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            bio: String::new(),
-            created_at: "t0".into(),
-        };
+        let to = blank_user(to_id, to_id, "Lane");
         let catalog = [Gift {
             id: "gift_hospitality".into(),
             name: "Hospitality".into(),
@@ -484,9 +442,8 @@ proptest! {
 
     #[test]
     fn us_prop_08_profile_and_gifts_are_total(
-        name in junk(),
-        city in junk(),
-        region in junk(),
+        first in junk(),
+        last in junk(),
         bio in junk(),
         gift_id in junk(),
         note in junk(),
@@ -494,14 +451,14 @@ proptest! {
         tears in any::<bool>(),
     ) {
         let posture = if tears { Posture::TearsDown } else { Posture::Lifts };
-        let profile = update_profile("u1", &name, &city, &region, &bio, posture);
+        let profile = update_profile("u1", &first, &last, &bio, posture);
         match (posture, profile) {
             (Posture::TearsDown, Err(DomainError::TearsDown)) => {}
             (Posture::Lifts, Ok(effect)) => {
-                let Write::UpdateUser { name: stored, .. } = &effect.writes[0] else {
+                let Write::UpdateUser { first_name: stored, .. } = &effect.writes[0] else {
                     panic!("expected update");
                 };
-                assert_eq!(stored, name.trim());
+                assert_eq!(stored, &first.trim());
             }
             (Posture::Lifts, Err(DomainError::InvalidInput)) => {}
             other => panic!("unexpected profile: {other:?}"),
@@ -531,22 +488,12 @@ proptest! {
         already in any::<bool>(),
         governor in any::<bool>(),
     ) {
-        let actor = User {
-            id: "peter".into(),
-            name: "Peter".into(),
-            email: "peter@ecclesia.test".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            bio: String::new(),
-            created_at: "t0".into(),
-        };
-        let church = church_at("grace", "Cedar Falls", "Iowa");
-        let existing = if already {
-            Some(membership_of("peter", "grace", "member", "pending_request"))
-        } else {
-            None
-        };
-        let join = request_join(&actor, &church, existing.as_ref(), &["miriam".into()], "m1".into(), "t1".into());
+        let mut actor = blank_user("peter", "Peter", "Lane");
+        if already {
+            actor = in_church(actor, "grace", "member", "pending");
+        }
+        let church = cedar("grace");
+        let join = replace_with_pending(&actor, &church, &["miriam".into()]);
         match (already, join) {
             (true, Err(DomainError::AlreadyMember)) => {}
             (false, Ok(_)) => {}
@@ -554,26 +501,17 @@ proptest! {
         }
         let role = if governor { "owner" } else { "member" };
         let pastor = viewer_of(
-            User {
-                id: "miriam".into(),
-                name: "Miriam".into(),
-                email: "miriam@ecclesia.test".into(),
-                city: "Cedar Falls".into(),
-                region: "Iowa".into(),
-                bio: String::new(),
-                created_at: "t0".into(),
-            },
-            vec![membership_of("miriam", "grace", role, "active")],
-            vec![church.clone()],
+            in_church(blank_user("miriam", "Miriam", "Lane"), "grace", role, "active"),
+            Some(church.clone()),
         );
-        let invite = invite_member(&pastor, &church, &actor, existing.as_ref(), "m2".into(), "t1".into());
+        let invite = invite_member(&pastor, &church, &actor);
         match (governor, already, invite) {
             (false, _, Err(DomainError::NotGovernor)) => {}
             (true, true, Err(DomainError::AlreadyMember)) => {}
             (true, false, Ok(_)) => {}
             other => panic!("unexpected invite: {other:?}"),
         }
-        let redeem = redeem_invite(&actor, &church, existing.as_ref(), "m3".into(), "t1".into());
+        let redeem = replace_with_code(&actor, &church);
         match (already, redeem) {
             (true, Err(DomainError::AlreadyMember)) => {}
             (false, Ok(_)) => {}
@@ -588,21 +526,12 @@ proptest! {
     ) {
         let role = if governor { "owner" } else { "member" };
         let viewer = viewer_of(
-            User {
-                id: "miriam".into(),
-                name: "Miriam".into(),
-                email: "miriam@ecclesia.test".into(),
-                city: "Cedar Falls".into(),
-                region: "Iowa".into(),
-                bio: String::new(),
-                created_at: "t0".into(),
-            },
-            vec![membership_of("miriam", "grace", role, "active")],
-            vec![church_at("grace", "Cedar Falls", "Iowa")],
+            in_church(blank_user("miriam", "Miriam", "Lane"), "grace", role, "active"),
+            Some(cedar("grace")),
         );
-        let status = if pending { "pending_request" } else { "active" };
-        let target = membership_of("peter", "grace", "member", status);
-        let church = church_at("grace", "Cedar Falls", "Iowa");
+        let status = if pending { "pending" } else { "active" };
+        let target = in_church(blank_user("peter", "Peter", "Lane"), "grace", "member", status);
+        let church = cedar("grace");
         let approve = approve_membership(&viewer, &target, &church);
         let decline = decline_membership(&viewer, &target, &church);
         match (governor, pending, approve) {
@@ -617,48 +546,28 @@ proptest! {
             (true, true, Ok(_)) => {}
             other => panic!("unexpected decline: {other:?}"),
         }
-        let stranger = accept_invite(&viewer.user, &target);
-        assert_eq!(stranger, Err(DomainError::NotInvitee));
-        let peter = User {
-            id: "peter".into(),
-            name: "Peter".into(),
-            email: "peter@ecclesia.test".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            bio: String::new(),
-            created_at: "t0".into(),
-        };
-        assert_eq!(
-            accept_invite(&peter, &target),
-            Err(DomainError::NothingPending)
-        );
+        assert_eq!(accept_invite(&viewer.user), Err(DomainError::NothingPending));
+        let peter = blank_user("peter", "Peter", "Lane");
+        assert_eq!(accept_invite(&peter), Err(DomainError::NothingPending));
+        let invited = in_church(peter, "grace", "member", "invited");
+        assert!(accept_invite(&invited).is_ok());
     }
 
     #[test]
     fn us_prop_10_visible_cards_obey_the_rule(
         scope in prop_oneof![Just(NeedScope::Church), Just(NeedScope::Neighboring), Just(NeedScope::Body)],
     ) {
-        let grace = church_at("grace", "Cedar Falls", "Iowa");
-        let luke = church_at("luke", "Cedar Falls", "Iowa");
+        let grace = cedar("grace");
+        let luke = cedar("luke");
         let viewer = viewer_of(
-            User {
-                id: "james".into(),
-                name: "James".into(),
-                email: "james@ecclesia.test".into(),
-                city: "Cedar Falls".into(),
-                region: "Iowa".into(),
-                bio: String::new(),
-                created_at: "t0".into(),
-            },
-            vec![membership_of("james", "luke", "member", "active")],
-            vec![luke.clone()],
+            in_church(blank_user("james", "James", "Lane"), "luke", "member", "active"),
+            Some(luke.clone()),
         );
         let open = ecclesia_sdk::prelude::NeedCard {
             id: "n1".into(),
             church_id: "grace".into(),
             church_name: "Grace".into(),
-            church_city: "Cedar Falls".into(),
-            church_region: "Iowa".into(),
+            church_address: "100 Main Street".into(),
             author_id: "miriam".into(),
             author_name: "Miriam".into(),
             title: "Meals".into(),
@@ -678,25 +587,24 @@ proptest! {
     }
 
     #[test]
-    fn us_prop_11_pair_memberships_stay_aligned(
-        extra in any::<bool>(),
-    ) {
-        let churches = [
-            church_at("grace", "Cedar Falls", "Iowa"),
-            church_at("luke", "Cedar Falls", "Iowa"),
-        ];
-        let mut memberships = vec![membership_of("miriam", "grace", "owner", "active")];
-        if extra {
-            memberships.push(membership_of("miriam", "missing", "member", "active"));
-        }
-        let paired: Vec<_> = pair_memberships(&memberships, &churches).collect();
-        for (church, membership) in &paired {
-            assert_eq!(church.id, membership.church_id);
-        }
-        let ids = unique_church_ids(&memberships);
-        let mut seen = std::collections::BTreeSet::new();
-        for id in &ids {
-            assert!(seen.insert(*id));
+    fn us_prop_11_a_second_church_replaces_the_first(same in any::<bool>()) {
+        let actor = in_church(blank_user("miriam", "Miriam", "Lane"), "grace", "member", "active");
+        let next = if same { cedar("grace") } else { cedar("luke") };
+        let result = replace_with_pending(&actor, &next, &[]);
+        if same {
+            assert_eq!(result, Err(DomainError::AlreadyMember));
+        } else {
+            let effect = result.expect("a different church replaces the link");
+            let links: Vec<_> = effect
+                .writes
+                .iter()
+                .filter(|write| matches!(write, Write::SetChurchLink { .. }))
+                .collect();
+            assert_eq!(links.len(), 1);
+            let Write::SetChurchLink { church_id, .. } = links[0] else {
+                unreachable!();
+            };
+            assert_eq!(church_id.as_deref(), Some("luke"));
         }
     }
 

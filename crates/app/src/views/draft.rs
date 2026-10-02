@@ -40,38 +40,38 @@ pub fn review_banner(kind: DraftKind) -> Markup {
 }
 
 pub struct RegisterDraft<'a> {
-    pub name: &'a str,
+    pub first_name: &'a str,
+    pub last_name: &'a str,
     pub email: &'a str,
-    pub church_id: &'a str,
-    pub church_query: &'a str,
 }
 
 impl RegisterDraft<'static> {
     pub fn blank() -> Self {
         Self {
-            name: "",
+            first_name: "",
+            last_name: "",
             email: "",
-            church_id: "",
-            church_query: "",
         }
     }
 }
 
 pub struct ChurchDraft<'a> {
     pub name: &'a str,
-    pub city: &'a str,
-    pub region: &'a str,
+    pub address: &'a str,
+    pub latitude: &'a str,
+    pub longitude: &'a str,
     pub gathering: &'a str,
     pub description: &'a str,
     pub kind: DraftKind,
 }
 
-impl<'a> ChurchDraft<'a> {
-    pub fn blank(city: &'a str, region: &'a str) -> Self {
+impl ChurchDraft<'static> {
+    pub fn blank() -> Self {
         Self {
             name: "",
-            city,
-            region,
+            address: "",
+            latitude: "",
+            longitude: "",
             gathering: "",
             description: "",
             kind: DraftKind::Blank,
@@ -132,9 +132,8 @@ impl EndorseDraft<'static> {
 }
 
 pub struct ProfileDraft<'a> {
-    pub name: &'a str,
-    pub city: &'a str,
-    pub region: &'a str,
+    pub first_name: &'a str,
+    pub last_name: &'a str,
     pub bio: &'a str,
     pub kind: DraftKind,
 }

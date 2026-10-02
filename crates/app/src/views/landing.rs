@@ -249,17 +249,9 @@ fn register_form(csrf: &str, draft: &RegisterDraft<'_>) -> Markup {
     html! {
         form class="stack panel auth-card" method="post" action="/register" {
             (csrf_input(csrf))
-            label { "Name" input name="name" required autocomplete="name" autocapitalize="words" placeholder="Miriam Cole" maxlength="80" value=(draft.name); }
+            label { "First name" input name="first_name" required autocomplete="given-name" autocapitalize="words" placeholder="Miriam" maxlength="80" value=(draft.first_name); }
+            label { "Last name" input name="last_name" required autocomplete="family-name" autocapitalize="words" placeholder="Cole" maxlength="80" value=(draft.last_name); }
             label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" maxlength="120" value=(draft.email); }
-            div class="church-search" data-church-search {
-                label for="church_query" { "Church" }
-                div class="church-search-input-wrap" {
-                    input type="text" id="church_query" name="church_query" data-church-search-input autocomplete="off" autocapitalize="words" placeholder="Grace Fellowship" maxlength="120" value=(draft.church_query) role="combobox" aria-expanded="false" aria-controls="church_suggestions";
-                    ul id="church_suggestions" class="church-suggestions" data-church-search-list role="listbox" hidden {}
-                }
-                p class="church-search-status" data-church-search-status hidden {}
-                input type="hidden" name="church_id" value=(draft.church_id);
-            }
             (password_field("Password", "password", "new-password"))
             button class="btn" type="submit" { "Create account" }
         }

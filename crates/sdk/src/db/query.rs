@@ -11,6 +11,7 @@ enum OwnedBind {
     Text(String),
     OptText(Option<String>),
     I64(i64),
+    F64(f64),
 }
 
 fn owned_binds(binds: &[Bind<'_>]) -> Vec<OwnedBind> {
@@ -20,6 +21,7 @@ fn owned_binds(binds: &[Bind<'_>]) -> Vec<OwnedBind> {
             Bind::Text(value) => OwnedBind::Text(value.to_string()),
             Bind::OptText(value) => OwnedBind::OptText(value.map(str::to_string)),
             Bind::I64(value) => OwnedBind::I64(value),
+            Bind::F64(value) => OwnedBind::F64(value),
         })
         .collect()
 }
@@ -244,6 +246,7 @@ fn bind_sqlite_query<'q>(
         OwnedBind::Text(value) => query.bind(value),
         OwnedBind::OptText(value) => query.bind(value.as_deref()),
         OwnedBind::I64(value) => query.bind(*value),
+        OwnedBind::F64(value) => query.bind(*value),
     }
 }
 
@@ -255,6 +258,7 @@ fn bind_postgres_query<'q>(
         OwnedBind::Text(value) => query.bind(value),
         OwnedBind::OptText(value) => query.bind(value.as_deref()),
         OwnedBind::I64(value) => query.bind(*value),
+        OwnedBind::F64(value) => query.bind(*value),
     }
 }
 
@@ -266,6 +270,7 @@ fn bind_sqlite_as<'q, T>(
         OwnedBind::Text(value) => query.bind(value),
         OwnedBind::OptText(value) => query.bind(value.as_deref()),
         OwnedBind::I64(value) => query.bind(*value),
+        OwnedBind::F64(value) => query.bind(*value),
     }
 }
 
@@ -277,6 +282,7 @@ fn bind_postgres_as<'q, T>(
         OwnedBind::Text(value) => query.bind(value),
         OwnedBind::OptText(value) => query.bind(value.as_deref()),
         OwnedBind::I64(value) => query.bind(*value),
+        OwnedBind::F64(value) => query.bind(*value),
     }
 }
 
@@ -288,6 +294,7 @@ fn bind_sqlite_scalar<'q, T>(
         OwnedBind::Text(value) => query.bind(value),
         OwnedBind::OptText(value) => query.bind(value.as_deref()),
         OwnedBind::I64(value) => query.bind(*value),
+        OwnedBind::F64(value) => query.bind(*value),
     }
 }
 
@@ -299,5 +306,6 @@ fn bind_postgres_scalar<'q, T>(
         OwnedBind::Text(value) => query.bind(value),
         OwnedBind::OptText(value) => query.bind(value.as_deref()),
         OwnedBind::I64(value) => query.bind(*value),
+        OwnedBind::F64(value) => query.bind(*value),
     }
 }

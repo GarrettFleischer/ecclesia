@@ -1,9 +1,10 @@
 use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
-    Church, ChurchCard, ChurchMember, Membership, NeedCard, PlaceGroup, Viewer, VoiceKind,
+    Church, ChurchCard, ChurchLinkStatus, ChurchMember, NeedCard, PlaceGroup, Viewer, VoiceKind,
     visible_need_cards,
 };
+use ecclesia_sdk::story::ChurchSearchHit;
 
 use super::cards::{
     NeedCardPlace, active_member_items, church_index_cards, has_active_member, need_card_stack,
@@ -88,9 +89,12 @@ pub fn church_new(
                 (voice_pass_input(draft.kind))
                 (review_banner(draft.kind))
                 label { "Church name" input name="name" required placeholder="Grace Covenant Church" maxlength="120" value=(draft.name); }
+                label { "Address"
+                    textarea name="address" rows="3" required maxlength="400" placeholder="100 Main Street" { (draft.address) }
+                }
                 div class="split" {
-                    label { "City" input name="city" required autocomplete="address-level2" maxlength="80" value=(draft.city); }
-                    label { "State or region" input name="region" required autocomplete="address-level1" maxlength="80" value=(draft.region); }
+                    label { "Latitude" input name="latitude" required inputmode="decimal" placeholder="42.5349" value=(draft.latitude); }
+                    label { "Longitude" input name="longitude" required inputmode="decimal" placeholder="-92.4453" value=(draft.longitude); }
                 }
                 label { "When you meet" input name="gathering" placeholder="Sundays, 10 a.m." maxlength="120" value=(draft.gathering); }
                 label { "About the church"
@@ -114,7 +118,6 @@ pub fn church_show(
     unread: i64,
     csrf: &str,
 ) -> Markup {
-    let mine = viewer.membership_in(&church.id);
     let door = door_keep(viewer, church);
     let church_path = format!("/churches/{}", church.id);
     page(
@@ -128,7 +131,7 @@ pub fn church_show(
             div class="profile-head" {
                 (monogram(&church.id, &church.name, Monogram::ChurchLarge))
                 div {
-                    p class="eyebrow" { (church.city) ", " (church.region) }
+                    p class="eyebrow" { (church.address) }
                     (page_lead(&church.name))
                 }
             }
@@ -139,40 +142,41 @@ pub fn church_show(
                     (church.gathering)
                 }
             }
-            (membership_status(mine, church, csrf))
+            (membership_status(viewer, church, csrf))
             (governor_door(church, door, csrf))
-            (people_section(members, door, csrf, &church_path, next_member_cursor))
+            (people_section(&church.id, members, door, csrf, &church_path, next_member_cursor))
             (needs_section(viewer, church, needs, &church_path, next_need_cursor))
         },
     )
 }
 
-fn membership_status(mine: Option<&Membership>, church: &Church, csrf: &str) -> Markup {
-    match mine {
-        Some(membership) => membership_pill(membership, csrf),
-        None => html! {
-            form method="post" action={ "/churches/" (church.id) "/join" } {
-                (csrf_input(csrf))
-                button class="btn" type="submit" { "Ask to join" }
-            }
-        },
+fn membership_status(viewer: &Viewer, church: &Church, csrf: &str) -> Markup {
+    if viewer.user.church_id.as_deref() != Some(church.id.as_str()) {
+        return ask_to_join(church, csrf);
     }
-}
-
-fn membership_pill(membership: &Membership, csrf: &str) -> Markup {
-    match membership.status.as_str() {
-        "active" => html! { p class="pill" { (role_line(&membership.role)) } },
-        "pending_request" => {
+    match viewer.user.link_status() {
+        Some(ChurchLinkStatus::Active) => {
+            html! { p class="pill" { (role_line(viewer.user.church_role.as_deref().unwrap_or("member"))) } }
+        }
+        Some(ChurchLinkStatus::Pending) => {
             html! { p class="pill pill-wait" { "You asked to join. Waiting on the pastor." } }
         }
-        "pending_invite" => html! {
-            form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
+        Some(ChurchLinkStatus::Invited) => html! {
+            form method="post" action="/churches/join/accept" {
                 (csrf_input(csrf))
                 button class="btn" type="submit" { "Accept invite" }
             }
         },
-        "declined" => html! { p class="pill pill-warn" { "Your request was declined." } },
-        _ => html! {},
+        None => ask_to_join(church, csrf),
+    }
+}
+
+fn ask_to_join(church: &Church, csrf: &str) -> Markup {
+    html! {
+        form method="post" action={ "/churches/" (church.id) "/join" } {
+            (csrf_input(csrf))
+            button class="btn" type="submit" { "Ask to join" }
+        }
     }
 }
 
@@ -226,6 +230,7 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
 }
 
 fn people_section(
+    church_id: &str,
     members: &[ChurchMember],
     door: DoorKeep,
     csrf: &str,
@@ -235,7 +240,7 @@ fn people_section(
     html! {
         section {
             h2 { "People" }
-            (pending_people_block(members, door, csrf))
+            (pending_people_block(church_id, members, door, csrf))
             ul class="people" {
                 (active_member_items(members))
             }
@@ -245,7 +250,12 @@ fn people_section(
     }
 }
 
-fn pending_people_block(members: &[ChurchMember], door: DoorKeep, csrf: &str) -> Markup {
+fn pending_people_block(
+    church_id: &str,
+    members: &[ChurchMember],
+    door: DoorKeep,
+    csrf: &str,
+) -> Markup {
     if !matches!(door, DoorKeep::Keeps) {
         return html! {};
     }
@@ -255,7 +265,7 @@ fn pending_people_block(members: &[ChurchMember], door: DoorKeep, csrf: &str) ->
     }
     html! {
         div class="stack" {
-            (pending_member_cards(pending, csrf))
+            (pending_member_cards(church_id, pending, csrf))
         }
     }
 }
@@ -321,6 +331,96 @@ pub fn the_body(
             (super::more_churches("/the-body", next_cursor))
         },
     )
+}
+
+pub fn join_church_page(
+    viewer: &Viewer,
+    flash: Option<Flash>,
+    unread: i64,
+    csrf: &str,
+    suggestion: Option<&Church>,
+    hits: &[ChurchSearchHit],
+    query: &str,
+    lat: &str,
+    lng: &str,
+) -> Markup {
+    page(
+        "Find your church",
+        Some(&viewer.user),
+        unread,
+        Nav::Churches,
+        flash,
+        csrf,
+        html! {
+            (page_lead("Find your church"))
+            (suggestion_block(suggestion, csrf))
+            section {
+                h2 { "Search by name" }
+                form class="stack" method="get" action="/churches/join" {
+                    input type="hidden" name="lat" value=(lat);
+                    input type="hidden" name="lng" value=(lng);
+                    label { "Church name"
+                        input name="q" value=(query) maxlength="120" placeholder="Grace Fellowship";
+                    }
+                    button class="btn" type="submit" { "Search churches" }
+                }
+                (search_hits(hits, csrf))
+            }
+            section class="panel" {
+                h2 { "Have a code" }
+                form class="stack" method="post" action="/churches/join/code" {
+                    (csrf_input(csrf))
+                    label { "Invite code"
+                        input name="code" required data-invite-code placeholder="GRACESEED" maxlength="32";
+                    }
+                    button class="btn btn-quiet" type="button" data-scan-code hidden { "Scan code" }
+                    button class="btn" type="submit" { "Join with code" }
+                }
+            }
+            script src="/static/join.js" defer {}
+        },
+    )
+}
+
+fn suggestion_block(suggestion: Option<&Church>, csrf: &str) -> Markup {
+    let Some(church) = suggestion else {
+        return html! {};
+    };
+    html! {
+        section {
+            h2 { "Closest church" }
+            article class="card" {
+                h3 { (church.name) }
+                p class="muted" { (church.address) }
+                form method="post" action="/churches/join" {
+                    (csrf_input(csrf))
+                    input type="hidden" name="church_id" value=(church.id);
+                    button class="btn" type="submit" { "Ask to join" }
+                }
+            }
+        }
+    }
+}
+
+fn search_hits(hits: &[ChurchSearchHit], csrf: &str) -> Markup {
+    if hits.is_empty() {
+        return html! {};
+    }
+    html! {
+        div class="stack" {
+            @for hit in hits {
+                article class="card" {
+                    h3 { (hit.name) }
+                    p class="muted" { (hit.address) }
+                    form method="post" action="/churches/join" {
+                        (csrf_input(csrf))
+                        input type="hidden" name="church_id" value=(hit.id);
+                        button class="btn" type="submit" { "Ask to join" }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn body_groups(groups: &[PlaceGroup]) -> Markup {

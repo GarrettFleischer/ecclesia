@@ -1,8 +1,8 @@
 use super::model::DomainError;
 
-const NAME_MAX: usize = 80;
-const EMAIL_MAX: usize = 120;
-const PLACE_MAX: usize = 80;
+pub const NAME_MAX: usize = 80;
+pub const EMAIL_MAX: usize = 120;
+pub const ADDRESS_MAX: usize = 400;
 const BIO_MAX: usize = 800;
 const TITLE_MAX: usize = 120;
 const BODY_MAX: usize = 2000;
@@ -77,53 +77,61 @@ fn label_ok(label: &str) -> bool {
 }
 
 pub fn person_fields(
-    name: &str,
+    first_name: &str,
+    last_name: &str,
     email: &str,
-    city: &str,
-    region: &str,
-    bio: &str,
-) -> Result<(String, String, String, String, String), DomainError> {
+) -> Result<(String, String, String), DomainError> {
     Ok((
-        require_text(name, NAME_MAX)?,
+        require_text(first_name, NAME_MAX)?,
+        require_text(last_name, NAME_MAX)?,
         normalize_email(email)?,
-        require_text(city, PLACE_MAX)?,
-        require_text(region, PLACE_MAX)?,
-        optional_text(bio, BIO_MAX)?,
     ))
 }
 
 pub fn profile_fields(
-    name: &str,
-    city: &str,
-    region: &str,
+    first_name: &str,
+    last_name: &str,
     bio: &str,
-) -> Result<(String, String, String, String), DomainError> {
+) -> Result<(String, String, String), DomainError> {
     Ok((
-        require_text(name, NAME_MAX)?,
-        require_text(city, PLACE_MAX)?,
-        require_text(region, PLACE_MAX)?,
+        require_text(first_name, NAME_MAX)?,
+        require_text(last_name, NAME_MAX)?,
         optional_text(bio, BIO_MAX)?,
     ))
 }
 
 pub fn church_fields(
     name: &str,
-    city: &str,
-    region: &str,
+    address: &str,
+    latitude: f64,
+    longitude: f64,
     description: &str,
     gathering: &str,
-) -> Result<(String, String, String, String, String), DomainError> {
+) -> Result<(String, String, f64, f64, String, String), DomainError> {
     let name = require_text(name, TITLE_MAX)?;
     if !name.chars().any(|ch| ch.is_ascii_alphanumeric()) {
         return Err(DomainError::InvalidInput);
     }
+    let (latitude, longitude) = coordinates(latitude, longitude)?;
     Ok((
         name,
-        require_text(city, PLACE_MAX)?,
-        require_text(region, PLACE_MAX)?,
+        require_text(address, ADDRESS_MAX)?,
+        latitude,
+        longitude,
         require_text(description, BODY_MAX)?,
         optional_text(gathering, TITLE_MAX)?,
     ))
+}
+
+pub fn coordinates(latitude: f64, longitude: f64) -> Result<(f64, f64), DomainError> {
+    if !latitude.is_finite()
+        || !longitude.is_finite()
+        || !(-90.0..=90.0).contains(&latitude)
+        || !(-180.0..=180.0).contains(&longitude)
+    {
+        return Err(DomainError::InvalidInput);
+    }
+    Ok((latitude, longitude))
 }
 
 pub fn need_fields(
@@ -235,10 +243,24 @@ mod tests {
     #[test]
     fn us_val_01_church_name_needs_a_letter() {
         assert_eq!(
-            church_fields("!!!", "Cedar Falls", "Iowa", "A table.", ""),
+            church_fields("!!!", "100 Main Street", 42.53, -92.45, "Sunday gathering.", ""),
             Err(DomainError::InvalidInput)
         );
-        assert!(church_fields("House of Bread", "Cedar Falls", "Iowa", "A table.", "").is_ok());
+        assert!(
+            church_fields(
+                "House of Bread",
+                "100 Main Street",
+                42.53,
+                -92.45,
+                "Sunday gathering.",
+                ""
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            church_fields("Grace", "100 Main Street", 91.0, 0.0, "Sunday gathering.", ""),
+            Err(DomainError::InvalidInput)
+        );
     }
 
     #[test]

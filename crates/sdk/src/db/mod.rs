@@ -4,6 +4,7 @@ mod apply;
 mod bind;
 mod churches;
 mod dialect;
+mod distance;
 mod extras;
 mod gifts;
 mod needs;
@@ -28,7 +29,10 @@ use ecclesia_domain::Effect;
 
 use crate::host::is_public_host;
 
-pub use dialect::{Driver, require_public_database_url, rewrite_placeholders};
+pub use dialect::{
+    Driver, LOCAL_SQLITE_DEFAULT, allow_remote_database_url, is_local_database_url,
+    local_database_url, require_public_database_url, rewrite_placeholders,
+};
 pub use extras::{
     MailWrite, PasswordHashWrite, SessionRow, SessionTransport, SessionWrite, StoryExtras,
     TokenRow, TokenWrite,
@@ -63,7 +67,7 @@ impl Db {
             let url = require_public_database_url(url.as_deref())?;
             return Db::connect(url).await;
         }
-        let url = url.unwrap_or_else(|| "sqlite://ecclesia.db".into());
+        let url = local_database_url(url);
         Db::connect(&url).await
     }
 

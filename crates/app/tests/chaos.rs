@@ -122,15 +122,21 @@ fn enc(value: &str) -> String {
     out
 }
 
+fn split_name(name: &str) -> (&str, &str) {
+    name.rsplit_once(' ').unwrap_or((name, "Lane"))
+}
+
 async fn register(world: &World, name: &str, email: &str) -> String {
     let (_html, cookie, csrf) = get_ok(world.app.clone(), None, "/register").await;
+    let (first, last) = split_name(name);
     let response = post_response(
         world.app.clone(),
         Some(&cookie),
         "/register",
         format!(
-            "csrf={csrf}&name={}&email={}&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
-            enc(name),
+            "csrf={csrf}&first_name={}&last_name={}&email={}&password={}",
+            enc(first),
+            enc(last),
             enc(email),
             enc(PASS)
         ),
@@ -147,7 +153,7 @@ async fn plant(world: &World, cookie: &str, name: &str) -> (String, String) {
         Some(&cookie),
         "/churches",
         format!(
-            "csrf={csrf}&name={}&city=Cedar+Falls&region=Iowa&gathering=Sunday+at+10.&description=A+church+on+Main+Street.",
+            "csrf={csrf}&name={}&address=100+Main+Street&latitude=42.5349&longitude=-92.4453&gathering=Sunday+at+10.&description=A+church+on+Main+Street.",
             enc(name)
         ),
     )
@@ -254,7 +260,7 @@ async fn us_chaos_01_double_at_email_is_refused() {
         &csrf,
         "/register",
         &format!(
-            "name=Ada&email=ada@@nope.com&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
+            "first_name=Ada&last_name=Lane&email=ada@@nope.com&password={}",
             enc(PASS)
         ),
     )
@@ -271,7 +277,7 @@ async fn us_chaos_01_script_name_does_not_run() {
         Some(&cookie),
         "/register",
         format!(
-            "csrf={csrf}&name=%3Cscript%3Ealert(1)%3C/script%3E&email=escaped@nope.test&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
+            "csrf={csrf}&first_name=%3Cscript%3Ealert(1)%3C/script%3E&last_name=Lane&email=escaped@nope.test&password={}",
             enc(PASS)
         ),
     )
@@ -293,7 +299,7 @@ async fn us_chaos_02_bang_church_name_is_refused() {
         &cookie,
         &csrf,
         "/churches",
-        "name=!!!&city=Waterloo&region=Iowa&description=A+table+in+the+north+end.&gathering=",
+        "name=!!!&address=100+Main+Street&latitude=42.4928&longitude=-92.3426&description=A+gathering+in+the+north+end.&gathering=",
     )
     .await;
     assert!(location.contains("err=missing"), "got {location}");
@@ -484,17 +490,18 @@ async fn us_chaos_06_double_approve_and_empty_profile() {
         &format!("/churches/{church_id}"),
     )
     .await;
+    let marker = format!("/churches/{church_id}/members/");
     let mem = church
-        .split("/memberships/")
+        .split(&marker)
         .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .expect("membership id")
+        .and_then(|rest| rest.split(['/', '"', '?']).next())
+        .expect("waiting user id")
         .to_string();
     let first = post_location(
         world.app.clone(),
         &cookie,
         &csrf,
-        &format!("/memberships/{mem}/approve"),
+        &format!("/churches/{church_id}/members/{mem}/approve"),
         "",
     )
     .await;
@@ -509,14 +516,21 @@ async fn us_chaos_06_double_approve_and_empty_profile() {
         world.app.clone(),
         &cookie,
         &csrf,
-        &format!("/memberships/{mem}/approve"),
+        &format!("/churches/{church_id}/members/{mem}/approve"),
         "",
     )
     .await;
     assert!(second.contains("err=pending"), "got {second}");
 
     let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&cookie), "/me").await;
-    let empty = post_location(world.app, &cookie, &csrf, "/me", "name=&city=&region=&bio=").await;
+    let empty = post_location(
+        world.app,
+        &cookie,
+        &csrf,
+        "/me",
+        "first_name=&last_name=&bio=",
+    )
+    .await;
     assert!(empty.contains("err=missing"), "got {empty}");
 }
 

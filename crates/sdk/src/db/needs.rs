@@ -1,11 +1,13 @@
 use super::bind::{placeholders, Bind};
+use super::distance::haversine_km_sql;
 use super::rows::{ApplicationCardRow, ApplicationRow, NeedCardRow, NeedRow, map_all};
 use super::Db;
-use ecclesia_domain::{Application, ApplicationCard, Need, NeedCard, Viewer};
+use ecclesia_domain::{Application, ApplicationCard, Need, NeedCard, Viewer, nearby_km};
 
 const NEED_CARD_SELECT: &str = r#"
-        SELECT n.id, n.church_id, c.name AS church_name, c.city AS church_city, c.region AS church_region,
-               n.author_id, u.name AS author_name, n.title, n.body, n.gift_id, g.name AS gift_name,
+        SELECT n.id, n.church_id, c.name AS church_name, c.address AS church_address,
+               n.author_id, u.first_name AS author_first, u.last_name AS author_last,
+               n.title, n.body, n.gift_id, g.name AS gift_name,
                n.scope, n.status, n.created_at
         FROM needs n
         JOIN churches c ON c.id = n.church_id
@@ -35,10 +37,11 @@ impl Db {
         after: Option<(&str, &str)>,
     ) -> anyhow::Result<Vec<NeedCard>> {
         let church_ids: Vec<&str> = viewer
-            .memberships
-            .iter()
-            .filter(|membership| membership.is_active())
-            .map(|membership| membership.church_id.as_str())
+            .user
+            .church_id
+            .as_deref()
+            .filter(|_| viewer.user.is_active())
+            .into_iter()
             .collect();
         if church_ids.is_empty() {
             return Ok(Vec::new());
@@ -46,22 +49,29 @@ impl Db {
         let mut sql = String::from(NEED_CARD_SELECT);
         sql.push_str(" WHERE n.status = 'open' AND (n.church_id IN (");
         sql.push_str(&placeholders(church_ids.len()));
-        sql.push_str(
+        let distance = haversine_km_sql(
+            "mine.latitude",
+            "mine.longitude",
+            "c.latitude",
+            "c.longitude",
+        );
+        sql.push_str(&format!(
             r#")
             OR (
                 n.scope IN ('neighboring', 'body')
                 AND EXISTS (
                     SELECT 1 FROM churches mine
-                    JOIN memberships m ON m.church_id = mine.id
-                    WHERE m.user_id = ?
-                      AND m.status = 'active'
+                    JOIN users viewer_user ON viewer_user.church_id = mine.id
+                    WHERE viewer_user.id = ?
+                      AND viewer_user.church_status = 'active'
                       AND mine.id != c.id
-                      AND (lower(mine.city) = lower(c.city) OR lower(mine.region) = lower(c.region))
+                      AND {distance} <= {cutoff}
                 )
             )
             OR n.scope = 'body'
         )"#,
-        );
+            cutoff = nearby_km()
+        ));
         if after.is_some() {
             sql.push_str(" AND (n.created_at < ? OR (n.created_at = ? AND n.id < ?))");
         }
@@ -121,7 +131,8 @@ impl Db {
         Ok(map_all(
             self.fetch_all::<ApplicationCardRow>(
                 r#"
-            SELECT a.id, a.need_id, a.user_id, u.name AS user_name, a.message, a.status, a.created_at
+            SELECT a.id, a.need_id, a.user_id, u.first_name AS user_first, u.last_name AS user_last,
+                   a.message, a.status, a.created_at
             FROM applications a
             JOIN users u ON u.id = a.user_id
             WHERE a.need_id = ?
@@ -161,7 +172,6 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use crate::db::Db;
-    use ecclesia_domain::Viewer;
 
     async fn fresh_db() -> Db {
         let path = std::env::temp_dir().join(format!(
@@ -194,24 +204,21 @@ mod tests {
         db.seed_grace_church().await.expect("seed church");
         crate::story::register(
             &sdk,
-            "Peter Lang",
+            "Peter",
+            "Lang",
             "peter@grace.test",
-            "seed_grace",
             "Thursday dinners at six oclock",
             &device,
         )
         .await
         .unwrap()
         .unwrap();
-        let peter = db.user_by_email("peter@grace.test").await.unwrap().expect("peter");
-        let memberships = db.memberships_for_user(&peter.id).await.unwrap();
-        let churches = db.churches_for_user(&peter.id).await.unwrap();
-        let viewer = Viewer {
-            user: peter,
-            memberships,
-            churches,
-            gift_ids: Vec::new(),
-        };
+        let peter = db
+            .user_by_email("peter@grace.test")
+            .await
+            .unwrap()
+            .expect("peter");
+        let viewer = sdk.viewer(peter).await.unwrap();
         assert!(!viewer.is_active_anywhere());
         let cards = db.home_need_cards(&viewer, None).await.unwrap();
         assert!(cards.is_empty());

@@ -2,9 +2,9 @@
 
 use chrono::{Duration, SecondsFormat, Utc};
 use ecclesia_domain::{
-    DomainError, EmailAvailability, Strength, User, Viewer, Write, accept_password,
+    DomainError, EmailAvailability, Strength, User, Viewer, accept_password, display_name,
     invite_member as domain_invite_member, normalize_email, parse_invite_email,
-    register as domain_register, request_join as domain_request_join, VoiceKind,
+    register as domain_register, VoiceKind,
 };
 
 use crate::bearer::{
@@ -30,26 +30,20 @@ pub struct DeviceMeta {
 
 pub async fn register(
     sdk: &Sdk,
-    name: &str,
+    first_name: &str,
+    last_name: &str,
     email: &str,
-    church_id: &str,
     password: &str,
     device: &DeviceMeta,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let church_id = church_id.trim();
-    if church_id.is_empty() {
-        return Ok(Err(DomainError::InvalidInput));
-    }
-    let Some(church) = sdk.db.church(church_id).await? else {
-        return Ok(Err(DomainError::NotFound));
-    };
     let normalized = match normalize_email(email) {
         Ok(email) => email,
         Err(error) => return Ok(Err(error)),
     };
     let availability = EmailAvailability::of_existing(sdk.db.user_by_email(&normalized).await?);
-    let posture = sdk.weigh(VoiceKind::Bio, &[name]).await;
-    let strength = score(password, name, &normalized);
+    let posture = sdk.weigh(VoiceKind::Bio, &[first_name, last_name]).await;
+    let known_as = display_name(first_name, last_name);
+    let strength = score(password, &known_as, &normalized);
     let mut password = password.to_string();
     let hash = match strength {
         Strength::Acceptable => hash_and_wipe(&mut password)?,
@@ -60,35 +54,19 @@ pub async fn register(
     };
     let user_id = new_id();
     let now = now_iso();
-    let mut effect = match domain_register(
-        name,
+    let effect = match domain_register(
+        first_name,
+        last_name,
         &normalized,
-        &church.city,
-        &church.region,
-        "",
         availability,
         posture,
         strength,
         user_id.clone(),
-        now.clone(),
+        now,
     ) {
         Ok(effect) => effect,
         Err(error) => return Ok(Err(error)),
     };
-    let Some(user) = effect
-        .writes
-        .iter()
-        .find_map(|write| match write {
-            Write::InsertUser(user) => Some(user.clone()),
-            _ => None,
-        })
-    else {
-        return Ok(Err(DomainError::NotFound));
-    };
-    let governors = sdk.db.governor_ids(church_id).await?;
-    let join = domain_request_join(&user, &church, None, &governors, new_id(), now)?;
-    effect.writes.extend(join.writes);
-    effect.notices.extend(join.notices);
     let extras = session_extras(&user_id, device, StoryExtras {
         password_hash: Some(PasswordHashWrite {
             user_id: user_id.clone(),
@@ -293,11 +271,11 @@ pub struct BearerIdentity {
 #[derive(Debug, Clone, Serialize)]
 pub struct ApiProfile {
     pub id: String,
-    pub name: String,
+    pub first_name: String,
+    pub last_name: String,
     pub email: String,
-    pub city: String,
-    pub region: String,
     pub bio: String,
+    pub church_id: Option<String>,
 }
 
 pub async fn api_me_profile(
@@ -313,11 +291,11 @@ pub async fn api_me_profile(
     };
     Ok(Some(ApiProfile {
         id: user.id,
-        name: user.name,
+        first_name: user.first_name,
+        last_name: user.last_name,
         email: user.email,
-        city: user.city,
-        region: user.region,
         bio: user.bio,
+        church_id: user.church_id,
     }))
 }
 
@@ -375,7 +353,11 @@ pub async fn change_password(
     if !verify_password(current, &hash) {
         return Ok(Err(DomainError::NotFound));
     }
-    let strength = score(new_password, &user.name, &user.email);
+    let strength = score(
+        new_password,
+        &display_name(&user.first_name, &user.last_name),
+        &user.email,
+    );
     if let Err(error) = accept_password(strength) {
         return Ok(Err(error));
     }
@@ -602,7 +584,11 @@ pub async fn complete_reset(
     let Some(user) = sdk.db.user(&row.user_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let strength = score(new_password, &user.name, &user.email);
+    let strength = score(
+        new_password,
+        &display_name(&user.first_name, &user.last_name),
+        &user.email,
+    );
     if let Err(error) = accept_password(strength) {
         return Ok(Err(error));
     }
@@ -644,8 +630,7 @@ pub async fn invite_member(
             ..StoryOk::default()
         }));
     };
-    let existing = sdk.db.membership_pair(church_id, &invitee.id).await?;
-    let effect = domain_invite_member(viewer, &church, &invitee, existing.as_ref(), new_id(), now_iso());
+    let effect = domain_invite_member(viewer, &church, &invitee);
     let extras = StoryExtras {
         mail: Some(MailWrite {
             to: invitee.email,

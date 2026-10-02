@@ -1,10 +1,11 @@
+use super::geo::{distance_km, nearby_km};
 use super::model::{
-    Church, DomainError, Membership, MembershipStatus, NeedCard, NeedScope, NeedSight, Viewer,
+    Church, ChurchLinkStatus, DomainError, NeedCard, NeedScope, NeedSight, User, Viewer,
 };
 
 pub fn churches_are_neighbors(a: &Church, b: &Church) -> bool {
     a.id != b.id
-        && (a.city.eq_ignore_ascii_case(&b.city) || a.region.eq_ignore_ascii_case(&b.region))
+        && distance_km(a.latitude, a.longitude, b.latitude, b.longitude) <= nearby_km()
 }
 
 pub fn is_need_steward(viewer: &Viewer, need: NeedSight<'_>) -> bool {
@@ -21,8 +22,8 @@ pub fn can_view_need(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> b
         Some(NeedScope::Neighboring) => {
             viewer.is_active_in(need.church_id)
                 || viewer
-                    .active_churches()
-                    .any(|mine| churches_are_neighbors(mine, church))
+                    .active_church()
+                    .is_some_and(|mine| churches_are_neighbors(mine, church))
         }
         None => false,
     }
@@ -76,32 +77,19 @@ pub fn can_endorse(from_id: &str, to_id: &str) -> Result<(), DomainError> {
     }
 }
 
-pub fn can_decide_membership(actor: &Membership) -> Result<(), DomainError> {
-    if actor.can_govern() {
+pub fn can_decide_membership(actor: &User, church_id: &str) -> Result<(), DomainError> {
+    if actor.governs(church_id) {
         Ok(())
     } else {
         Err(DomainError::NotGovernor)
     }
 }
 
-pub fn membership_after_approval(
-    current: MembershipStatus,
-) -> Result<MembershipStatus, DomainError> {
-    require_pending_membership(current)?;
-    Ok(MembershipStatus::Active)
-}
-
-pub fn membership_after_decline(
-    current: MembershipStatus,
-) -> Result<MembershipStatus, DomainError> {
-    require_pending_membership(current)?;
-    Ok(MembershipStatus::Declined)
-}
-
-fn require_pending_membership(current: MembershipStatus) -> Result<(), DomainError> {
-    match current {
-        MembershipStatus::PendingRequest | MembershipStatus::PendingInvite => Ok(()),
-        MembershipStatus::Active | MembershipStatus::Declined => Err(DomainError::NothingPending),
+pub fn link_after_approval(current: ChurchLinkStatus) -> Result<ChurchLinkStatus, DomainError> {
+    if current.is_waiting() {
+        Ok(ChurchLinkStatus::Active)
+    } else {
+        Err(DomainError::NothingPending)
     }
 }
 
@@ -147,26 +135,41 @@ fn nonce_from(nonce: &str, take: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Membership, Need, NeedCard, User};
+    use crate::model::{Need, NeedCard, User};
 
-    fn user(id: &str, city: &str, region: &str) -> User {
+    const CEDAR_FALLS: (f64, f64) = (42.5349, -92.4453);
+    const WATERLOO: (f64, f64) = (42.4928, -92.3426);
+    const AUSTIN: (f64, f64) = (30.2672, -97.7431);
+
+    fn user(id: &str) -> User {
         User {
             id: id.into(),
-            name: id.into(),
+            first_name: id.into(),
+            last_name: "Lane".into(),
             email: format!("{id}@ecclesia.test"),
-            city: city.into(),
-            region: region.into(),
             bio: String::new(),
             created_at: "2026-01-01T00:00:00Z".into(),
+            church_id: None,
+            church_status: None,
+            church_role: None,
         }
     }
 
-    fn church(id: &str, city: &str, region: &str) -> Church {
+    fn linked(id: &str, church_id: &str, status: &str) -> User {
+        let mut person = user(id);
+        person.church_id = Some(church_id.into());
+        person.church_status = Some(status.into());
+        person.church_role = Some("member".into());
+        person
+    }
+
+    fn church(id: &str, latitude: f64, longitude: f64) -> Church {
         Church {
             id: id.into(),
             name: id.into(),
-            city: city.into(),
-            region: region.into(),
+            address: "100 Main Street".into(),
+            latitude,
+            longitude,
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),
@@ -176,22 +179,10 @@ mod tests {
         }
     }
 
-    fn membership(church_id: &str, user_id: &str, status: &str) -> Membership {
-        Membership {
-            id: format!("{church_id}-{user_id}"),
-            church_id: church_id.into(),
-            user_id: user_id.into(),
-            role: "member".into(),
-            status: status.into(),
-            created_at: "2026-01-01T00:00:00Z".into(),
-        }
-    }
-
-    fn viewer(user: User, churches: Vec<Church>, memberships: Vec<Membership>) -> Viewer {
+    fn viewer(user: User, church: Option<Church>) -> Viewer {
         Viewer {
             user,
-            memberships,
-            churches,
+            church,
             gift_ids: vec![],
         }
     }
@@ -211,11 +202,11 @@ mod tests {
     }
 
     #[test]
-    fn us_body_01_neighbors_share_city_or_region() {
-        let grace = church("grace", "Cedar Falls", "Iowa");
-        let luke = church("luke", "Cedar Falls", "Iowa");
-        let mercy = church("mercy", "Waterloo", "Iowa");
-        let far = church("far", "Austin", "Texas");
+    fn us_body_01_neighbors_are_within_40_km() {
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let luke = church("luke", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let mercy = church("mercy", WATERLOO.0, WATERLOO.1);
+        let far = church("far", AUSTIN.0, AUSTIN.1);
         assert!(churches_are_neighbors(&grace, &luke));
         assert!(churches_are_neighbors(&grace, &mercy));
         assert!(!churches_are_neighbors(&grace, &far));
@@ -224,13 +215,9 @@ mod tests {
 
     #[test]
     fn us_need_05_church_scope_hides_need_from_neighbors() {
-        let grace = church("grace", "Cedar Falls", "Iowa");
-        let luke = church("luke", "Cedar Falls", "Iowa");
-        let james = viewer(
-            user("james", "Cedar Falls", "Iowa"),
-            vec![luke],
-            vec![membership("luke", "james", "active")],
-        );
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let luke = church("luke", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let james = viewer(linked("james", "luke", "active"), Some(luke));
         let n = need(NeedScope::Church, "grace", "miriam");
         assert!(!can_view_need(&james, n.sight(), &grace));
         assert_eq!(
@@ -241,13 +228,9 @@ mod tests {
 
     #[test]
     fn us_need_05_neighboring_scope_opens_need_to_same_region() {
-        let grace = church("grace", "Cedar Falls", "Iowa");
-        let mercy = church("mercy", "Waterloo", "Iowa");
-        let elena = viewer(
-            user("elena", "Waterloo", "Iowa"),
-            vec![mercy],
-            vec![membership("mercy", "elena", "active")],
-        );
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let mercy = church("mercy", WATERLOO.0, WATERLOO.1);
+        let elena = viewer(linked("elena", "mercy", "active"), Some(mercy));
         let n = need(NeedScope::Neighboring, "grace", "miriam");
         assert!(can_view_need(&elena, n.sight(), &grace));
         assert_eq!(can_apply(&elena, n.sight(), &grace), Ok(()));
@@ -255,11 +238,10 @@ mod tests {
 
     #[test]
     fn us_need_05_pending_member_is_not_yet_in_the_body() {
-        let grace = church("grace", "Cedar Falls", "Iowa");
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
         let peter = viewer(
-            user("peter", "Cedar Falls", "Iowa"),
-            vec![grace.clone()],
-            vec![membership("grace", "peter", "pending_request")],
+            linked("peter", "grace", "pending"),
+            Some(grace.clone()),
         );
         let n = need(NeedScope::Body, "grace", "miriam");
         assert!(!can_view_need(&peter, n.sight(), &grace));
@@ -271,11 +253,10 @@ mod tests {
 
     #[test]
     fn us_need_02_author_cannot_apply_to_own_need() {
-        let grace = church("grace", "Cedar Falls", "Iowa");
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
         let miriam = viewer(
-            user("miriam", "Cedar Falls", "Iowa"),
-            vec![grace.clone()],
-            vec![membership("grace", "miriam", "active")],
+            linked("miriam", "grace", "active"),
+            Some(grace.clone()),
         );
         let n = need(NeedScope::Church, "grace", "miriam");
         assert_eq!(
@@ -291,13 +272,13 @@ mod tests {
     }
 
     #[test]
-    fn us_mem_04_only_pending_memberships_can_be_decided() {
+    fn us_mem_04_only_pending_links_can_be_decided() {
         assert_eq!(
-            membership_after_approval(MembershipStatus::PendingRequest),
-            Ok(MembershipStatus::Active)
+            link_after_approval(ChurchLinkStatus::Pending),
+            Ok(ChurchLinkStatus::Active)
         );
         assert_eq!(
-            membership_after_approval(MembershipStatus::Active),
+            link_after_approval(ChurchLinkStatus::Active),
             Err(DomainError::NothingPending)
         );
     }
@@ -313,19 +294,14 @@ mod tests {
 
     #[test]
     fn us_need_05_visible_cards_are_borrowed_not_cloned() {
-        let grace = church("grace", "Cedar Falls", "Iowa");
-        let luke = church("luke", "Cedar Falls", "Iowa");
-        let james = viewer(
-            user("james", "Cedar Falls", "Iowa"),
-            vec![luke],
-            vec![membership("luke", "james", "active")],
-        );
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let luke = church("luke", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let james = viewer(linked("james", "luke", "active"), Some(luke));
         let hidden = NeedCard {
             id: "n1".into(),
             church_id: "grace".into(),
             church_name: "Grace".into(),
-            church_city: "Cedar Falls".into(),
-            church_region: "Iowa".into(),
+            church_address: "100 Main Street".into(),
             author_id: "miriam".into(),
             author_name: "Miriam".into(),
             title: "Meals".into(),
@@ -340,8 +316,7 @@ mod tests {
             id: "n2".into(),
             church_id: "grace".into(),
             church_name: "Grace".into(),
-            church_city: "Cedar Falls".into(),
-            church_region: "Iowa".into(),
+            church_address: "100 Main Street".into(),
             author_id: "miriam".into(),
             author_name: "Miriam".into(),
             title: "Spanish".into(),

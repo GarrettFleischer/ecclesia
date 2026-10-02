@@ -2,18 +2,20 @@
 
 use ecclesia_domain::{
     Application, ApplicationCard, Church, ChurchMember, Endorsement, EndorsementCard, Gift,
-    MemberGift, Membership, Need, NeedCard, Notification, User,
+    MemberGift, Need, NeedCard, Notification, User, display_name,
 };
 
 #[derive(sqlx::FromRow)]
 pub struct UserRow {
     pub id: String,
-    pub name: String,
+    pub first_name: String,
+    pub last_name: String,
     pub email: String,
-    pub city: String,
-    pub region: String,
     pub bio: String,
     pub created_at: String,
+    pub church_id: Option<String>,
+    pub church_status: Option<String>,
+    pub church_role: Option<String>,
     #[sqlx(default)]
     pub password_hash: Option<String>,
 }
@@ -50,9 +52,11 @@ pub struct EndorsementRow {
 pub struct EndorsementCardRow {
     pub id: String,
     pub from_user_id: String,
-    pub from_user_name: String,
+    pub from_first: String,
+    pub from_last: String,
     pub to_user_id: String,
-    pub to_user_name: String,
+    pub to_first: String,
+    pub to_last: String,
     pub gift_id: String,
     pub gift_name: String,
     pub note: String,
@@ -74,10 +78,9 @@ pub struct NotificationRow {
 
 #[derive(sqlx::FromRow)]
 pub struct ChurchMemberRow {
-    pub membership_id: String,
     pub user_id: String,
-    pub name: String,
-    pub city: String,
+    pub first_name: String,
+    pub last_name: String,
     pub role: String,
     pub status: String,
 }
@@ -93,23 +96,14 @@ pub struct CountRow {
 pub struct ChurchRow {
     pub id: String,
     pub name: String,
-    pub city: String,
-    pub region: String,
+    pub address: String,
+    pub latitude: f64,
+    pub longitude: f64,
     pub country: String,
     pub description: String,
     pub gathering: String,
     pub owner_id: String,
     pub invite_code: String,
-    pub created_at: String,
-}
-
-#[derive(sqlx::FromRow)]
-pub struct MembershipRow {
-    pub id: String,
-    pub church_id: String,
-    pub user_id: String,
-    pub role: String,
-    pub status: String,
     pub created_at: String,
 }
 
@@ -131,10 +125,10 @@ pub struct NeedCardRow {
     pub id: String,
     pub church_id: String,
     pub church_name: String,
-    pub church_city: String,
-    pub church_region: String,
+    pub church_address: String,
     pub author_id: String,
-    pub author_name: String,
+    pub author_first: String,
+    pub author_last: String,
     pub title: String,
     pub body: String,
     pub gift_id: Option<String>,
@@ -159,7 +153,8 @@ pub struct ApplicationCardRow {
     pub id: String,
     pub need_id: String,
     pub user_id: String,
-    pub user_name: String,
+    pub user_first: String,
+    pub user_last: String,
     pub message: String,
     pub status: String,
     pub created_at: String,
@@ -176,12 +171,14 @@ impl From<UserRow> for User {
     fn from(row: UserRow) -> Self {
         Self {
             id: row.id,
-            name: row.name,
+            first_name: row.first_name,
+            last_name: row.last_name,
             email: row.email,
-            city: row.city,
-            region: row.region,
             bio: row.bio,
             created_at: row.created_at,
+            church_id: row.church_id,
+            church_status: row.church_status,
+            church_role: row.church_role,
         }
     }
 }
@@ -228,9 +225,9 @@ impl From<EndorsementCardRow> for EndorsementCard {
         Self {
             id: row.id,
             from_user_id: row.from_user_id,
-            from_user_name: row.from_user_name,
+            from_user_name: display_name(&row.from_first, &row.from_last),
             to_user_id: row.to_user_id,
-            to_user_name: row.to_user_name,
+            to_user_name: display_name(&row.to_first, &row.to_last),
             gift_id: row.gift_id,
             gift_name: row.gift_name,
             note: row.note,
@@ -258,10 +255,9 @@ impl From<NotificationRow> for Notification {
 impl From<ChurchMemberRow> for ChurchMember {
     fn from(row: ChurchMemberRow) -> Self {
         Self {
-            membership_id: row.membership_id,
             user_id: row.user_id,
-            name: row.name,
-            city: row.city,
+            first_name: row.first_name,
+            last_name: row.last_name,
             role: row.role,
             status: row.status,
         }
@@ -273,26 +269,14 @@ impl From<ChurchRow> for Church {
         Self {
             id: row.id,
             name: row.name,
-            city: row.city,
-            region: row.region,
+            address: row.address,
+            latitude: row.latitude,
+            longitude: row.longitude,
             country: row.country,
             description: row.description,
             gathering: row.gathering,
             owner_id: row.owner_id,
             invite_code: row.invite_code,
-            created_at: row.created_at,
-        }
-    }
-}
-
-impl From<MembershipRow> for Membership {
-    fn from(row: MembershipRow) -> Self {
-        Self {
-            id: row.id,
-            church_id: row.church_id,
-            user_id: row.user_id,
-            role: row.role,
-            status: row.status,
             created_at: row.created_at,
         }
     }
@@ -320,10 +304,9 @@ impl From<NeedCardRow> for NeedCard {
             id: row.id,
             church_id: row.church_id,
             church_name: row.church_name,
-            church_city: row.church_city,
-            church_region: row.church_region,
+            church_address: row.church_address,
             author_id: row.author_id,
-            author_name: row.author_name,
+            author_name: display_name(&row.author_first, &row.author_last),
             title: row.title,
             body: row.body,
             gift_id: row.gift_id,
@@ -354,7 +337,7 @@ impl From<ApplicationCardRow> for ApplicationCard {
             id: row.id,
             need_id: row.need_id,
             user_id: row.user_id,
-            user_name: row.user_name,
+            user_name: display_name(&row.user_first, &row.user_last),
             message: row.message,
             status: row.status,
             created_at: row.created_at,

@@ -6,11 +6,9 @@ use super::validate::person_fields;
 
 /// US-AUTH-01 — a new person registers with a password the SDK already scored.
 pub fn register(
-    name: &str,
+    first_name: &str,
+    last_name: &str,
     email: &str,
-    city: &str,
-    region: &str,
-    bio: &str,
     availability: EmailAvailability,
     posture: Posture,
     strength: Strength,
@@ -20,15 +18,17 @@ pub fn register(
     refuse_weak(strength)?;
     super::flags::require_uplifting(posture)?;
     refuse_taken_email(availability)?;
-    let (name, email, city, region, bio) = person_fields(name, email, city, region, bio)?;
+    let (first_name, last_name, email) = person_fields(first_name, last_name, email)?;
     Ok(Effect::write(Write::InsertUser(User {
         id,
-        name,
+        first_name,
+        last_name,
         email,
-        city,
-        region,
-        bio,
+        bio: String::new(),
         created_at: now,
+        church_id: None,
+        church_status: None,
+        church_role: None,
     })))
 }
 
@@ -60,10 +60,8 @@ mod tests {
     fn us_auth_01_register_is_an_insert() {
         let effect = register(
             "Ada",
+            "Lovelace",
             "ada@newmercy.test",
-            "Waterloo",
-            "Iowa",
-            "I cook",
             EmailAvailability::Free,
             Posture::Lifts,
             Strength::Acceptable,
@@ -74,7 +72,9 @@ mod tests {
         match &effect.writes[0] {
             Write::InsertUser(user) => {
                 assert_eq!(user.email, "ada@newmercy.test");
-                assert_eq!(user.name, "Ada");
+                assert_eq!(user.first_name, "Ada");
+                assert_eq!(user.last_name, "Lovelace");
+                assert!(user.church_id.is_none());
             }
             other => panic!("{other:?}"),
         }
@@ -85,10 +85,8 @@ mod tests {
         assert_eq!(
             register(
                 "Ada",
+                "Lovelace",
                 "ada@x.test",
-                "A",
-                "B",
-                "",
                 EmailAvailability::Taken,
                 Posture::Lifts,
                 Strength::Acceptable,
@@ -104,10 +102,8 @@ mod tests {
         assert_eq!(
             register(
                 "Ada",
+                "Lovelace",
                 "ada@x.test",
-                "A",
-                "B",
-                "",
                 EmailAvailability::Free,
                 Posture::Lifts,
                 Strength::TooGuessable,

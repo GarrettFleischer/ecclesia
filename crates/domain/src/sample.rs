@@ -1,33 +1,44 @@
 //! Shared sample records for Domain and SDK tests.
 
-use super::model::{Church, Membership, User, Viewer};
+use super::model::{Church, User, Viewer};
 
 pub fn user(id: &str) -> User {
-    user_named(id, id)
+    user_named(id, id, "Lane")
 }
 
-pub fn user_named(id: &str, name: &str) -> User {
+pub fn user_named(id: &str, first_name: &str, last_name: &str) -> User {
     User {
         id: id.into(),
-        name: name.into(),
+        first_name: first_name.into(),
+        last_name: last_name.into(),
         email: format!("{id}@ecclesia.test"),
-        city: "Cedar Falls".into(),
-        region: "Iowa".into(),
         bio: String::new(),
         created_at: "t0".into(),
+        church_id: None,
+        church_status: None,
+        church_role: None,
     }
 }
 
-pub fn church(id: &str) -> Church {
-    church_at(id, "Cedar Falls", "Iowa")
+pub fn user_in_church(id: &str, church_id: &str, role: &str, status: &str) -> User {
+    let mut person = user(id);
+    person.church_id = Some(church_id.into());
+    person.church_role = Some(role.into());
+    person.church_status = Some(status.into());
+    person
 }
 
-pub fn church_at(id: &str, city: &str, region: &str) -> Church {
+pub fn church(id: &str) -> Church {
+    church_at(id, 42.5349, -92.4453)
+}
+
+pub fn church_at(id: &str, latitude: f64, longitude: f64) -> Church {
     Church {
         id: id.into(),
         name: id.into(),
-        city: city.into(),
-        region: region.into(),
+        address: "100 Main Street".into(),
+        latitude,
+        longitude,
         country: "US".into(),
         description: String::new(),
         gathering: String::new(),
@@ -37,28 +48,10 @@ pub fn church_at(id: &str, city: &str, region: &str) -> Church {
     }
 }
 
-pub fn membership(
-    id: &str,
-    church_id: &str,
-    user_id: &str,
-    role: &str,
-    status: &str,
-) -> Membership {
-    Membership {
-        id: id.into(),
-        church_id: church_id.into(),
-        user_id: user_id.into(),
-        role: role.into(),
-        status: status.into(),
-        created_at: "t0".into(),
-    }
-}
-
-pub fn viewer_of(user: User, memberships: Vec<Membership>, churches: Vec<Church>) -> Viewer {
+pub fn viewer_of(user: User, church: Option<Church>) -> Viewer {
     Viewer {
         user,
-        memberships,
-        churches,
+        church,
         gift_ids: vec![],
     }
 }

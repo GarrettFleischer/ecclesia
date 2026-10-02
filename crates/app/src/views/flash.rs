@@ -38,7 +38,7 @@ fn flash_ok(code: &str) -> String {
         "welcome" => "Account created.".into(),
         "joined_request" => "Request sent. The pastor will approve or decline.".into(),
         "invited" => "Invite sent.".into(),
-        "redeemed" => "Found it. Accept the invite below.".into(),
+        "redeemed" => "You're in.".into(),
         "approved" => "Approved.".into(),
         "declined" => "Declined.".into(),
         "need_posted" => "Posted.".into(),

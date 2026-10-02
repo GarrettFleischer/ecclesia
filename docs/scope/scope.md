@@ -14,6 +14,9 @@ _These are recommendations to keep your build orderly, not requirements._
 | 1 | Scale persistence foundation | Foundation | done |
 | 2 | Identity and sessions | Foundation | done |
 | 3 | Hybrid access and refresh tokens | Slice 1 | done |
+| 4 | Create account without a church | Slice 2 | in-progress |
+| 5 | Join a church | Slice 2 | planned |
+| 6 | Start a church | Slice 2 | planned |
 
 ## Foundations
 
@@ -64,6 +67,31 @@ Short lived bearer access plus a revocable refresh credential for JSON clients. 
 - [x] Document it: `/jsm-document hybrid access and refresh tokens`
 spec [0003](../specs/0003-hybrid-access-refresh/index.md)
 code in crates/sdk, crates/app
+
+## Slice 2
+
+### 4. Create account without a church · in-progress
+Create account asks for first name, last name, email, and password. The church building stores an address and coordinates. After the account exists, the person can join the closest church if they allow location, or search by name or scan a QR code.
+**Done when:** creating an account no longer asks for a church, a signed in person can join or switch church from profile, they have at most one church, and a granted device location suggests the nearest church.
+- [x] Design it (spec): `/jsm-architect create account without a church`
+- [x] Engineer it: `/jsm-engineer create account without a church`
+- [ ] Build it: `/jsm-develop create account without a church`
+   - [ ] Person name columns and register without a church (AC-1, AC-2, AC-3, AC-4, AC-7)
+   - [ ] Home, profile, and `/api/me` without a person place; profile can open join for the one church (AC-5, AC-6, AC-10)
+   - [ ] Church address and coordinates, and closest suggestion on `/churches/join` (AC-8, AC-9)
+- [ ] Verify it: `/jsm-check verify create account without a church`
+- [ ] Test it: `/jsm-test create account without a church`
+spec [0004](../specs/0004-account-without-church/index.md)
+
+### 5. Join a church · planned · needs a decision
+After the account exists, `/churches/join` suggests the closest church when location is allowed (spec 0004). A church code makes them a member right away. A name search waits until a pastor accepts.
+**Done when:** a signed in person can join from a church code immediately, or request to join from a name search sorted by device location, and only an accepted request makes them a member.
+- [ ] Design it (spec): `/jsm-architect join a church`
+
+### 6. Start a church · planned · needs a decision · GA
+A signed in person can start a church in a short wizard. They give the United States employer identification number, the state charity or corporation number, and the facts that show they are the pastor. A reviewer checks that claim. Other people cannot find or join the church until the check passes.
+**Done when:** a new church stays hidden until a reviewer accepts the pastor claim and both government numbers, and a refused claim never becomes a findable church.
+- [ ] Design it (spec): `/jsm-architect start a church`
 
 ## Deferred
 

@@ -1,7 +1,5 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Redirect, Response};
-use axum::Json;
+use axum::response::{Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use ecclesia_sdk::limit::{RateDecision, RateKind};
@@ -15,7 +13,7 @@ use super::context::{
     redirect_ok, unread, viewer_for, with_cookie,
 };
 use super::forms::{
-    ChurchSearchQuery, CsrfForm, FlashQuery, PasswordForm, RegisterForm, ResetCompleteForm,
+    CsrfForm, FlashQuery, PasswordForm, RegisterForm, ResetCompleteForm,
     SessionForm, TokenQuery,
 };
 use super::{AppError, AppState};
@@ -204,18 +202,6 @@ pub async fn revoke_session(
     Ok(with_cookie(jar, Redirect::to("/me")))
 }
 
-pub async fn register_church_search(
-    State(state): State<AppState>,
-    who: ClientKey,
-    Query(query): Query<ChurchSearchQuery>,
-) -> Result<Response, AppError> {
-    if let RateDecision::Refuse = state.decide_rate(RateKind::Lookup, &who.0).await {
-        return Ok(StatusCode::TOO_MANY_REQUESTS.into_response());
-    }
-    let hits = story::search_churches(&state.sdk, &query.q, 5).await?;
-    Ok(Json(hits).into_response())
-}
-
 pub async fn register_user(
     State(state): State<AppState>,
     who: ClientKey,
@@ -232,9 +218,9 @@ pub async fn register_user(
     }
     match story::register(
         &state.sdk,
-        &form.name,
+        &form.first_name,
+        &form.last_name,
         &form.email,
-        &form.church_id,
         &form.password,
         &device_meta(&headers, &who),
     )
@@ -242,7 +228,7 @@ pub async fn register_user(
     {
         Ok(ok) => Ok(with_cookie(
             put_signed(&state, jar, &ok),
-            redirect_ok("/home", "welcome"),
+            redirect_ok("/churches/join", "welcome"),
         )),
         Err(error) if error.flash_code() == "password" => Ok(with_cookie(
             jar,
@@ -250,10 +236,9 @@ pub async fn register_user(
                 views::flash_from(None, Some(error.flash_code().to_string())),
                 &session.csrf,
                 &views::RegisterDraft {
-                    name: &form.name,
+                    first_name: &form.first_name,
+                    last_name: &form.last_name,
                     email: &form.email,
-                    church_id: &form.church_id,
-                    church_query: &form.church_query,
                 },
             )),
         )),
@@ -462,9 +447,6 @@ async fn member_home(
     flash: FlashQuery,
 ) -> Result<Response, AppError> {
     let viewer = viewer_for(&state.sdk.db, user).await?;
-    let pending: Vec<_> =
-        ecclesia_sdk::prelude::pair_memberships(viewer.pending_memberships(), &viewer.churches)
-            .collect();
     let page = story::home_needs(&state.sdk, &viewer, flash.after.as_deref()).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     Ok(with_cookie(
@@ -472,7 +454,6 @@ async fn member_home(
         html(views::home(
             &viewer,
             views::flash_from(flash.ok, flash.err),
-            &pending,
             &page.cards,
             &page.churches,
             page.next_cursor.as_deref(),

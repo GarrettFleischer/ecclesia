@@ -1,5 +1,5 @@
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Membership, Need, Notification, User, Write,
+    Application, Church, Effect, Endorsement, Need, Notification, User, Write,
 };
 
 /// In-process world. The SDK applies Domain effects here so stories can be
@@ -8,7 +8,6 @@ use ecclesia_domain::{
 pub struct MemoryWorld {
     pub users: Vec<User>,
     pub churches: Vec<Church>,
-    pub memberships: Vec<Membership>,
     pub member_gifts: Vec<(String, String, String)>,
     pub needs: Vec<Need>,
     pub applications: Vec<Application>,
@@ -20,12 +19,6 @@ impl MemoryWorld {
     pub fn apply(&mut self, effect: Effect, now: &str) {
         apply_writes(self, effect.writes);
         apply_notices(self, effect.notices, now);
-    }
-
-    pub fn membership(&self, church_id: &str, user_id: &str) -> Option<&Membership> {
-        self.memberships
-            .iter()
-            .find(|m| m.church_id == church_id && m.user_id == user_id)
     }
 
     pub fn user(&self, id: &str) -> Option<&User> {
@@ -53,14 +46,17 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
         Write::InsertUser(user) => world.users.push(user),
         Write::UpdateUser {
             id,
-            name,
-            city,
-            region,
+            first_name,
+            last_name,
             bio,
-        } => update_user(world, id, name, city, region, bio),
+        } => update_user(world, id, first_name, last_name, bio),
         Write::InsertChurch(church) => world.churches.push(church),
-        Write::InsertMembership(membership) => world.memberships.push(membership),
-        Write::SetMembershipStatus { id, status } => set_membership_status(world, id, status),
+        Write::SetChurchLink {
+            user_id,
+            church_id,
+            church_status,
+            church_role,
+        } => set_church_link(world, user_id, church_id, church_status, church_role),
         Write::InsertNeed(need) => world.needs.push(need),
         Write::SetNeedStatus { id, status } => set_need_status(world, id, status),
         Write::InsertApplication(application) => world.applications.push(application),
@@ -79,22 +75,28 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
 fn update_user(
     world: &mut MemoryWorld,
     id: String,
-    name: String,
-    city: String,
-    region: String,
+    first_name: String,
+    last_name: String,
     bio: String,
 ) {
     if let Some(user) = world.users.iter_mut().find(|user| user.id == id) {
-        user.name = name;
-        user.city = city;
-        user.region = region;
+        user.first_name = first_name;
+        user.last_name = last_name;
         user.bio = bio;
     }
 }
 
-fn set_membership_status(world: &mut MemoryWorld, id: String, status: &'static str) {
-    if let Some(membership) = world.memberships.iter_mut().find(|m| m.id == id) {
-        membership.status = status.into();
+fn set_church_link(
+    world: &mut MemoryWorld,
+    user_id: String,
+    church_id: Option<String>,
+    church_status: Option<String>,
+    church_role: Option<String>,
+) {
+    if let Some(user) = world.users.iter_mut().find(|user| user.id == user_id) {
+        user.church_id = church_id;
+        user.church_status = church_status;
+        user.church_role = church_role;
     }
 }
 
@@ -156,69 +158,39 @@ fn push_notice(world: &mut MemoryWorld, notice: ecclesia_domain::NoticeDraft, no
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecclesia_domain::sample::user_named;
+    use ecclesia_domain::sample::{church, user_in_church, user_named};
     use ecclesia_domain::{
-        Viewer, accept_endorsement, accept_invite, approve_membership, request_join,
+        Viewer, accept_endorsement, accept_invite, approve_membership, replace_with_pending,
     };
 
-    fn user(id: &str, name: &str) -> User {
-        user_named(id, name)
+    fn user(id: &str, first: &str) -> User {
+        user_named(id, first, "Lane")
     }
 
     #[test]
     fn us_mem_01_sdk_applies_a_join_request() {
         let mut world = MemoryWorld::default();
         let peter = user("peter", "Peter");
-        let church = Church {
-            id: "grace".into(),
-            name: "Grace".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            country: "US".into(),
-            description: String::new(),
-            gathering: String::new(),
-            owner_id: "miriam".into(),
-            invite_code: "grace-k2m9".into(),
-            created_at: "t0".into(),
-        };
-        let effect = request_join(
-            &peter,
-            &church,
-            None,
-            &["miriam".into()],
-            "mem1".into(),
-            "t1".into(),
-        )
-        .unwrap();
+        world.users.push(peter.clone());
+        let grace = church("grace");
+        let effect = replace_with_pending(&peter, &grace, &["miriam".into()]).unwrap();
         world.apply(effect, "t1");
-        let membership = world.membership("grace", "peter").unwrap();
-        assert_eq!(membership.status, "pending_request");
+        let saved = world.user("peter").unwrap();
+        assert_eq!(saved.church_status.as_deref(), Some("pending"));
         assert_eq!(world.notifications[0].user_id, "miriam");
     }
 
     #[test]
-    fn us_mem_04_sdk_approve_then_accept_invite_round_trip() {
+    fn us_mem_04_sdk_accept_invite_round_trip() {
         let mut world = MemoryWorld::default();
-        world.memberships.push(Membership {
-            id: "own".into(),
-            church_id: "grace".into(),
-            user_id: "miriam".into(),
-            role: "owner".into(),
-            status: "active".into(),
-            created_at: "t0".into(),
-        });
-        world.memberships.push(Membership {
-            id: "inv".into(),
-            church_id: "grace".into(),
-            user_id: "peter".into(),
-            role: "member".into(),
-            status: "pending_invite".into(),
-            created_at: "t0".into(),
-        });
-        let peter = user("peter", "Peter");
-        let effect = accept_invite(&peter, world.membership("grace", "peter").unwrap()).unwrap();
+        let peter = user_in_church("peter", "grace", "member", "invited");
+        world.users.push(peter.clone());
+        let effect = accept_invite(&peter).unwrap();
         world.apply(effect, "t1");
-        assert_eq!(world.membership("grace", "peter").unwrap().status, "active");
+        assert_eq!(
+            world.user("peter").unwrap().church_status.as_deref(),
+            Some("active")
+        );
     }
 
     #[test]
@@ -249,40 +221,12 @@ mod tests {
 
     #[test]
     fn us_mem_04_sdk_member_cannot_approve() {
-        let membership = Membership {
-            id: "m1".into(),
-            church_id: "grace".into(),
-            user_id: "ruth".into(),
-            role: "member".into(),
-            status: "active".into(),
-            created_at: "t0".into(),
-        };
         let viewer = Viewer {
-            user: user("ruth", "Ruth"),
-            memberships: vec![membership.clone()],
-            churches: vec![],
+            user: user_in_church("ruth", "grace", "member", "active"),
+            church: Some(church("grace")),
             gift_ids: vec![],
         };
-        let target = Membership {
-            id: "m2".into(),
-            church_id: "grace".into(),
-            user_id: "peter".into(),
-            role: "member".into(),
-            status: "pending_request".into(),
-            created_at: "t0".into(),
-        };
-        let church = Church {
-            id: "grace".into(),
-            name: "Grace".into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
-            country: "US".into(),
-            description: String::new(),
-            gathering: String::new(),
-            owner_id: "miriam".into(),
-            invite_code: "x".into(),
-            created_at: "t0".into(),
-        };
-        assert!(approve_membership(&viewer, &target, &church).is_err());
+        let target = user_in_church("peter", "grace", "member", "pending");
+        assert!(approve_membership(&viewer, &target, &church("grace")).is_err());
     }
 }

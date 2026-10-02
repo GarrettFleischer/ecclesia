@@ -1,7 +1,7 @@
 use sqlx::{PgPool, SqlitePool};
 
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Membership, Need, NoticeDraft, User, Write,
+    Application, Church, Effect, Endorsement, Need, NoticeDraft, User, Write,
 };
 
 use crate::cache::keys_for_write;
@@ -61,6 +61,7 @@ impl Exec for SqliteExec<'_, '_> {
                 Bind::Text(value) => query.bind(value),
                 Bind::OptText(value) => query.bind(value),
                 Bind::I64(value) => query.bind(value),
+                Bind::F64(value) => query.bind(value),
             };
         }
         query.execute(&mut **self.0).await?;
@@ -74,6 +75,7 @@ impl Exec for SqliteExec<'_, '_> {
                 Bind::Text(value) => query.bind(value),
                 Bind::OptText(value) => query.bind(value),
                 Bind::I64(value) => query.bind(value),
+                Bind::F64(value) => query.bind(value),
             };
         }
         Ok(query.fetch_optional(&mut **self.0).await?)
@@ -89,6 +91,7 @@ impl Exec for PostgresExec<'_, '_> {
                 Bind::Text(value) => query.bind(value),
                 Bind::OptText(value) => query.bind(value),
                 Bind::I64(value) => query.bind(value),
+                Bind::F64(value) => query.bind(value),
             };
         }
         query.execute(&mut **self.0).await?;
@@ -103,6 +106,7 @@ impl Exec for PostgresExec<'_, '_> {
                 Bind::Text(value) => query.bind(value),
                 Bind::OptText(value) => query.bind(value),
                 Bind::I64(value) => query.bind(value),
+                Bind::F64(value) => query.bind(value),
             };
         }
         Ok(query.fetch_optional(&mut **self.0).await?)
@@ -243,8 +247,11 @@ async fn insert_mail(exec: &mut impl Exec, mail: &super::extras::MailWrite) -> a
 
 async fn church_id_for(exec: &mut impl Exec, write: &Write) -> anyhow::Result<Option<String>> {
     match write {
-        Write::SetMembershipStatus { id, .. } => exec
-            .fetch_text("SELECT church_id FROM memberships WHERE id = ?", &[Bind::Text(id)])
+        Write::SetChurchLink { user_id, .. } => exec
+            .fetch_text(
+                "SELECT church_id FROM users WHERE id = ?",
+                &[Bind::Text(user_id)],
+            )
             .await,
         Write::SetNeedStatus { id, .. } => exec
             .fetch_text("SELECT church_id FROM needs WHERE id = ?", &[Bind::Text(id)])
@@ -273,16 +280,17 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
         Write::InsertUser(user) => insert_user(exec, user).await,
         Write::UpdateUser {
             id,
-            name,
-            city,
-            region,
+            first_name,
+            last_name,
             bio,
-        } => update_user(exec, id, name, city, region, bio).await,
+        } => update_user(exec, id, first_name, last_name, bio).await,
         Write::InsertChurch(church) => insert_church(exec, church).await,
-        Write::InsertMembership(membership) => insert_membership(exec, membership).await,
-        Write::SetMembershipStatus { id, status } => {
-            set_status(exec, StatusTable::Memberships, id, status).await
-        }
+        Write::SetChurchLink {
+            user_id,
+            church_id,
+            church_status,
+            church_role,
+        } => set_church_link(exec, user_id, church_id, church_status, church_role).await,
         Write::InsertNeed(need) => insert_need(exec, need).await,
         Write::SetNeedStatus { id, status } => set_status(exec, StatusTable::Needs, id, status).await,
         Write::InsertApplication(application) => insert_application(exec, application).await,
@@ -305,7 +313,6 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
 }
 
 enum StatusTable {
-    Memberships,
     Needs,
     Applications,
     Endorsements,
@@ -314,7 +321,6 @@ enum StatusTable {
 impl StatusTable {
     fn update_sql(self) -> &'static str {
         match self {
-            Self::Memberships => "UPDATE memberships SET status = ? WHERE id = ?",
             Self::Needs => "UPDATE needs SET status = ? WHERE id = ?",
             Self::Applications => "UPDATE applications SET status = ? WHERE id = ?",
             Self::Endorsements => "UPDATE endorsements SET status = ? WHERE id = ?",
@@ -363,15 +369,18 @@ async fn apply_notice(exec: &mut impl Exec, notice: &NoticeDraft) -> anyhow::Res
 
 async fn insert_user(exec: &mut impl Exec, user: &User) -> anyhow::Result<()> {
     exec.exec(
-        "INSERT INTO users (id, name, email, city, region, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, first_name, last_name, email, bio, created_at, church_id, church_status, church_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         &[
             Bind::Text(&user.id),
-            Bind::Text(&user.name),
+            Bind::Text(&user.first_name),
+            Bind::Text(&user.last_name),
             Bind::Text(&user.email),
-            Bind::Text(&user.city),
-            Bind::Text(&user.region),
             Bind::Text(&user.bio),
             Bind::Text(&user.created_at),
+            Bind::OptText(user.church_id.as_deref()),
+            Bind::OptText(user.church_status.as_deref()),
+            Bind::OptText(user.church_role.as_deref()),
         ],
     )
     .await
@@ -380,17 +389,15 @@ async fn insert_user(exec: &mut impl Exec, user: &User) -> anyhow::Result<()> {
 async fn update_user(
     exec: &mut impl Exec,
     id: &str,
-    name: &str,
-    city: &str,
-    region: &str,
+    first_name: &str,
+    last_name: &str,
     bio: &str,
 ) -> anyhow::Result<()> {
     exec.exec(
-        "UPDATE users SET name = ?, city = ?, region = ?, bio = ? WHERE id = ?",
+        "UPDATE users SET first_name = ?, last_name = ?, bio = ? WHERE id = ?",
         &[
-            Bind::Text(name.trim()),
-            Bind::Text(city.trim()),
-            Bind::Text(region.trim()),
+            Bind::Text(first_name.trim()),
+            Bind::Text(last_name.trim()),
             Bind::Text(bio.trim()),
             Bind::Text(id),
         ],
@@ -398,36 +405,41 @@ async fn update_user(
     .await
 }
 
+async fn set_church_link(
+    exec: &mut impl Exec,
+    user_id: &str,
+    church_id: &Option<String>,
+    church_status: &Option<String>,
+    church_role: &Option<String>,
+) -> anyhow::Result<()> {
+    exec.exec(
+        "UPDATE users SET church_id = ?, church_status = ?, church_role = ? WHERE id = ?",
+        &[
+            Bind::OptText(church_id.as_deref()),
+            Bind::OptText(church_status.as_deref()),
+            Bind::OptText(church_role.as_deref()),
+            Bind::Text(user_id),
+        ],
+    )
+    .await
+}
+
 async fn insert_church(exec: &mut impl Exec, church: &Church) -> anyhow::Result<()> {
     exec.exec(
-        "INSERT INTO churches (id, name, city, region, country, description, gathering, owner_id, invite_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO churches (id, name, address, latitude, longitude, country, description, gathering, owner_id, invite_code, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         &[
             Bind::Text(&church.id),
             Bind::Text(&church.name),
-            Bind::Text(&church.city),
-            Bind::Text(&church.region),
+            Bind::Text(&church.address),
+            Bind::F64(church.latitude),
+            Bind::F64(church.longitude),
             Bind::Text(&church.country),
             Bind::Text(&church.description),
             Bind::Text(&church.gathering),
             Bind::Text(&church.owner_id),
             Bind::Text(&church.invite_code),
             Bind::Text(&church.created_at),
-        ],
-    )
-    .await
-}
-
-async fn insert_membership(exec: &mut impl Exec, membership: &Membership) -> anyhow::Result<()> {
-    exec.exec(
-        "INSERT INTO memberships (id, church_id, user_id, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        &[
-            Bind::Text(&membership.id),
-            Bind::Text(&membership.church_id),
-            Bind::Text(&membership.user_id),
-            Bind::Text(&membership.role),
-            Bind::Text(&membership.status),
-            Bind::Text(&membership.created_at),
         ],
     )
     .await

@@ -11,7 +11,9 @@ use super::context::{
     ClientKey, html, leaf_err, redirect_err, redirect_ok, signed_form, signed_in, story_redirect,
     unread, viewer_for, with_cookie,
 };
-use super::forms::{ChurchForm, CsrfForm, FlashQuery, InviteForm, RedeemForm};
+use super::forms::{
+    ChurchForm, CsrfForm, FlashQuery, InviteForm, JoinChurchForm, JoinQuery, RedeemForm,
+};
 use super::{AppError, AppState};
 
 pub async fn churches_index(
@@ -57,7 +59,7 @@ pub async fn church_new(
             count,
             views::flash_from(flash.ok, flash.err),
             &signed.session.csrf,
-            &views::ChurchDraft::blank(&viewer.user.city, &viewer.user.region),
+            &views::ChurchDraft::blank(),
         )),
     ))
 }
@@ -71,7 +73,10 @@ pub async fn create_church(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    if state.awaiting_review(&form.pass, &[&form.description]) {
+    if state.awaiting_review(
+        &form.pass,
+        &[&form.name, &form.address, &form.gathering, &form.description],
+    ) {
         let description = state.polish(VoiceKind::Church, &form.description).await;
         let count = unread(&state.sdk.db, &signed.user.id).await?;
         return Ok(with_cookie(
@@ -83,8 +88,9 @@ pub async fn create_church(
                 &signed.session.csrf,
                 &views::ChurchDraft {
                     name: &form.name,
-                    city: &form.city,
-                    region: &form.region,
+                    address: &form.address,
+                    latitude: &form.latitude,
+                    longitude: &form.longitude,
                     gathering: &form.gathering,
                     description: &description,
                     kind: views::DraftKind::Review,
@@ -92,12 +98,22 @@ pub async fn create_church(
             )),
         ));
     }
+    let (Some(latitude), Some(longitude)) = (
+        parse_coord(&form.latitude),
+        parse_coord(&form.longitude),
+    ) else {
+        return Ok(with_cookie(
+            signed.jar,
+            redirect_err("/churches/new", "missing"),
+        ));
+    };
     let ok = match story::plant_church(
         &state.sdk,
         &signed.user,
         &form.name,
-        &form.city,
-        &form.region,
+        &form.address,
+        latitude,
+        longitude,
         &form.description,
         &form.gathering,
     )
@@ -244,17 +260,17 @@ pub async fn redeem(
 pub async fn approve_membership_http(
     State(state): State<AppState>,
     jar: CookieJar,
-    Path(id): Path<String>,
+    Path((church_id, user_id)): Path<(String, String)>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    let loaded = match load_membership_decision(&state, jar, &id, &form.csrf).await {
+    let loaded = match load_membership_decision(&state, jar, &church_id, &form.csrf).await {
         Ok(loaded) => loaded,
         Err(response) => return Ok(response),
     };
     story_redirect(
         loaded.jar,
         &loaded.dest,
-        story::approve_membership(&state.sdk, &loaded.viewer, &id).await?,
+        story::approve_membership(&state.sdk, &loaded.viewer, &user_id).await?,
         "approved",
     )
 }
@@ -262,17 +278,17 @@ pub async fn approve_membership_http(
 pub async fn decline_membership_http(
     State(state): State<AppState>,
     jar: CookieJar,
-    Path(id): Path<String>,
+    Path((church_id, user_id)): Path<(String, String)>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
-    let loaded = match load_membership_decision(&state, jar, &id, &form.csrf).await {
+    let loaded = match load_membership_decision(&state, jar, &church_id, &form.csrf).await {
         Ok(loaded) => loaded,
         Err(response) => return Ok(response),
     };
     story_redirect(
         loaded.jar,
         &loaded.dest,
-        story::decline_membership(&state.sdk, &loaded.viewer, &id).await?,
+        story::decline_membership(&state.sdk, &loaded.viewer, &user_id).await?,
         "declined",
     )
 }
@@ -286,20 +302,11 @@ struct MembershipDecision {
 async fn load_membership_decision(
     state: &AppState,
     jar: CookieJar,
-    id: &str,
+    church_id: &str,
     csrf: &str,
 ) -> Result<MembershipDecision, Response> {
     let signed = signed_in(state, jar).await?;
-    let Some(target) = state
-        .sdk
-        .db
-        .membership(id)
-        .await
-        .map_err(|error| AppError::from(error).into_response())?
-    else {
-        return Err(with_cookie(signed.jar, redirect_err("/home", "not_found")));
-    };
-    let dest = format!("/churches/{}", target.church_id);
+    let dest = format!("/churches/{church_id}");
     if !signed.session.check_csrf(csrf) {
         return Err(with_cookie(signed.jar, super::context::fail_csrf(&dest)));
     }
@@ -316,14 +323,13 @@ async fn load_membership_decision(
 pub async fn accept_invite_http(
     State(state): State<AppState>,
     jar: CookieJar,
-    Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
     let signed = match signed_form(&state, jar, &form.csrf, "/home").await {
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    match story::accept_invite(&state.sdk, &signed.user, &id).await? {
+    match story::accept_invite(&state.sdk, &signed.user).await? {
         Ok(ok) => {
             let dest = format!("/churches/{}", ok.church_id.as_deref().unwrap_or_default());
             Ok(with_cookie(
@@ -332,5 +338,120 @@ pub async fn accept_invite_http(
             ))
         }
         Err(error) => Ok(with_cookie(signed.jar, leaf_err("/home", error))),
+    }
+}
+
+pub async fn join_page(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Query(query): Query<JoinQuery>,
+) -> Result<Response, AppError> {
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    let count = unread(&state.sdk.db, &viewer.user.id).await?;
+    let mut flash = views::flash_from(query.ok.clone(), query.err.clone());
+    let suggestion = match read_coords(&query.lat, &query.lng) {
+        Err(()) => {
+            if flash.is_none() {
+                flash = views::flash_from(None, Some("missing".to_string()));
+            }
+            None
+        }
+        Ok(pair) => {
+            let (lat, lng) = match pair {
+                Some((lat, lng)) => (Some(lat), Some(lng)),
+                None => (None, None),
+            };
+            match story::join_suggestion(&state.sdk, &viewer.user, lat, lng).await? {
+                Ok(church) => church,
+                Err(_) => {
+                    if flash.is_none() {
+                        flash = views::flash_from(None, Some("missing".to_string()));
+                    }
+                    None
+                }
+            }
+        }
+    };
+    let hits = if query.q.trim().is_empty() {
+        Vec::new()
+    } else {
+        story::search_churches(&state.sdk, &query.q, 8).await?
+    };
+    Ok(with_cookie(
+        signed.jar,
+        html(views::join_church_page(
+            &viewer,
+            flash,
+            count,
+            &signed.session.csrf,
+            suggestion.as_ref(),
+            &hits,
+            &query.q,
+            query.lat.trim(),
+            query.lng.trim(),
+        )),
+    ))
+}
+
+pub async fn join_by_search(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<JoinChurchForm>,
+) -> Result<Response, AppError> {
+    let signed = match signed_form(&state, jar, &form.csrf, "/churches/join").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    story_redirect(
+        signed.jar,
+        "/churches/join",
+        story::request_join(&state.sdk, &signed.user, &form.church_id).await?,
+        "joined_request",
+    )
+}
+
+pub async fn join_by_code(
+    State(state): State<AppState>,
+    who: ClientKey,
+    jar: CookieJar,
+    Form(form): Form<RedeemForm>,
+) -> Result<Response, AppError> {
+    let signed = match signed_form(&state, jar, &form.csrf, "/churches/join").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Redeem, &who.0).await {
+        return Ok(with_cookie(signed.jar, redirect_err("/churches/join", "rate")));
+    }
+    match story::redeem_invite(&state.sdk, &signed.user, &form.code).await? {
+        Ok(_) => Ok(with_cookie(
+            signed.jar,
+            redirect_ok("/churches/join", "redeemed"),
+        )),
+        Err(ecclesia_sdk::prelude::DomainError::NotFound) => {
+            Ok(with_cookie(signed.jar, redirect_err("/churches/join", "invite")))
+        }
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err("/churches/join", error))),
+    }
+}
+
+fn parse_coord(raw: &str) -> Option<f64> {
+    let value = raw.trim().parse::<f64>().ok()?;
+    value.is_finite().then_some(value)
+}
+
+fn read_coords(lat: &str, lng: &str) -> Result<Option<(f64, f64)>, ()> {
+    let lat = lat.trim();
+    let lng = lng.trim();
+    if lat.is_empty() && lng.is_empty() {
+        return Ok(None);
+    }
+    match (lat.parse::<f64>(), lng.parse::<f64>()) {
+        (Ok(lat), Ok(lng)) if lat.is_finite() && lng.is_finite() => Ok(Some((lat, lng))),
+        _ => Err(()),
     }
 }

@@ -104,11 +104,11 @@ async fn get_page(
         .oneshot(request.body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::OK, "GET {uri}");
-    let next_cookie = try_cookie_from(&response)
-        .or_else(|| cookie.map(ToOwned::to_owned))
-        .expect("session cookie");
+    let status = response.status();
+    let next_cookie = try_cookie_from(&response).or_else(|| cookie.map(ToOwned::to_owned));
     let html = body_string(response).await;
+    assert_eq!(status, StatusCode::OK, "GET {uri}\n{html}");
+    let next_cookie = next_cookie.expect("session cookie");
     let csrf = csrf_from(&html);
     (html, next_cookie, csrf)
 }
@@ -141,12 +141,18 @@ async fn post_form(
         .unwrap()
 }
 
+fn split_name(name: &str) -> (&str, &str) {
+    name.rsplit_once(' ').unwrap_or((name, "Lane"))
+}
+
 async fn register(world: &World, name: &str, email: &str) -> String {
     let (_html, cookie, csrf) = get_page(world.app.clone(), None, "/register").await;
     let csrf = csrf.expect("register csrf");
+    let (first, last) = split_name(name);
     let body = format!(
-        "csrf={csrf}&name={}&email={}&church_id=seed_grace&church_query=Grace+Fellowship&password={}",
-        enc(name),
+        "csrf={csrf}&first_name={}&last_name={}&email={}&password={}",
+        enc(first),
+        enc(last),
         enc(email),
         enc(PASS)
     );
@@ -168,7 +174,7 @@ async fn plant(world: &World, cookie: &str, name: &str) -> (String, String) {
     let (_page, cookie, csrf) = get_page(world.app.clone(), Some(cookie), "/churches/new").await;
     let csrf = csrf.expect("church csrf");
     let body = format!(
-        "csrf={csrf}&name={}&city=Cedar+Falls&region=Iowa&gathering=Sunday+at+10.&description=A+church+on+Main+Street.&pass=publish",
+        "csrf={csrf}&name={}&address=100+Main+Street&latitude=42.5349&longitude=-92.4453&gathering=Sunday+at+10.&description=A+church+on+Main+Street.&pass=publish",
         enc(name)
     );
     let response = post_form(world.app.clone(), Some(&cookie), "/churches", body).await;
@@ -297,11 +303,12 @@ async fn post_json(
     post_page(world, cookie, csrf, uri, extra).await
 }
 
-fn membership_id(html: &str) -> String {
-    html.split("/memberships/")
+fn waiting_user_id(html: &str, church_id: &str) -> String {
+    let marker = format!("/churches/{church_id}/members/");
+    html.split(&marker)
         .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .expect("membership id")
+        .and_then(|rest| rest.split(['/', '"', '?']).next())
+        .expect("waiting user id")
         .to_string()
 }
 
@@ -377,40 +384,12 @@ async fn us_auth_01_register_then_sign_in() {
 }
 
 #[tokio::test]
-async fn us_auth_01_register_church_search_finds_grace() {
+async fn us_auth_01_join_search_finds_grace() {
     let world = app().await;
-    let response = world
-        .app
-        .clone()
-        .oneshot(
-            Request::get("/register/churches?q=grace")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = body_string(response).await;
-    assert!(body.contains("Grace Fellowship"));
-    assert!(body.contains("seed_grace"));
-    for _ in 0..24 {
-        let again = world
-            .app
-            .clone()
-            .oneshot(
-                Request::get("/register/churches?q=gra")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(again.status(), StatusCode::OK);
-        let again_body = body_string(again).await;
-        assert!(
-            again_body.contains("Grace Fellowship"),
-            "later lookups still match, got {again_body}"
-        );
-    }
+    let cookie = register(&world, "Miriam Cole", "miriam-search@grace.test").await;
+    let page = get(&world, &cookie, "/churches/join?q=grace").await;
+    assert!(page.contains("Grace Fellowship"));
+    assert!(page.contains("seed_grace"));
 }
 
 #[tokio::test]
@@ -451,14 +430,14 @@ async fn us_auth_01_weak_password_stays_on_register() {
         &cookie,
         &csrf,
         "/register",
-        "name=Cara+Nguyen&email=cara@verify.test&church_id=seed_grace&church_query=Grace+Fellowship&password=password",
+        "first_name=Cara&last_name=Nguyen&email=cara@verify.test&password=password",
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(page.contains("Pick a stronger password."));
-    assert!(page.contains("value=\"Cara Nguyen\""));
+    assert!(page.contains("value=\"Cara\""));
+    assert!(page.contains("value=\"Nguyen\""));
     assert!(page.contains("value=\"cara@verify.test\""));
-    assert!(page.contains("value=\"Grace Fellowship\""));
     assert!(!page.contains("value=\"password\""));
     assert!(
         world
@@ -612,12 +591,12 @@ async fn us_mem_04_pastor_can_approve_a_join_request() {
     let csrf = csrf.expect("church csrf");
     assert!(church.contains("Peter Lang"));
     assert!(church.contains("Asked to join"));
-    let mem = membership_id(&church);
+    let peter_id = waiting_user_id(&church, &church_id);
     let status = post(
         &world,
         &miriam,
         &csrf,
-        &format!("/memberships/{mem}/approve"),
+        &format!("/churches/{church_id}/members/{peter_id}/approve"),
         "",
     )
     .await;
@@ -1495,7 +1474,9 @@ async fn us_api_01_json_sign_in_refresh_and_me() {
     let profile: serde_json::Value =
         serde_json::from_str(&body_string(me).await).unwrap();
     assert_eq!(profile["email"].as_str(), Some(email.as_str()));
-    assert!(profile["name"].as_str().is_some());
+    assert_eq!(profile["first_name"].as_str(), Some("Api"));
+    assert_eq!(profile["last_name"].as_str(), Some("Member"));
+    assert!(profile["church_id"].is_null());
     assert!(profile["id"].as_str().is_some());
 
     let rotated = post_json_api(

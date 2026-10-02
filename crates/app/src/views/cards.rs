@@ -3,9 +3,9 @@
 use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
-    ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchMember, EndorsementCard, Gift,
-    MemberGift, Membership, MembershipStatus, NeedCard, NeedScope, Notification, PlaceGroup,
-    Viewer,
+    ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchLinkStatus, ChurchMember,
+    EndorsementCard, Gift, MemberGift, MembershipRole, NeedCard, NeedScope, Notification,
+    PlaceGroup, Viewer, display_name,
 };
 
 use super::layout::{Icon, Monogram, csrf_input, icon, monogram};
@@ -47,7 +47,7 @@ fn need_card_eyebrow(need: &NeedCard, place: NeedCardPlace) -> String {
                 "{} · {} · {}",
                 scope_label(&need.scope),
                 need.church_name,
-                need.church_city
+                need.church_address
             )
         }
         NeedCardPlace::Church => scope_label(&need.scope).to_string(),
@@ -85,17 +85,12 @@ pub fn need_card_stack<'a>(
     }
 }
 
-pub fn pending_door_cards(pending: &[(&Church, &Membership)], csrf: &str) -> Markup {
-    html! {
-        @for pair in pending {
-            (pending_door_card(pair, csrf))
-        }
-    }
-}
-
-fn pending_door_card(pair: &(&Church, &Membership), csrf: &str) -> Markup {
-    let (church, membership) = pair;
-    let asked = membership.status() == Some(MembershipStatus::PendingRequest);
+pub fn waiting_church_card(
+    church: &Church,
+    status: Option<ChurchLinkStatus>,
+    csrf: &str,
+) -> Markup {
+    let asked = status == Some(ChurchLinkStatus::Pending);
     html! {
         article class="card" {
             div class="person-line" {
@@ -110,7 +105,7 @@ fn pending_door_card(pair: &(&Church, &Membership), csrf: &str) -> Markup {
                 }
             }
             @if !asked {
-                form method="post" action={ "/memberships/" (membership.id) "/accept-invite" } {
+                form method="post" action="/churches/join/accept" {
                     (csrf_input(csrf))
                     button class="btn" type="submit" { "Accept invite" }
                 }
@@ -134,7 +129,7 @@ fn church_index_card(card: &ChurchCard) -> Markup {
             (monogram(&church.id, &church.name, Monogram::Church))
             div {
                 h3 { (church.name) }
-                p class="muted" { (church.city) ", " (church.region) }
+                p class="muted" { (church.address) }
                 p class="clamp-2" { (church.description) }
                 p class="meta" { (census_line(*members, *needs)) }
             }
@@ -143,33 +138,35 @@ fn church_index_card(card: &ChurchCard) -> Markup {
 }
 
 pub fn pending_member_cards<'a>(
+    church_id: &str,
     members: impl IntoIterator<Item = &'a ChurchMember>,
     csrf: &str,
 ) -> Markup {
     html! {
         @for member in members {
-            (pending_member_card(member, csrf))
+            (pending_member_card(church_id, member, csrf))
         }
     }
 }
 
-fn pending_member_card(member: &ChurchMember, csrf: &str) -> Markup {
+fn pending_member_card(church_id: &str, member: &ChurchMember, csrf: &str) -> Markup {
+    let name = member_name(member);
     html! {
         article class="card" {
             div class="person-line" {
-                (monogram(&member.user_id, &member.name, Monogram::Person))
+                (monogram(&member.user_id, &name, Monogram::Person))
                 div {
-                    a href={ "/members/" (member.user_id) } { strong { (member.name) } }
+                    a href={ "/members/" (member.user_id) } { strong { (name) } }
                     p class="muted" { (pending_member_line(member)) }
                 }
             }
-            @if member.status() == Some(MembershipStatus::PendingRequest) {
+            @if member.status() == Some(ChurchLinkStatus::Pending) {
                 div class="row" {
-                    form method="post" action={ "/memberships/" (member.membership_id) "/approve" } {
+                    form method="post" action={ "/churches/" (church_id) "/members/" (member.user_id) "/approve" } {
                         (csrf_input(csrf))
                         button class="btn" type="submit" { "Approve" }
                     }
-                    form method="post" action={ "/memberships/" (member.membership_id) "/decline" } {
+                    form method="post" action={ "/churches/" (church_id) "/members/" (member.user_id) "/decline" } {
                         (csrf_input(csrf))
                         button class="btn btn-quiet" type="submit" { "Decline" }
                     }
@@ -179,8 +176,12 @@ fn pending_member_card(member: &ChurchMember, csrf: &str) -> Markup {
     }
 }
 
+fn member_name(member: &ChurchMember) -> String {
+    display_name(&member.first_name, &member.last_name)
+}
+
 fn pending_member_line(member: &ChurchMember) -> &'static str {
-    if member.status() == Some(MembershipStatus::PendingRequest) {
+    if member.status() == Some(ChurchLinkStatus::Pending) {
         "Asked to join"
     } else {
         "Invited"
@@ -200,11 +201,12 @@ pub fn active_member_items(members: &[ChurchMember]) -> Markup {
 }
 
 fn active_member_item(member: &ChurchMember) -> Markup {
+    let name = member_name(member);
     html! {
         li {
             a href={ "/members/" (member.user_id) } {
-                (monogram(&member.user_id, &member.name, Monogram::Person))
-                span { (member.name) }
+                (monogram(&member.user_id, &name, Monogram::Person))
+                span { (name) }
             }
             span class="muted" { (role_word(member.role())) }
         }
@@ -300,23 +302,18 @@ fn application_verdict_row(application: &ApplicationCard, csrf: &str) -> Markup 
     }
 }
 
-pub fn household_items(churches: &[(&Church, &Membership)]) -> Markup {
-    html! {
-        @for pair in churches {
-            (household_item(pair))
-        }
-    }
-}
-
-fn household_item(pair: &(&Church, &Membership)) -> Markup {
-    let (church, membership) = pair;
+pub fn church_link_item(
+    church: &Church,
+    status: Option<ChurchLinkStatus>,
+    role: Option<MembershipRole>,
+) -> Markup {
     html! {
         li {
             a href={ "/churches/" (church.id) } {
                 (monogram(&church.id, &church.name, Monogram::ChurchSmall))
                 span { (church.name) }
             }
-            span class="muted" { (household_line(membership)) }
+            span class="muted" { (household_line(status, role)) }
         }
     }
 }
@@ -500,7 +497,7 @@ fn place_section(group: &PlaceGroup) -> Markup {
     };
     html! {
         section class="place" {
-            h2 { (church.city) ", " (church.region) }
+            h2 { (church.address) }
             div class="stack" {
                 (place_church_cards(group))
             }

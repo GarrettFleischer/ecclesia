@@ -76,6 +76,70 @@ pub fn require_public_database_url(url: Option<&str>) -> anyhow::Result<&str> {
     }
 }
 
+pub const LOCAL_SQLITE_DEFAULT: &str = "sqlite://ecclesia.db";
+
+/// On a non-public host, pick a store URL that cannot accidentally target production.
+pub fn local_database_url(env_url: Option<String>) -> String {
+    if allow_remote_database_url() {
+        return env_url.unwrap_or_else(|| LOCAL_SQLITE_DEFAULT.into());
+    }
+    let Some(url) = env_url.filter(|value| !value.is_empty()) else {
+        return LOCAL_SQLITE_DEFAULT.into();
+    };
+    if is_local_database_url(&url) {
+        return url;
+    }
+    tracing::warn!(
+        ignored = %redact_database_url(&url),
+        fallback = LOCAL_SQLITE_DEFAULT,
+        "Ignoring remote DATABASE_URL on a local host"
+    );
+    LOCAL_SQLITE_DEFAULT.into()
+}
+
+pub fn allow_remote_database_url() -> bool {
+    std::env::var("ECCLESIA_ALLOW_REMOTE_DATABASE")
+        .ok()
+        .as_deref()
+        == Some("1")
+}
+
+pub fn is_local_database_url(url: &str) -> bool {
+    match Driver::from_url(url) {
+        Ok(Driver::Sqlite) => true,
+        Ok(Driver::Postgres) => postgres_host_is_local(url),
+        Err(_) => false,
+    }
+}
+
+fn postgres_host_is_local(url: &str) -> bool {
+    match postgres_authority_host(url) {
+        Some(host) => matches!(
+            host,
+            "localhost" | "127.0.0.1" | "::1" | "host.docker.internal"
+        ),
+        None => false,
+    }
+}
+
+fn postgres_authority_host(url: &str) -> Option<&str> {
+    let rest = url.split("://").nth(1)?;
+    let authority = rest.split('/').next()?;
+    let host_port = authority.split('@').last()?;
+    host_port.split(':').next()
+}
+
+fn redact_database_url(url: &str) -> String {
+    let Some(rest) = url.split("://").nth(1) else {
+        return "<invalid>".into();
+    };
+    let scheme = url.split("://").next().unwrap_or("?");
+    if let Some((_, after)) = rest.split_once('@') {
+        return format!("{scheme}://***@{after}");
+    }
+    format!("{scheme}://{rest}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,6 +156,23 @@ mod tests {
             rewrite_placeholders("SELECT '?' FROM needs WHERE id = ?"),
             "SELECT '?' FROM needs WHERE id = $1"
         );
+    }
+
+    #[test]
+    fn us_store_03_local_host_ignores_remote_postgres_url() {
+        assert!(is_local_database_url("sqlite://ecclesia.db"));
+        assert!(is_local_database_url("postgres://ecclesia:ecclesia@127.0.0.1:5432/ecclesia"));
+        assert!(!is_local_database_url(
+            "postgres://user:pass@ep-cool-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
+        ));
+        let picked = local_database_url(Some(
+            "postgres://user:pass@ep-cool-pooler.us-east-1.aws.neon.tech/neondb".into(),
+        ));
+        assert_eq!(picked, LOCAL_SQLITE_DEFAULT);
+        let kept = local_database_url(Some(
+            "postgres://ecclesia:ecclesia@localhost:5432/ecclesia".into(),
+        ));
+        assert_eq!(kept, "postgres://ecclesia:ecclesia@localhost:5432/ecclesia");
     }
 
     #[test]

@@ -11,7 +11,7 @@ mod needs;
 mod people;
 mod words;
 
-pub use churches::{church_new, church_show, churches_index, the_body};
+pub use churches::{church_new, church_show, churches_index, join_church_page, the_body};
 pub use draft::{
     ChurchDraft, DraftKind, EndorseDraft, GiftDraft, NeedDraft, OfferDraft, ProfileDraft,
     RegisterDraft,

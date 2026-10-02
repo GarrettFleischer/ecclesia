@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::household::{Church, Membership};
+use super::household::Church;
 use super::need::{Application, Need};
 use super::person::{Endorsement, User};
 
@@ -83,21 +83,21 @@ pub struct NoticeDraft {
     pub href: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Write {
     InsertUser(User),
     UpdateUser {
         id: String,
-        name: String,
-        city: String,
-        region: String,
+        first_name: String,
+        last_name: String,
         bio: String,
     },
     InsertChurch(Church),
-    InsertMembership(Membership),
-    SetMembershipStatus {
-        id: String,
-        status: &'static str,
+    SetChurchLink {
+        user_id: String,
+        church_id: Option<String>,
+        church_status: Option<String>,
+        church_role: Option<String>,
     },
     InsertNeed(Need),
     SetNeedStatus {
@@ -125,7 +125,7 @@ pub enum Write {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Effect {
     pub writes: Vec<Write>,
     pub notices: Vec<NoticeDraft>,
@@ -146,13 +146,6 @@ impl Effect {
 
     pub fn push(&mut self, write: Write) {
         self.writes.push(write);
-    }
-
-    pub fn memberships(&self) -> impl Iterator<Item = &Membership> {
-        self.writes.iter().filter_map(|write| match write {
-            Write::InsertMembership(membership) => Some(membership),
-            _ => None,
-        })
     }
 
     pub fn inserted_user_id(&self) -> Option<&str> {

@@ -7,7 +7,7 @@ use axum_extra::extract::cookie::CookieJar;
 use std::net::SocketAddr;
 
 use ecclesia_sdk::db::Db;
-use ecclesia_sdk::prelude::{Church, DomainError, Membership, User, Viewer, unique_church_ids};
+use ecclesia_sdk::prelude::{Church, DomainError, User, Viewer};
 use ecclesia_sdk::session::Session;
 use ecclesia_sdk::story::StoryOk;
 
@@ -179,27 +179,24 @@ pub async fn require_user(db: &Db, session: &Session) -> Result<User, Response> 
 }
 
 pub async fn viewer_for(db: &Db, user: User) -> Result<Viewer, AppError> {
-    let memberships = db.memberships_for_user(&user.id).await?;
-    let churches = db.churches_for_user(&user.id).await?;
+    let church = linked_church(db, &user).await?;
     let gift_ids = db.gift_ids_for(&user.id).await?;
     Ok(Viewer {
         user,
-        memberships,
-        churches,
+        church,
         gift_ids,
     })
 }
 
-pub async fn unread(db: &Db, user_id: &str) -> Result<i64, AppError> {
-    Ok(db.unread_count(user_id).await?)
+pub async fn linked_church(db: &Db, user: &User) -> Result<Option<Church>, AppError> {
+    match user.church_id.as_deref() {
+        Some(id) => Ok(db.church(id).await?),
+        None => Ok(None),
+    }
 }
 
-pub async fn churches_for_memberships(
-    db: &Db,
-    memberships: &[Membership],
-) -> Result<Vec<Church>, AppError> {
-    let ids = unique_church_ids(memberships);
-    Ok(db.churches_with_ids(&ids).await?)
+pub async fn unread(db: &Db, user_id: &str) -> Result<i64, AppError> {
+    Ok(db.unread_count(user_id).await?)
 }
 
 pub fn optional_gift_id(value: &str) -> Option<&str> {

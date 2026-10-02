@@ -5,6 +5,7 @@ pub enum Bind<'a> {
     Text(&'a str),
     OptText(Option<&'a str>),
     I64(i64),
+    F64(f64),
 }
 
 pub fn placeholders(count: usize) -> String {

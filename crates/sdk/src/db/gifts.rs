@@ -133,7 +133,8 @@ async fn endorsement_cards(
     Ok(map_all(
         db.fetch_all::<EndorsementCardRow>(
             r#"
-            SELECT e.id, e.from_user_id, f.name AS from_user_name, e.to_user_id, t.name AS to_user_name,
+            SELECT e.id, e.from_user_id, f.first_name AS from_first, f.last_name AS from_last,
+                   e.to_user_id, t.first_name AS to_first, t.last_name AS to_last,
                    e.gift_id, COALESCE(NULLIF(e.skill, ''), g.name, 'Skill') AS gift_name,
                    e.note, e.status, e.created_at
             FROM endorsements e

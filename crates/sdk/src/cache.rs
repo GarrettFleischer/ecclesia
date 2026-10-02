@@ -249,15 +249,18 @@ pub fn keys_for_write(write: &Write, church_id: Option<&str>) -> Vec<String> {
         Write::InsertChurch(church) => {
             vec!["directory".into(), format!("church:{}", church.id)]
         }
-        Write::InsertMembership(membership) => {
-            vec![
-                format!("church:{}", membership.church_id),
-                "directory".into(),
-            ]
+        Write::SetChurchLink { church_id: next, .. } => {
+            let mut keys = vec!["directory".into()];
+            if let Some(id) = next {
+                keys.push(format!("church:{id}"));
+            }
+            if let Some(previous) = church_id {
+                if next.as_deref() != Some(previous) {
+                    keys.push(format!("church:{previous}"));
+                }
+            }
+            keys
         }
-        Write::SetMembershipStatus { .. } => church_id
-            .map(|id| vec![format!("church:{id}"), "directory".into()])
-            .unwrap_or_default(),
         Write::InsertNeed(need) => {
             vec![format!("church:{}", need.church_id), "directory".into()]
         }
@@ -284,8 +287,9 @@ mod tests {
         Church {
             id: id.into(),
             name: id.into(),
-            city: "Cedar Falls".into(),
-            region: "Iowa".into(),
+            address: "100 Main Street".into(),
+            latitude: 42.53,
+            longitude: -92.45,
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),

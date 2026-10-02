@@ -4,6 +4,7 @@
 *.db-shm
 .DS_Store
 .env
+.env.local
 ecclesia-vapid.pem
 mobile/node_modules
 mobile/ios

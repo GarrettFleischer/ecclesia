@@ -2,8 +2,8 @@
 
 use ecclesia_domain::{
     CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect,
-    EndorsementQueue, Gift, GiftOnProfile, Membership, NeedCard, PriorOffer, SkillSource, User,
-    VoiceKind, Viewer, churches_with_counts, visible_need_cards,
+    EndorsementQueue, Gift, GiftOnProfile, NeedCard, PriorOffer, SkillSource, User,
+    VoiceKind, Viewer, churches_with_counts, coordinates, visible_need_cards,
     accept_application as domain_accept_application,
     accept_endorsement as domain_accept_endorsement, accept_invite as domain_accept_invite,
     add_gift as domain_add_gift, apply_to_need as domain_apply_to_need,
@@ -12,8 +12,8 @@ use ecclesia_domain::{
     decline_endorsement as domain_decline_endorsement,
     decline_membership as domain_decline_membership, endorse as domain_endorse,
     plant_church as domain_plant_church,
-    post_need as domain_post_need, redeem_invite as domain_redeem_invite,
-    remove_gift as domain_remove_gift, request_join as domain_request_join,
+    post_need as domain_post_need, replace_with_code, replace_with_pending,
+    remove_gift as domain_remove_gift,
     update_profile as domain_update_profile,
 };
 
@@ -80,13 +80,14 @@ impl Sdk {
     }
 
     pub async fn viewer(&self, user: User) -> anyhow::Result<Viewer> {
-        let memberships = self.db.memberships_for_user(&user.id).await?;
-        let churches = self.db.churches_for_user(&user.id).await?;
+        let church = match user.church_id.as_deref() {
+            Some(id) => self.db.church(id).await?,
+            None => None,
+        };
         let gift_ids = self.db.gift_ids_for(&user.id).await?;
         Ok(Viewer {
             user,
-            memberships,
-            churches,
+            church,
             gift_ids,
         })
     }
@@ -108,10 +109,7 @@ impl StoryOk {
             user_id: effect.inserted_user_id().map(str::to_owned),
             church_id: effect.inserted_church_id().map(str::to_owned),
             need_id: effect.inserted_need_id().map(str::to_owned),
-            membership_id: effect
-                .memberships()
-                .next()
-                .map(|membership| membership.id.clone()),
+            membership_id: None,
             session_id: None,
             csrf: None,
         }
@@ -151,25 +149,26 @@ pub async fn plant_church(
     sdk: &Sdk,
     planter: &User,
     name: &str,
-    city: &str,
-    region: &str,
+    address: &str,
+    latitude: f64,
+    longitude: f64,
     description: &str,
     gathering: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
     let posture = sdk
-        .weigh(VoiceKind::Church, &[name, gathering, description])
+        .weigh(VoiceKind::Church, &[name, address, gathering, description])
         .await;
     finish(
         sdk,
         domain_plant_church(
             planter,
             name,
-            city,
-            region,
+            address,
+            latitude,
+            longitude,
             description,
             gathering,
             posture,
-            new_id(),
             new_id(),
             &nonce(),
             now_iso(),
@@ -186,13 +185,8 @@ pub async fn request_join(
     let Some(church) = sdk.db.church(church_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let existing = sdk.db.membership_pair(church_id, &user.id).await?;
     let governors = sdk.db.governor_ids(church_id).await?;
-    finish(
-        sdk,
-        domain_request_join(user, &church, existing.as_ref(), &governors, new_id(), now_iso()),
-    )
-    .await
+    finish(sdk, replace_with_pending(user, &church, &governors)).await
 }
 
 pub async fn invite_member(
@@ -213,13 +207,8 @@ pub async fn redeem_invite(
     let Some(church) = sdk.db.church_by_invite(code).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let existing = sdk.db.membership_pair(&church.id, &user.id).await?;
     let church_id = church.id.clone();
-    match finish(
-        sdk,
-        domain_redeem_invite(user, &church, existing.as_ref(), new_id(), now_iso()),
-    )
-    .await?
+    match finish(sdk, replace_with_code(user, &church)).await?
     {
         Ok(mut ok) => {
             if ok.church_id.is_none() {
@@ -234,9 +223,9 @@ pub async fn redeem_invite(
 pub async fn approve_membership(
     sdk: &Sdk,
     viewer: &Viewer,
-    membership_id: &str,
+    user_id: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let Some((target, church)) = load_membership_church(sdk, membership_id).await? else {
+    let Some((target, church)) = load_linked_church(sdk, user_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
     finish(sdk, domain_approve_membership(viewer, &target, &church)).await
@@ -245,9 +234,9 @@ pub async fn approve_membership(
 pub async fn decline_membership(
     sdk: &Sdk,
     viewer: &Viewer,
-    membership_id: &str,
+    user_id: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let Some((target, church)) = load_membership_church(sdk, membership_id).await? else {
+    let Some((target, church)) = load_linked_church(sdk, user_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
     finish(sdk, domain_decline_membership(viewer, &target, &church)).await
@@ -256,16 +245,12 @@ pub async fn decline_membership(
 pub async fn accept_invite(
     sdk: &Sdk,
     user: &User,
-    membership_id: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let Some(target) = sdk.db.membership(membership_id).await? else {
-        return Ok(Err(DomainError::NotFound));
-    };
-    let church_id = target.church_id.clone();
-    match finish(sdk, domain_accept_invite(user, &target)).await? {
+    let church_id = user.church_id.clone();
+    match finish(sdk, domain_accept_invite(user)).await? {
         Ok(mut ok) => {
             if ok.church_id.is_none() {
-                ok.church_id = Some(church_id);
+                ok.church_id = church_id;
             }
             Ok(Ok(ok))
         }
@@ -411,13 +396,34 @@ pub async fn decline_endorsement(
 pub async fn update_profile(
     sdk: &Sdk,
     user_id: &str,
-    name: &str,
-    city: &str,
-    region: &str,
+    first_name: &str,
+    last_name: &str,
     bio: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let posture = sdk.weigh(VoiceKind::Bio, &[name, bio]).await;
-    finish(sdk, domain_update_profile(user_id, name, city, region, bio, posture)).await
+    let posture = sdk.weigh(VoiceKind::Bio, &[first_name, last_name, bio]).await;
+    finish(
+        sdk,
+        domain_update_profile(user_id, first_name, last_name, bio, posture),
+    )
+    .await
+}
+
+pub async fn join_suggestion(
+    sdk: &Sdk,
+    user: &User,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> anyhow::Result<Result<Option<Church>, DomainError>> {
+    let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
+        return Ok(Ok(None));
+    };
+    if coordinates(latitude, longitude).is_err() {
+        return Ok(Err(DomainError::InvalidInput));
+    }
+    Ok(Ok(sdk
+        .db
+        .nearest_church(latitude, longitude, user.church_id.as_deref())
+        .await?))
 }
 
 pub async fn add_gift(
@@ -526,7 +532,7 @@ pub async fn home_needs(
     let sql_page = sdk.db.home_need_cards(viewer, cursor).await?;
     let page_ids: Vec<&str> = unique_church_ids(&sql_page);
     let page_churches = sdk.db.churches_with_ids(&page_ids).await?;
-    let churches = union_churches(&viewer.churches, page_churches);
+    let churches = union_churches(viewer.church.as_ref(), page_churches);
     let visible = take_visible_cards(viewer, &sql_page, &churches);
     let next_cursor = next_need_cursor(&visible);
     Ok(NeedPage {
@@ -561,8 +567,7 @@ pub async fn church_directory(sdk: &Sdk, after: Option<&str>) -> anyhow::Result<
 pub struct ChurchSearchHit {
     pub id: String,
     pub name: String,
-    pub city: String,
-    pub region: String,
+    pub address: String,
 }
 
 pub async fn search_churches(
@@ -577,8 +582,7 @@ pub async fn search_churches(
         .map(|church| ChurchSearchHit {
             id: church.id.clone(),
             name: church.name.clone(),
-            city: church.city.clone(),
-            region: church.region.clone(),
+            address: church.address.clone(),
         })
         .collect())
 }
@@ -655,19 +659,19 @@ fn parse_need_cursor(after: Option<&str>) -> Option<(&str, &str)> {
     Some((created_at, id))
 }
 
-fn parse_church_cursor(after: Option<&str>) -> Option<(&str, &str, &str)> {
-    let after = after?;
-    let mut parts = after.splitn(3, '|');
-    let city = parts.next()?;
-    let name = parts.next()?;
-    let id = parts.next()?;
-    Some((city, name, id))
-}
-
-fn parse_member_cursor(after: Option<&str>) -> Option<(&str, &str)> {
+fn parse_church_cursor(after: Option<&str>) -> Option<(&str, &str)> {
     let after = after?;
     let (name, id) = after.split_once('|')?;
     Some((name, id))
+}
+
+fn parse_member_cursor(after: Option<&str>) -> Option<(&str, &str, &str)> {
+    let after = after?;
+    let mut parts = after.splitn(3, '|');
+    let first = parts.next()?;
+    let last = parts.next()?;
+    let id = parts.next()?;
+    Some((first, last, id))
 }
 
 fn next_need_cursor(cards: &[NeedCard]) -> Option<String> {
@@ -683,7 +687,7 @@ fn next_church_cursor(churches: &[Church]) -> Option<String> {
         return None;
     }
     let last = churches.last()?;
-    Some(format!("{}|{}|{}", last.city, last.name, last.id))
+    Some(format!("{}|{}", last.name, last.id))
 }
 
 fn next_member_cursor(members: &[ChurchMember]) -> Option<String> {
@@ -691,7 +695,10 @@ fn next_member_cursor(members: &[ChurchMember]) -> Option<String> {
         return None;
     }
     let last = members.last()?;
-    Some(format!("{}|{}", last.name, last.user_id))
+    Some(format!(
+        "{}|{}|{}",
+        last.first_name, last.last_name, last.user_id
+    ))
 }
 
 fn take_visible_cards(
@@ -719,9 +726,9 @@ fn unique_church_ids(cards: &[NeedCard]) -> Vec<&str> {
     ids
 }
 
-fn union_churches(viewer_churches: &[Church], page: Vec<Church>) -> Vec<Church> {
+fn union_churches(mine: Option<&Church>, page: Vec<Church>) -> Vec<Church> {
     let mut out = Vec::new();
-    for church in viewer_churches {
+    if let Some(church) = mine {
         push_unique_church(&mut out, church);
     }
     for church in page {
@@ -739,14 +746,17 @@ fn push_unique_church(out: &mut Vec<Church>, church: &Church) {
     out.push(church.clone());
 }
 
-async fn load_membership_church(
+async fn load_linked_church(
     sdk: &Sdk,
-    membership_id: &str,
-) -> anyhow::Result<Option<(Membership, ecclesia_domain::Church)>> {
-    let Some(target) = sdk.db.membership(membership_id).await? else {
+    user_id: &str,
+) -> anyhow::Result<Option<(User, Church)>> {
+    let Some(target) = sdk.db.user(user_id).await? else {
         return Ok(None);
     };
-    let Some(church) = sdk.db.church(&target.church_id).await? else {
+    let Some(church_id) = target.church_id.as_deref() else {
+        return Ok(None);
+    };
+    let Some(church) = sdk.db.church(church_id).await? else {
         return Ok(None);
     };
     Ok(Some((target, church)))
@@ -755,7 +765,7 @@ async fn load_membership_church(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecclesia_domain::{Effect, Membership, Need, User, Write};
+    use ecclesia_domain::{Effect, Need, User, Write};
 
     async fn sdk_on(path: &std::path::Path) -> Sdk {
         let db = Db::connect(&format!("sqlite://{}", path.display()))
@@ -798,12 +808,11 @@ mod tests {
     }
 
     async fn register_named(sdk: &Sdk, name: &str, email: &str) -> User {
-        let church_id = seed_test_church(sdk).await;
         register(
             sdk,
             name,
+            "Lane",
             email,
-            &church_id,
             "Thursday dinners at six oclock",
             &test_device(),
         )
@@ -934,8 +943,9 @@ mod tests {
             &sdk,
             &pastor,
             "Grace Covenant",
-            "Cedar Falls",
-            "Iowa",
+            "100 Main Street",
+            42.53,
+            -92.45,
             "A church on Main Street.",
             "Sunday at 10.",
         )
@@ -1174,8 +1184,9 @@ mod tests {
             &sdk,
             &user,
             "Grace Covenant",
-            "Cedar Falls",
-            "Iowa",
+            "100 Main Street",
+            42.53,
+            -92.45,
             "A church on Main Street.",
             "Sunday at 10.",
         )
@@ -1227,8 +1238,9 @@ mod tests {
         let mut effect = Effect::write(Write::InsertChurch(Church {
             id: "church_page_00".into(),
             name: "Paging Church 00".into(),
-            city: "Alpha City".into(),
-            region: "Iowa".into(),
+            address: "100 Alpha Street".into(),
+            latitude: 42.53,
+            longitude: -92.45,
             country: "US".into(),
             description: "Paging.".into(),
             gathering: String::new(),
@@ -1240,8 +1252,9 @@ mod tests {
             effect.push(Write::InsertChurch(Church {
                 id: format!("church_page_{index:02}"),
                 name: format!("Paging Church {index:02}"),
-                city: "Alpha City".into(),
-                region: "Iowa".into(),
+                address: "100 Alpha Street".into(),
+                latitude: 42.53,
+                longitude: -92.45,
                 country: "US".into(),
                 description: "Paging.".into(),
                 gathering: String::new(),
@@ -1268,8 +1281,9 @@ mod tests {
             &sdk,
             &user,
             "Grace Covenant",
-            "Cedar Falls",
-            "Iowa",
+            "100 Main Street",
+            42.53,
+            -92.45,
             "A church on Main Street.",
             "Sunday at 10.",
         )
@@ -1284,21 +1298,15 @@ mod tests {
         for index in 0..20 {
             let user_id = format!("user_page_{index:02}");
             effect.push(Write::InsertUser(User {
-                id: user_id.clone(),
-                name: format!("Page Member {index:02}"),
+                id: user_id,
+                first_name: "Page".into(),
+                last_name: format!("Member {index:02}"),
                 email: format!("page{index:02}@grace.test"),
-                city: "Cedar Falls".into(),
-                region: "Iowa".into(),
                 bio: String::new(),
                 created_at: format!("2026-02-{:02}T00:00:00Z", index + 1),
-            }));
-            effect.push(Write::InsertMembership(Membership {
-                id: format!("mem_page_{index:02}"),
-                church_id: church_id.clone(),
-                user_id,
-                role: "member".into(),
-                status: "active".into(),
-                created_at: format!("2026-02-{:02}T00:00:00Z", index + 1),
+                church_id: Some(church_id.clone()),
+                church_status: Some("active".into()),
+                church_role: Some("member".into()),
             }));
         }
         for index in 0..21 {

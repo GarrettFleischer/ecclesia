@@ -90,8 +90,9 @@ impl IntoResponse for AppError {
 }
 
 pub fn load_dotenv() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.env");
-    dotenvy::from_path(root).ok();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    dotenvy::from_path(root.join(".env")).ok();
+    dotenvy::from_path_override(root.join(".env.local")).ok();
 }
 
 pub async fn serve() -> anyhow::Result<()> {
@@ -203,7 +204,6 @@ pub fn router(state: AppState) -> Router {
             "/register",
             get(auth::register_form).post(auth::register_user),
         )
-        .route("/register/churches", get(auth::register_church_search))
         .route("/session/new", get(auth::sign_in_form))
         .route("/session/link/new", get(auth::magic_link_form))
         .route("/session/reset/new", get(auth::forgot_password_form))
@@ -227,22 +227,24 @@ pub fn router(state: AppState) -> Router {
             get(churches::churches_index).post(churches::create_church),
         )
         .route("/churches/new", get(churches::church_new))
+        .route(
+            "/churches/join",
+            get(churches::join_page).post(churches::join_by_search),
+        )
+        .route("/churches/join/code", post(churches::join_by_code))
+        .route("/churches/join/accept", post(churches::accept_invite_http))
         .route("/churches/{id}", get(churches::church_show))
         .route("/churches/{id}/join", post(churches::join_church))
         .route("/churches/{id}/invite", post(churches::invite))
-        .route("/invites/redeem", post(churches::redeem))
         .route(
-            "/memberships/{id}/approve",
+            "/churches/{id}/members/{user_id}/approve",
             post(churches::approve_membership_http),
         )
         .route(
-            "/memberships/{id}/decline",
+            "/churches/{id}/members/{user_id}/decline",
             post(churches::decline_membership_http),
         )
-        .route(
-            "/memberships/{id}/accept-invite",
-            post(churches::accept_invite_http),
-        )
+        .route("/invites/redeem", post(churches::redeem))
         .route("/needs/new", get(needs::need_new))
         .route("/needs", post(needs::create_need))
         .route("/needs/{id}", get(needs::need_show))
