@@ -27,6 +27,7 @@ tempfile = "=3.14.0"
 sqlx = { version = "=0.8.2", default-features = false, features = [
     "derive",
     "runtime-tokio",
+    "tls-rustls",
     "sqlite",
     "postgres",
 ] }
