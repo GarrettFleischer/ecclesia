@@ -2196,7 +2196,7 @@ body.standalone .install-bar {
   display: grid;
   align-content: end;
   min-height: max(100svh, 34rem);
-  padding: calc(env(safe-area-inset-top) + 5.5rem) max(1.5rem, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 5rem) max(1.5rem, env(safe-area-inset-left));
+  padding: calc(env(safe-area-inset-top) + 4rem) max(1.5rem, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 5rem) max(1.5rem, env(safe-area-inset-left));
   overflow: clip;
   border-radius: 0 0 clamp(1.75rem, 5vw, 3rem) clamp(1.75rem, 5vw, 3rem);
   background: #14211c;
@@ -2230,24 +2230,19 @@ body.standalone .install-bar {
   animation: rays 16s ease-in-out infinite alternate;
 }
 
-.hero-brand {
-  position: absolute;
-  top: calc(env(safe-area-inset-top) + 1.35rem);
-  left: max(1.5rem, env(safe-area-inset-left), calc((100% - 64rem) / 2));
-  display: inline-flex;
+.hero-lockup {
+  display: flex;
   align-items: center;
-  gap: 0.55rem;
-  margin: 0;
-  color: #fbf7ee;
-  font: 400 1.65rem/1 var(--font-display);
-  text-shadow: 0 1px 20px rgb(0 0 0 / 0.25);
-  animation: fade-in 1.2s var(--ease-out) 0.2s both;
+  gap: clamp(0.85rem, 2vw, 1.25rem);
+  margin-bottom: 0.2rem;
 }
 
-.hero-brand .mark-glyph {
-  width: 1.4rem;
-  height: 1.4rem;
-  color: #ecc987;
+.hero-name {
+  margin: 0;
+  color: #fbf7ee;
+  font: 400 clamp(2rem, 1.2rem + 3vw, 3.25rem) / 1 var(--font-display);
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 20px rgb(0 0 0 / 0.25);
 }
 
 .hero-inner {
@@ -2259,9 +2254,9 @@ body.standalone .install-bar {
 }
 
 .vesica {
+  flex-shrink: 0;
   width: 4.25rem;
   height: 4.25rem;
-  margin-bottom: 0.2rem;
   color: #ecc987;
   filter: drop-shadow(0 0 14px rgb(236 201 135 / 0.45));
 }
@@ -2872,7 +2867,7 @@ main.sheet-auth {
   .glow,
   .hero-scene,
   .hero-rays,
-  .hero-brand,
+  .hero-lockup,
   .hero-cue::after,
   .empty::before,
   .dock-link.is-active .dock-icon,

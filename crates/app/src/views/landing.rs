@@ -161,17 +161,16 @@ fn landing_story() -> Markup {
             div class="hero-scene" aria-hidden="true" {
                 span class="hero-rays" {}
             }
-            p class="hero-brand" {
-                (mark_glyph())
-                span { "Ecclesia" }
-            }
             div class="hero-inner" {
-                div class="vesica" aria-hidden="true" {
-                    svg viewBox="0 0 80 80" width="80" height="80" {
-                        circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="1.2" pathLength="1" {}
-                        circle cx="40" cy="40" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" pathLength="1" {}
-                        path fill="currentColor" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
+                div class="hero-lockup" {
+                    div class="vesica" aria-hidden="true" {
+                        svg viewBox="0 0 80 80" width="80" height="80" {
+                            circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="1.2" pathLength="1" {}
+                            circle cx="40" cy="40" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" pathLength="1" {}
+                            path fill="currentColor" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
+                        }
                     }
+                    p class="hero-name" { "Ecclesia" }
                 }
                 (page_lead("The Body of Christ"))
                 (landing_cta())
