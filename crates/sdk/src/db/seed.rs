@@ -1,7 +1,13 @@
 use super::bind::Bind;
+use super::dialect::Driver;
 use super::seed_data::GIFTS;
 use super::Db;
 use crate::host::is_public_host;
+
+/// Dev church and seed accounts: local SQLite only, never Postgres or a public host.
+pub(crate) fn dev_church_seed_enabled(driver: Driver) -> bool {
+    driver == Driver::Sqlite && !is_public_host()
+}
 
 const SEED_CHURCH_ID: &str = "seed_grace";
 const SEED_OWNER_ID: &str = "seed_owner";
@@ -17,7 +23,7 @@ impl Db {
             insert_gift_rows(self, GIFTS).await?;
             tracing::info!("seeded gift catalog");
         }
-        if is_public_host() {
+        if !dev_church_seed_enabled(self.driver()) {
             return Ok(());
         }
         self.ensure_grace_fellowship().await
@@ -35,6 +41,9 @@ impl Db {
     }
 
     pub async fn seed_grace_church(&self) -> anyhow::Result<&'static str> {
+        if !dev_church_seed_enabled(self.driver()) {
+            anyhow::bail!("Grace Fellowship seed is only for local SQLite");
+        }
         if self.church(SEED_CHURCH_ID).await?.is_some() {
             self.ensure_seed_owner_password().await?;
             self.ensure_seed_admin().await?;
@@ -152,6 +161,16 @@ impl Db {
 }
 fn seed_password_hash() -> anyhow::Result<String> {
     crate::password::hash_password(SEED_OWNER_PASSWORD)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn us_seed_01_dev_church_seed_never_on_postgres() {
+        assert!(!dev_church_seed_enabled(Driver::Postgres));
+    }
 }
 
 async fn insert_gift_rows(db: &Db, rows: &[(&str, &str, &str)]) -> anyhow::Result<()> {
