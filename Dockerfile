@@ -1,9 +1,28 @@
 # Ecclesia on Fly: workspace build (root Cargo.toml has no [package]).
-FROM rust:1-bookworm AS builder
-RUN rustup toolchain install nightly
+# cargo-chef caches dependency layers when only app source changes.
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
+
+FROM chef AS planner
 COPY . .
-RUN cargo +nightly build --release -p ecclesia --bin ecclesia --bin ecclesia-worker
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates/domain/Cargo.toml crates/domain/Cargo.toml
+COPY crates/sdk/Cargo.toml crates/sdk/Cargo.toml
+COPY crates/app/Cargo.toml crates/app/Cargo.toml
+RUN mkdir -p crates/domain/src crates/sdk/src crates/app/src/bin \
+    && printf 'pub fn _chef_stub() {}\n' > crates/domain/src/lib.rs \
+    && printf 'pub fn _chef_stub() {}\n' > crates/sdk/src/lib.rs \
+    && printf 'pub fn _chef_stub() {}\n' > crates/app/src/lib.rs \
+    && printf 'fn main() {}\n' > crates/app/src/main.rs \
+    && printf 'fn main() {}\n' > crates/app/src/bin/worker.rs
+RUN cargo chef cook --release --recipe-path recipe.json -p ecclesia
+COPY . .
+RUN cargo build --release -p ecclesia --bin ecclesia --bin ecclesia-worker
 
 FROM debian:bookworm-slim
 RUN apt-get update \

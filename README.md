@@ -117,6 +117,8 @@ Deploy (from the repo root, after secrets are set):
 fly deploy
 ```
 
+**Auto deploy:** Pushes to `main` run [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): `cargo test --workspace`, then `flyctl deploy`. Add a GitHub repo secret **`FLY_API_TOKEN`** ([Fly personal access token](https://fly.io/user/personal_access_tokens)) with access to deploy app `ecclesia`. Fly’s remote builder reuses Docker layer cache by default; the root `Dockerfile` uses [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) so dependency crates stay cached when only source under `crates/` changes.
+
 Skip `fly launch` if `fly.toml` already exists; it tries to parse the root `Cargo.toml` as a single crate and fails.
 
 Confirm both processes are up:
