@@ -86,10 +86,16 @@ function hookInstall(native) {
     bar.hidden = false;
   });
 
-  if (isIos()) {
-    bar.querySelector("p").textContent = "Share, then Add to Home Screen.";
+  if (needsManualInstall()) {
+    const hint = bar.querySelector(".install-bar-ios");
+    if (hint) {
+      hint.hidden = false;
+    }
     install.hidden = true;
+    dismiss.textContent = "Got it";
+    bar.classList.add("install-bar-manual");
     bar.hidden = false;
+    hookInstallHelp(bar);
   }
 
   install.addEventListener("click", async () => {
@@ -127,8 +133,36 @@ function isStandalone() {
   );
 }
 
-function isIos() {
-  return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+function needsManualInstall() {
+  const ua = window.navigator.userAgent;
+  if (/iphone|ipad|ipod/i.test(ua)) {
+    return true;
+  }
+  return window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1;
+}
+
+function isIpadInstall() {
+  if (/ipad/i.test(window.navigator.userAgent)) {
+    return true;
+  }
+  return window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1;
+}
+
+function hookInstallHelp(bar) {
+  const helpBtn = bar.querySelector("[data-install-help]");
+  const dialog = document.querySelector(".install-help");
+  if (!helpBtn || !dialog || typeof dialog.showModal !== "function") {
+    return;
+  }
+  helpBtn.hidden = false;
+  const ipad = isIpadInstall();
+  dialog.querySelectorAll("[data-install-device]").forEach((node) => {
+    const device = node.getAttribute("data-install-device");
+    node.hidden = device === "ipad" ? !ipad : ipad;
+  });
+  helpBtn.addEventListener("click", () => {
+    dialog.showModal();
+  });
 }
 
 function notificationState() {

@@ -948,6 +948,9 @@ async fn us_app_01_manifest_is_installable() {
     let (landing, _, _) = get_page(world.app.clone(), None, "/").await;
     assert!(landing.contains("apple-touch-icon"));
     assert!(landing.contains("install-bar"));
+    assert!(landing.contains("install-bar-ios"));
+    assert!(landing.contains("install-help"));
+    assert!(landing.contains("ios-install-iphone-share.svg"));
     assert!(landing.contains("/static/app.js"));
     assert!(landing.contains("site-guest"));
 }
@@ -962,9 +965,9 @@ async fn us_app_01_guest_shell_css_respects_safe_area_for_install_bar() {
     );
     assert!(
         css.contains(".install-bar")
-            && css.contains("position: sticky")
-            && css.contains("top: env(safe-area-inset-top"),
-        "install bar should stick below the safe area"
+            && css.contains("position: fixed")
+            && css.contains("top: calc(env(safe-area-inset-top"),
+        "install bar should float below the safe area without shifting the page"
     );
 }
 

@@ -232,7 +232,7 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=9";
+                link rel="stylesheet" href="/static/app.css?v=11";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
@@ -241,6 +241,7 @@ pub fn page(
                 (backdrop())
                 @if nav == Nav::Landing {
                     (install_bar())
+                    (install_help_dialog())
                 }
                 @if app_chrome(nav) {
                     (topbar(user))
@@ -254,7 +255,7 @@ pub fn page(
                 @if app_chrome(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=8" defer {}
+                script src="/static/app.js?v=10" defer {}
             }
         }
     }
@@ -283,9 +284,50 @@ fn install_bar() -> Markup {
     html! {
         div class="install-bar" hidden {
             (mark_glyph())
-            p { "Add Ecclesia to your home screen." }
+            p class="install-bar-copy" {
+                span class="install-bar-lead" { "Add Ecclesia to your home screen." }
+                span class="install-bar-ios" hidden { "Share, then Add to Home Screen." }
+            }
+            button class="btn btn-quiet install-bar-help" type="button" data-install-help hidden aria-label="Show add to home screen steps" { "?" }
             button class="btn" type="button" data-install { "Install" }
             button class="btn btn-quiet" type="button" data-install-dismiss { "Not now" }
+        }
+    }
+}
+
+fn install_help_dialog() -> Markup {
+    html! {
+        dialog class="install-help" aria-labelledby="install-help-title" {
+            form class="install-help-sheet" method="dialog" {
+                header class="install-help-head" {
+                    h2 id="install-help-title" { "Add to home screen" }
+                    button class="btn btn-quiet install-help-close" type="submit" value="cancel" aria-label="Close dialog" { "Close" }
+                }
+                ol class="install-help-steps" {
+                    li { "In Safari, open Share." }
+                    li { "Choose Add to Home Screen." }
+                    li { "Tap Add." }
+                }
+                div class="install-help-figures" {
+                    figure data-install-device="iphone" hidden {
+                        img src="/static/img/ios-install-iphone-share.svg" alt="Safari bottom bar with Share highlighted" width="390" height="200";
+                        figcaption { "Share sits in the bar at the bottom on iPhone." }
+                    }
+                    figure data-install-device="iphone" hidden {
+                        img src="/static/img/ios-install-iphone-add.svg" alt="Share menu with Add to Home Screen highlighted" width="390" height="320";
+                        figcaption { "Scroll the menu if you do not see it." }
+                    }
+                    figure data-install-device="ipad" hidden {
+                        img src="/static/img/ios-install-ipad-share.svg" alt="Safari toolbar with Share highlighted" width="390" height="200";
+                        figcaption { "Share sits in the toolbar on iPad." }
+                    }
+                    figure data-install-device="ipad" hidden {
+                        img src="/static/img/ios-install-ipad-add.svg" alt="Share menu with Add to Home Screen highlighted" width="390" height="320";
+                        figcaption { "Scroll the menu if you do not see it." }
+                    }
+                }
+                button class="btn install-help-done" type="submit" value="ok" { "Close" }
+            }
         }
     }
 }
