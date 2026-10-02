@@ -2806,8 +2806,16 @@ main.sheet-auth {
     animation: cross-in 1.2s var(--ease-out) 1.1s forwards;
   }
 
+  .hero-lockup {
+    animation: rise 900ms var(--ease-out) 0.15s both;
+  }
+
+  .hero-name {
+    animation: focus-in 1.15s var(--ease-out) 0.5s both;
+  }
+
   .hero h1 {
-    animation: focus-in 1.3s var(--ease-out) 0.25s both;
+    animation: focus-in 1.3s var(--ease-out) 0.65s both;
   }
 
   .hero .landing-cta {
