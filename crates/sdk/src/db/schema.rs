@@ -10,6 +10,7 @@ impl Db {
         backfill_endorsement_skills(self).await?;
         add_password_hash_column(self).await?;
         add_auth_tables(self).await?;
+        add_session_api_columns(self).await?;
         Ok(())
     }
 }
@@ -192,6 +193,26 @@ async fn add_password_hash_column(db: &Db) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn add_session_api_columns(db: &Db) -> anyhow::Result<()> {
+    for sql in [
+        "ALTER TABLE sessions ADD COLUMN transport TEXT NOT NULL DEFAULT 'cookie'",
+        "ALTER TABLE sessions ADD COLUMN refresh_token_hash TEXT",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_refresh_hash ON sessions (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL",
+    ] {
+        if let Err(error) = db.execute(sql, &[]).await {
+            let message = error.to_string();
+            if message.contains("duplicate column")
+                || message.contains("already exists")
+                || message.contains("duplicate key")
+            {
+                continue;
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
 async fn add_auth_tables(db: &Db) -> anyhow::Result<()> {
     for statement in [
         r#"CREATE TABLE IF NOT EXISTS sessions (
@@ -201,9 +222,12 @@ async fn add_auth_tables(db: &Db) -> anyhow::Result<()> {
                 created_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
                 user_agent TEXT NOT NULL DEFAULT '',
-                ip TEXT NOT NULL DEFAULT ''
+                ip TEXT NOT NULL DEFAULT '',
+                transport TEXT NOT NULL DEFAULT 'cookie',
+                refresh_token_hash TEXT
             )"#,
         "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_refresh_hash ON sessions (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL",
         r#"CREATE TABLE IF NOT EXISTS magic_links (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,

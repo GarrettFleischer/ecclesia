@@ -21,6 +21,29 @@ pub struct PasswordHashWrite {
     pub hash: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionTransport {
+    Cookie,
+    Api,
+}
+
+impl SessionTransport {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cookie => "cookie",
+            Self::Api => "api",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "cookie" => Some(Self::Cookie),
+            "api" => Some(Self::Api),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionWrite {
     pub id: String,
@@ -30,6 +53,8 @@ pub struct SessionWrite {
     pub last_seen_at: String,
     pub user_agent: String,
     pub ip: String,
+    pub transport: SessionTransport,
+    pub refresh_token_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +82,8 @@ pub struct SessionRow {
     pub last_seen_at: String,
     pub user_agent: String,
     pub ip: String,
+    pub transport: String,
+    pub refresh_token_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

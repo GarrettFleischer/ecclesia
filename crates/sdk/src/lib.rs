@@ -3,6 +3,7 @@
 //! The App crate talks to this crate only. Store, session, clock, word gate,
 //! and story functions sit here.
 
+pub mod bearer;
 pub mod cache;
 pub mod church_search;
 pub mod chat;

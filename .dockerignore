@@ -1,0 +1,15 @@
+target
+.git
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+node_modules
+mobile/node_modules
+mobile/ios
+mobile/android
+.agents
+.cursor
+.neon
+docs/.agent-cache

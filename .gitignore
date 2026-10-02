@@ -8,3 +8,5 @@ ecclesia-vapid.pem
 mobile/node_modules
 mobile/ios
 mobile/android
+.neon
+node_modules/

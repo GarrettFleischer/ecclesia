@@ -143,8 +143,8 @@ async fn apply_extras(exec: &mut impl Exec, extras: &StoryExtras) -> anyhow::Res
     }
     if let Some(session) = extras.session.as_ref() {
         exec.exec(
-            "INSERT INTO sessions (id, user_id, csrf, created_at, last_seen_at, user_agent, ip)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sessions (id, user_id, csrf, created_at, last_seen_at, user_agent, ip, transport, refresh_token_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             &[
                 Bind::Text(&session.id),
                 Bind::Text(&session.user_id),
@@ -153,6 +153,8 @@ async fn apply_extras(exec: &mut impl Exec, extras: &StoryExtras) -> anyhow::Res
                 Bind::Text(&session.last_seen_at),
                 Bind::Text(&session.user_agent),
                 Bind::Text(&session.ip),
+                Bind::Text(session.transport.as_str()),
+                Bind::OptText(session.refresh_token_hash.as_deref()),
             ],
         )
         .await?;

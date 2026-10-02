@@ -13,6 +13,7 @@ _These are recommendations to keep your build orderly, not requirements._
 |---|---------|-------|--------|
 | 1 | Scale persistence foundation | Foundation | done |
 | 2 | Identity and sessions | Foundation | done |
+| 3 | Hybrid access and refresh tokens | Slice 1 | done |
 
 ## Foundations
 
@@ -44,6 +45,25 @@ Passwords and a shared session store so a stolen cookie is not a stolen seat onc
 - [x] Test it: `/jsm-test identity and sessions`
 spec [0002](../specs/0002-identity-sessions/index.md)
 code in crates/domain, crates/sdk, crates/app
+
+## Slice 1
+
+### 3. Hybrid access and refresh tokens · done · GA
+Short lived bearer access plus a revocable refresh credential for JSON clients. The Maud site and Capacitor WebView keep the `v2` cookie session until a client opts into tokens.
+**Done when:** a client signs in over JSON, calls protected API routes with a short lived bearer, rotates with refresh, and logout or revoke matches today’s Me device semantics; cookie HTML auth is unchanged; stolen refresh dies on revoke, logout everywhere, and password change.
+- [x] Design it (spec): `/jsm-architect hybrid access and refresh tokens`
+- [x] Build it: `/jsm-develop hybrid access and refresh tokens`
+   - [x] Schema and SDK tokens: transport, refresh hash, access and refresh mint (AC-1, AC-3, AC-4)
+   - [x] JSON auth routes: sign in, refresh, logout (AC-2, AC-4, AC-6)
+   - [x] Proof read: GET /api/me with bearer (AC-5, AC-8)
+   - [x] Revocation parity with 0002 logout paths (AC-6)
+   - [x] Integration tests: API path and cookie regression (AC-7)
+- [x] Verify it: `/jsm-check verify hybrid access and refresh tokens`
+- [x] Test it: `/jsm-test hybrid access and refresh tokens`
+- [x] Review it (fresh model): `/jsm-check review hybrid access and refresh tokens`
+- [x] Document it: `/jsm-document hybrid access and refresh tokens`
+spec [0003](../specs/0003-hybrid-access-refresh/index.md)
+code in crates/sdk, crates/app
 
 ## Deferred
 

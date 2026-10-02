@@ -17,6 +17,7 @@
   hookReview(csrf);
   hookBusySubmit();
   hookTitleMorph();
+  hookPickers();
   hookChurchSearch();
   hookPasswordToggle();
   hookHaptics(native);
@@ -823,6 +824,296 @@ function paintChurchHits(root, hits) {
   if (query) {
     query.setAttribute("aria-expanded", "true");
   }
+}
+
+function hookPickers() {
+  let openMenu = null;
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!openMenu || openMenu.root.contains(event.target) || openMenu.menu.contains(event.target)) {
+      return;
+    }
+    openMenu.close(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && openMenu) {
+      event.preventDefault();
+      openMenu.close(true);
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (openMenu) {
+      openMenu.place();
+    }
+  });
+
+  window.addEventListener("scroll", () => {
+    if (openMenu) {
+      openMenu.place();
+    }
+  }, true);
+
+  for (const select of document.querySelectorAll("select")) {
+    mountPicker(select, {
+      claim(next) {
+        if (openMenu && openMenu !== next) {
+          openMenu.close(false);
+        }
+        openMenu = next;
+      },
+      release(next) {
+        if (openMenu === next) {
+          openMenu = null;
+        }
+      },
+    });
+  }
+}
+
+function mountPicker(select, bus) {
+  const picker = document.createElement("span");
+  picker.className = "picker";
+  select.before(picker);
+  picker.append(select);
+  select.classList.add("picker-native");
+  select.tabIndex = -1;
+  select.setAttribute("aria-hidden", "true");
+
+  const face = document.createElement("button");
+  face.type = "button";
+  face.className = "picker-face";
+  face.setAttribute("aria-haspopup", "listbox");
+  face.setAttribute("aria-expanded", "false");
+  const value = document.createElement("span");
+  value.className = "picker-value";
+  value.id = `picker-value-${Math.random().toString(36).slice(2, 8)}`;
+  face.append(value);
+  const label = select.closest("label");
+  const caption = label ? labelText(label) : "";
+  if (caption) {
+    const cap = document.createElement("span");
+    cap.id = `picker-cap-${Math.random().toString(36).slice(2, 8)}`;
+    cap.hidden = true;
+    cap.textContent = caption;
+    picker.append(cap);
+    face.setAttribute("aria-labelledby", `${cap.id} ${value.id}`);
+  }
+
+  const menu = document.createElement("div");
+  menu.className = "picker-menu";
+  menu.hidden = true;
+  menu.setAttribute("role", "listbox");
+  const listId = `picker-${Math.random().toString(36).slice(2, 8)}`;
+  menu.id = listId;
+  face.setAttribute("aria-controls", listId);
+  picker.append(face);
+
+  const options = [];
+  for (const node of select.children) {
+    if (node.tagName === "OPTGROUP") {
+      const block = document.createElement("div");
+      block.className = "picker-group";
+      const label = document.createElement("div");
+      label.className = "picker-label";
+      label.textContent = node.label;
+      block.append(label);
+      for (const option of node.querySelectorAll("option")) {
+        block.append(pickerOption(option, options));
+      }
+      menu.append(block);
+    } else if (node.tagName === "OPTION") {
+      menu.append(pickerOption(node, options));
+    }
+  }
+  document.body.append(menu);
+
+  function paint() {
+    const current = select.selectedOptions[0];
+    value.textContent = current ? current.textContent.trim() : "";
+    for (const item of options) {
+      const on = item.dataset.value === select.value;
+      item.setAttribute("aria-selected", on ? "true" : "false");
+      item.classList.toggle("is-selected", on);
+    }
+  }
+
+  function place() {
+    const box = face.getBoundingClientRect();
+    const margin = 12;
+    const width = Math.min(box.width, window.innerWidth - margin * 2);
+    let left = box.left;
+    if (left + width > window.innerWidth - margin) {
+      left = window.innerWidth - margin - width;
+    }
+    if (left < margin) {
+      left = margin;
+    }
+    const floor = menuFloor();
+    const below = floor - box.bottom - 8;
+    const above = box.top - margin;
+    const upward = below < 180 && above > below;
+    const room = Math.max(96, Math.min(320, upward ? above - 8 : Math.max(96, below)));
+    menu.style.width = `${width}px`;
+    menu.style.left = `${left}px`;
+    menu.style.maxHeight = `${room}px`;
+    menu.classList.toggle("is-up", upward);
+    if (upward) {
+      const bottom = Math.max(window.innerHeight - box.top + 6, window.innerHeight - floor);
+      menu.style.top = "auto";
+      menu.style.bottom = `${bottom}px`;
+    } else {
+      menu.style.bottom = "auto";
+      menu.style.top = `${box.bottom + 6}px`;
+    }
+  }
+
+  const api = {
+    root: picker,
+    menu,
+    place,
+    close(focusFace) {
+      menu.hidden = true;
+      face.setAttribute("aria-expanded", "false");
+      picker.classList.remove("is-open");
+      bus.release(api);
+      if (focusFace) {
+        face.focus();
+      }
+    },
+  };
+
+  function open() {
+    const box = face.getBoundingClientRect();
+    const floor = menuFloor();
+    if (box.bottom > floor - 8 || box.top < 12) {
+      const delta = box.bottom > floor - 8 ? box.bottom - (floor - 16) : box.top - 12;
+      window.scrollBy(0, delta);
+    }
+    bus.claim(api);
+    menu.hidden = false;
+    face.setAttribute("aria-expanded", "true");
+    picker.classList.add("is-open");
+    place();
+    const selected = options.find((item) => item.classList.contains("is-selected")) || options[0];
+    if (selected) {
+      selected.focus({ preventScroll: true });
+      revealOption(menu, selected);
+    }
+  }
+
+  face.addEventListener("click", () => {
+    if (menu.hidden) {
+      open();
+    } else {
+      api.close(false);
+    }
+  });
+
+  face.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      open();
+    }
+  });
+
+  select.addEventListener("mousedown", (event) => event.preventDefault());
+  select.addEventListener("focus", () => face.focus());
+  select.addEventListener("invalid", () => {
+    face.setAttribute("aria-invalid", "true");
+    face.focus();
+  });
+
+  if (label) {
+    label.addEventListener("click", (event) => {
+      if (event.target === face || face.contains(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      if (menu.hidden) {
+        open();
+      }
+    });
+  }
+
+  for (const item of options) {
+    item.addEventListener("click", () => {
+      select.value = item.dataset.value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      face.removeAttribute("aria-invalid");
+      paint();
+      api.close(true);
+    });
+  }
+
+  menu.addEventListener("keydown", (event) => {
+    const index = options.indexOf(document.activeElement);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      options[Math.min(options.length - 1, index + 1)]?.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      options[Math.max(0, index - 1)]?.focus();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      options[0]?.focus();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      options[options.length - 1]?.focus();
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      document.activeElement?.click();
+    }
+  });
+
+  let scrollTimer = 0;
+  menu.addEventListener("scroll", () => {
+    menu.classList.add("is-scrolling");
+    window.clearTimeout(scrollTimer);
+    scrollTimer = window.setTimeout(() => menu.classList.remove("is-scrolling"), 700);
+  });
+
+  paint();
+}
+
+function labelText(label) {
+  return Array.from(label.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function pickerOption(option, options) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "picker-option";
+  item.setAttribute("role", "option");
+  item.tabIndex = -1;
+  item.dataset.value = option.value;
+  item.textContent = option.textContent.trim();
+  options.push(item);
+  return item;
+}
+
+function revealOption(menu, item) {
+  const top = item.offsetTop;
+  const bottom = top + item.offsetHeight;
+  if (top < menu.scrollTop) {
+    menu.scrollTop = top;
+  } else if (bottom > menu.scrollTop + menu.clientHeight) {
+    menu.scrollTop = bottom - menu.clientHeight;
+  }
+}
+
+function menuFloor() {
+  const dock = document.querySelector(".dock");
+  if (!dock) {
+    return window.innerHeight - 12;
+  }
+  const top = dock.getBoundingClientRect().top;
+  return Math.min(window.innerHeight, top) - 8;
 }
 
 function clearChurchSuggestions(root) {

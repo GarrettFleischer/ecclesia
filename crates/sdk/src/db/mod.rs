@@ -30,7 +30,8 @@ use crate::host::is_public_host;
 
 pub use dialect::{Driver, require_public_database_url, rewrite_placeholders};
 pub use extras::{
-    MailWrite, PasswordHashWrite, SessionRow, SessionWrite, StoryExtras, TokenRow, TokenWrite,
+    MailWrite, PasswordHashWrite, SessionRow, SessionTransport, SessionWrite, StoryExtras,
+    TokenRow, TokenWrite,
 };
 pub use outbox::{OutboxFinish, OutboxRow};
 pub use push::{PushDevice, PushSubscription};

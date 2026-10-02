@@ -1410,3 +1410,133 @@ async fn us_sec_16_security_headers_and_cookie_flags() {
         "plain transport must not set Secure: {cookie}"
     );
 }
+
+async fn post_json_api(
+    app: axum::Router,
+    uri: &str,
+    body: &str,
+) -> axum::http::Response<Body> {
+    app.oneshot(
+        Request::post(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn us_api_01_json_sign_in_refresh_and_me() {
+    let world = app_with(
+        ecclesia_sdk::judge::JudgeHub::silent(),
+        ecclesia_sdk::refine::RefineHub::silent(),
+    )
+    .await;
+    let email = format!(
+        "api-{}@example.com",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let cookie = register(&world, "Api Member", &email).await;
+    let cookie_only = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/api/me")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cookie_only.status(), StatusCode::UNAUTHORIZED);
+
+    let api_sign_in = post_json_api(
+        world.app.clone(),
+        "/api/session",
+        &format!(
+            r#"{{"email":"{email}","password":"{pass}"}}"#,
+            pass = PASS
+        ),
+    )
+    .await;
+    assert_eq!(api_sign_in.status(), StatusCode::OK);
+    assert!(try_cookie_from(&api_sign_in).is_none());
+    let sign_body = body_string(api_sign_in).await;
+    let tokens: serde_json::Value = serde_json::from_str(&sign_body).unwrap();
+    let access = tokens["access_token"].as_str().expect("access");
+    let refresh = tokens["refresh_token"].as_str().expect("refresh");
+    assert_eq!(tokens["token_type"].as_str(), Some("Bearer"));
+    assert_eq!(tokens["expires_in"].as_i64(), Some(900));
+
+    let me = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/api/me")
+                .header(header::AUTHORIZATION, format!("Bearer {access}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me.status(), StatusCode::OK);
+    let cache = me
+        .headers()
+        .get(header::CACHE_CONTROL)
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(cache, Some("no-store"));
+    let profile: serde_json::Value =
+        serde_json::from_str(&body_string(me).await).unwrap();
+    assert_eq!(profile["email"].as_str(), Some(email.as_str()));
+    assert!(profile["name"].as_str().is_some());
+    assert!(profile["id"].as_str().is_some());
+
+    let rotated = post_json_api(
+        world.app.clone(),
+        "/api/session/refresh",
+        &format!(r#"{{"refresh_token":"{refresh}"}}"#),
+    )
+    .await;
+    assert_eq!(rotated.status(), StatusCode::OK);
+    let rotated_body: serde_json::Value =
+        serde_json::from_str(&body_string(rotated).await).unwrap();
+    let refresh2 = rotated_body["refresh_token"].as_str().expect("refresh2");
+    let access2 = rotated_body["access_token"].as_str().expect("access2");
+    assert_ne!(refresh2, refresh);
+
+    let stale = post_json_api(
+        world.app.clone(),
+        "/api/session/refresh",
+        &format!(r#"{{"refresh_token":"{refresh}"}}"#),
+    )
+    .await;
+    assert_eq!(stale.status(), StatusCode::UNAUTHORIZED);
+
+    let cookie = sign_in(&world, &email).await;
+    let (_page, cookie, csrf) = get_page(world.app.clone(), Some(&cookie), "/me").await;
+    let csrf = csrf.expect("me csrf");
+    let logout_all = post_form(
+        world.app.clone(),
+        Some(&cookie),
+        "/session/logout-all",
+        format!("csrf={csrf}"),
+    )
+    .await;
+    assert_eq!(logout_all.status(), StatusCode::SEE_OTHER);
+    let me_after = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/api/me")
+                .header(header::AUTHORIZATION, format!("Bearer {access2}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
+}

@@ -6,13 +6,14 @@ Church rules live in Domain. The App and SDK still have duties they must not ski
 
 - Cookie name: `ecclesia_sid`
 - Value: `v2.{session_id}.{csrf}.{hmac-sha256}`. Guest `session_id` is empty. Signed-in `session_id` is the primary key of a row in `sessions`, not the user id.
-- HMAC key: `ECCLESIA_SECRET`. If unset, the process mints a 32-byte key and sessions die on restart. The published string `dev-only-change-me` is accepted only when you set it, and is logged as unsafe.
+- HMAC key: `ECCLESIA_SECRET`. Local `.env` is loaded on startup. A variable already set in the shell wins. If the key is still unset, the process mints a 32-byte key and sessions die on restart. The published string `dev-only-change-me` is accepted only when you set it, and is logged as unsafe.
 - Session ids and user ids in the cookie may only be `A-Z a-z 0-9 _ -` (max 80). A dotted id cannot hide extra fields in the payload.
 - Each request loads `sessions` by `session_id`. A missing row, csrf mismatch, or `last_seen_at` older than 30 days becomes a guest with a fresh csrf. `v1` cookies decode as guests.
 - A valid cookie is not rewritten on every request.
 - Flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, 30-day max age. Set `ECCLESIA_SECURE=1` when TLS terminates in front so the cookie also has `Secure`.
 - Logout, revoke one device, sign out everywhere, and password change delete the affected session rows. See spec [0002](../specs/0002-identity-sessions/index.md).
 - The old unsigned `ecclesia_uid` cookie is gone.
+- API clients use `POST /api/session` and refresh rotation. Access is `v3.at.{session_id}.{exp}.{hmac}` (15 minutes). Refresh is `rt.` plus a random string; only SHA-256 hex is stored. Rows with `transport = api` never bind to `ecclesia_sid`. `/api/*` does not set cookies. See spec [0003](../specs/0003-hybrid-access-refresh/index.md).
 
 ## Passwords
 

@@ -1,5 +1,6 @@
 //! HTTP skin. Loads values, calls an SDK story, renders HTML.
 
+mod api;
 mod auth;
 mod churches;
 mod context;
@@ -88,7 +89,13 @@ impl IntoResponse for AppError {
     }
 }
 
+pub fn load_dotenv() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.env");
+    dotenvy::from_path(root).ok();
+}
+
 pub async fn serve() -> anyhow::Result<()> {
+    load_dotenv();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -212,6 +219,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/session/password", post(auth::change_password))
         .route("/session/{id}/revoke", post(auth::revoke_session))
+        .nest("/api", api::router())
         .route("/refine", post(voice::refine_words))
         .route("/home", get(auth::home))
         .route(

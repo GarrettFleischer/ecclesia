@@ -24,6 +24,38 @@ impl Db {
         .await
     }
 
+    pub async fn session_by_refresh_hash(
+        &self,
+        hash: &str,
+    ) -> anyhow::Result<Option<SessionRow>> {
+        self.fetch_optional::<SessionRow>(
+            "SELECT * FROM sessions WHERE refresh_token_hash = ?",
+            &[Bind::Text(hash)],
+        )
+        .await
+    }
+
+    pub async fn rotate_refresh_hash(
+        &self,
+        session_id: &str,
+        old_hash: &str,
+        new_hash: &str,
+        last_seen_at: &str,
+    ) -> anyhow::Result<bool> {
+        let rows = self
+            .execute_rows(
+                "UPDATE sessions SET refresh_token_hash = ?, last_seen_at = ? WHERE id = ? AND refresh_token_hash = ?",
+                &[
+                    Bind::Text(new_hash),
+                    Bind::Text(last_seen_at),
+                    Bind::Text(session_id),
+                    Bind::Text(old_hash),
+                ],
+            )
+            .await?;
+        Ok(rows == 1)
+    }
+
     pub async fn user_password_hash(&self, user_id: &str) -> anyhow::Result<Option<String>> {
         #[derive(sqlx::FromRow)]
         struct HashRow {

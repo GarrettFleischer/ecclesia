@@ -7,9 +7,14 @@ use ecclesia_domain::{
     register as domain_register, request_join as domain_request_join, VoiceKind,
 };
 
+use crate::bearer::{
+    access_exp_unix, decode_access, encode_access, hash_refresh_wire, mint_refresh_wire,
+    ApiSessionTokens, ACCESS_SECONDS,
+};
+use serde::Serialize;
 use crate::clock::{new_id, now_iso};
 use crate::db::{
-    MailWrite, PasswordHashWrite, SessionWrite, StoryExtras, TokenWrite,
+    MailWrite, PasswordHashWrite, SessionTransport, SessionWrite, StoryExtras, TokenWrite,
 };
 use crate::password::{hash_and_wipe, hash_token, mint_token, score, verify_password};
 use crate::session::{fresh_csrf, Session};
@@ -153,7 +158,12 @@ fn session_extras(
     mut extras: StoryExtras,
 ) -> StoryExtras {
     let now = now_iso();
-    extras.session = Some(SessionWrite {
+    extras.session = Some(cookie_session_write(user_id, device, now));
+    extras
+}
+
+fn cookie_session_write(user_id: &str, device: &DeviceMeta, now: String) -> SessionWrite {
+    SessionWrite {
         id: new_id(),
         user_id: user_id.to_string(),
         csrf: fresh_csrf(),
@@ -161,8 +171,195 @@ fn session_extras(
         last_seen_at: now,
         user_agent: truncate_agent(&device.user_agent),
         ip: device.ip.clone(),
-    });
-    extras
+        transport: SessionTransport::Cookie,
+        refresh_token_hash: None,
+    }
+}
+
+fn api_session_write(
+    user_id: &str,
+    device: &DeviceMeta,
+    now: String,
+    refresh_hash: String,
+) -> SessionWrite {
+    SessionWrite {
+        id: new_id(),
+        user_id: user_id.to_string(),
+        csrf: fresh_csrf(),
+        created_at: now.clone(),
+        last_seen_at: now,
+        user_agent: truncate_agent(&device.user_agent),
+        ip: device.ip.clone(),
+        transport: SessionTransport::Api,
+        refresh_token_hash: Some(refresh_hash),
+    }
+}
+
+fn tokens_for_session(secret: &str, session_id: &str, refresh_wire: &str) -> ApiSessionTokens {
+    let now = Utc::now().timestamp();
+    let exp = access_exp_unix(now);
+    ApiSessionTokens {
+        access_token: encode_access(secret, session_id, exp),
+        refresh_token: refresh_wire.to_string(),
+        expires_in: ACCESS_SECONDS,
+    }
+}
+
+pub async fn sign_in_api(
+    sdk: &Sdk,
+    secret: &str,
+    email: &str,
+    password: &str,
+    device: &DeviceMeta,
+) -> anyhow::Result<Result<ApiSessionTokens, DomainError>> {
+    let normalized = match normalize_email(email) {
+        Ok(email) => email,
+        Err(_) => return Ok(Err(DomainError::NotFound)),
+    };
+    let Some(user) = sdk.db.user_by_email(&normalized).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let Some(hash) = sdk.db.user_password_hash(&user.id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    if !verify_password(password, &hash) {
+        return Ok(Err(DomainError::NotFound));
+    }
+    mint_api_session(sdk, secret, &user.id, device).await
+}
+
+async fn mint_api_session(
+    sdk: &Sdk,
+    secret: &str,
+    user_id: &str,
+    device: &DeviceMeta,
+) -> anyhow::Result<Result<ApiSessionTokens, DomainError>> {
+    let refresh_wire = mint_refresh_wire();
+    let refresh_hash = hash_refresh_wire(&refresh_wire);
+    let now = now_iso();
+    let session = api_session_write(user_id, device, now, refresh_hash);
+    let session_id = session.id.clone();
+    let extras = StoryExtras {
+        session: Some(session),
+        ..StoryExtras::default()
+    };
+    sdk.db
+        .apply_with(&ecclesia_domain::Effect::default(), &extras)
+        .await?;
+    Ok(Ok(tokens_for_session(secret, &session_id, &refresh_wire)))
+}
+
+pub async fn refresh_api(
+    sdk: &Sdk,
+    secret: &str,
+    refresh_wire: &str,
+) -> anyhow::Result<Option<ApiSessionTokens>> {
+    if !refresh_wire.starts_with("rt.") {
+        return Ok(None);
+    }
+    let old_hash = hash_refresh_wire(refresh_wire);
+    let Some(row) = sdk.db.session_by_refresh_hash(&old_hash).await? else {
+        return Ok(None);
+    };
+    if SessionTransport::parse(&row.transport) != Some(SessionTransport::Api) {
+        return Ok(None);
+    }
+    if idle(&row.last_seen_at) {
+        return Ok(None);
+    }
+    let now = now_iso();
+    let touch = if day_changed(&row.last_seen_at) {
+        now.clone()
+    } else {
+        row.last_seen_at.clone()
+    };
+    let new_wire = mint_refresh_wire();
+    let new_hash = hash_refresh_wire(&new_wire);
+    let rotated = sdk
+        .db
+        .rotate_refresh_hash(&row.id, &old_hash, &new_hash, &touch)
+        .await?;
+    if !rotated {
+        return Ok(None);
+    }
+    Ok(Some(tokens_for_session(secret, &row.id, &new_wire)))
+}
+
+pub struct BearerIdentity {
+    pub session_id: String,
+    pub user_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ApiProfile {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub city: String,
+    pub region: String,
+    pub bio: String,
+}
+
+pub async fn api_me_profile(
+    sdk: &Sdk,
+    secret: &str,
+    access_token: &str,
+) -> anyhow::Result<Option<ApiProfile>> {
+    let Some(who) = resolve_bearer(sdk, secret, access_token).await? else {
+        return Ok(None);
+    };
+    let Some(user) = sdk.db.user(&who.user_id).await? else {
+        return Ok(None);
+    };
+    Ok(Some(ApiProfile {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        city: user.city,
+        region: user.region,
+        bio: user.bio,
+    }))
+}
+
+pub async fn api_logout_bearer(
+    sdk: &Sdk,
+    secret: &str,
+    access_token: &str,
+) -> anyhow::Result<bool> {
+    let Some(who) = resolve_bearer(sdk, secret, access_token).await? else {
+        return Ok(false);
+    };
+    logout(sdk, &who.session_id).await?;
+    Ok(true)
+}
+
+pub async fn resolve_bearer(
+    sdk: &Sdk,
+    secret: &str,
+    access_token: &str,
+) -> anyhow::Result<Option<BearerIdentity>> {
+    let Some((session_id, exp_unix)) = decode_access(secret, access_token) else {
+        return Ok(None);
+    };
+    if Utc::now().timestamp() > exp_unix {
+        return Ok(None);
+    }
+    let Some(row) = sdk.db.session(&session_id).await? else {
+        return Ok(None);
+    };
+    if SessionTransport::parse(&row.transport) != Some(SessionTransport::Api) {
+        return Ok(None);
+    }
+    if idle(&row.last_seen_at) {
+        return Ok(None);
+    }
+    if day_changed(&row.last_seen_at) {
+        let _ = sdk.db.touch_session(&session_id, &now_iso()).await;
+    }
+    Ok(Some(BearerIdentity {
+        session_id: row.id,
+        user_id: row.user_id,
+    }))
 }
 
 pub async fn change_password(
@@ -260,6 +457,9 @@ pub async fn resolve_session(sdk: &Sdk, session: Session) -> anyhow::Result<Sess
     let Some(row) = sdk.db.session(id).await? else {
         return Ok(Session::guest(fresh_csrf()));
     };
+    if SessionTransport::parse(&row.transport) != Some(SessionTransport::Cookie) {
+        return Ok(Session::guest(fresh_csrf()));
+    }
     if row.csrf != session.csrf || idle(&row.last_seen_at) {
         return Ok(Session::guest(fresh_csrf()));
     }

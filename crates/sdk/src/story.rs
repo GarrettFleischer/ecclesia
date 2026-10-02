@@ -25,9 +25,12 @@ use crate::limit::RateGate;
 use crate::push::PushHub;
 use crate::refine::RefineHub;
 
+pub use crate::bearer::ApiSessionTokens;
 pub use crate::identity::{
-    change_password, complete_reset, consume_magic, logout, logout_all, register, request_magic,
-    request_reset, reset_form_ok, resolve_session, revoke_session, sign_in, DeviceMeta, MailOrigin,
+    change_password, complete_reset, consume_magic, logout, logout_all, refresh_api, register,
+    request_magic, request_reset, reset_form_ok, resolve_bearer, resolve_session, revoke_session,
+    api_logout_bearer, api_me_profile, sign_in, sign_in_api, ApiProfile, BearerIdentity,
+    DeviceMeta, MailOrigin,
 };
 
 #[derive(Clone)]
@@ -1002,6 +1005,91 @@ mod tests {
         let live = sdk.db.sessions_for_user(&user.id).await.unwrap();
         assert_eq!(live.len(), 1);
         assert_eq!(live[0].id, ok.session_id.expect("new session"));
+    }
+
+    #[tokio::test]
+    async fn us_api_03_parallel_refresh_has_one_winner() {
+        let path = std::env::temp_dir().join(format!(
+            "ecclesia-refresh-race-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let first = sdk_on(&path).await;
+        register_named(&first, "Race Ada", "race@verify.test").await;
+        let tokens = crate::identity::sign_in_api(
+            &first,
+            "verify-secret",
+            "race@verify.test",
+            "Thursday dinners at six oclock",
+            &test_device(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let refresh = tokens.refresh_token.clone();
+        let second = sdk_on(&path).await;
+        let (a, b) = tokio::join!(
+            crate::identity::refresh_api(&first, "verify-secret", &refresh),
+            crate::identity::refresh_api(&second, "verify-secret", &refresh),
+        );
+        let wins = [a.unwrap().is_some(), b.unwrap().is_some()];
+        assert_eq!(wins.iter().filter(|won| **won).count(), 1);
+    }
+
+    #[tokio::test]
+    async fn us_api_02_api_row_does_not_bind_cookie() {
+        let sdk = fresh_sdk().await;
+        register_named(&sdk, "Api Ada", "api@verify.test").await;
+        let tokens = crate::identity::sign_in_api(
+            &sdk,
+            "verify-secret",
+            "api@verify.test",
+            "Thursday dinners at six oclock",
+            &test_device(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let who = crate::identity::resolve_bearer(&sdk, "verify-secret", &tokens.access_token)
+            .await
+            .unwrap()
+            .expect("bearer");
+        let row = sdk.db.session(&who.session_id).await.unwrap().expect("row");
+        let cookie = crate::session::Session::signed_in(
+            row.id.clone(),
+            who.user_id.clone(),
+            row.csrf.clone(),
+        );
+        let live = resolve_session(&sdk, cookie).await.unwrap();
+        assert!(live.user_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn us_api_02_sign_in_api_mints_bearer_session() {
+        let sdk = fresh_sdk().await;
+        register_named(&sdk, "Api Ada", "api@verify.test").await;
+        let tokens = crate::identity::sign_in_api(
+            &sdk,
+            "verify-secret",
+            "api@verify.test",
+            "Thursday dinners at six oclock",
+            &test_device(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(tokens.access_token.starts_with("v3.at."));
+        assert!(tokens.refresh_token.starts_with("rt."));
+        let who = crate::identity::resolve_bearer(&sdk, "verify-secret", &tokens.access_token)
+            .await
+            .unwrap()
+            .expect("bearer");
+        let row = sdk.db.session(&who.session_id).await.unwrap().expect("row");
+        assert_eq!(row.transport, "api");
+        assert!(row.refresh_token_hash.is_some());
     }
 
     #[tokio::test]

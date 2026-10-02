@@ -33,9 +33,14 @@ impl Db {
     }
 
     pub(crate) async fn execute(&self, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<()> {
+        let _ = self.execute_rows(sql, binds).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn execute_rows(&self, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<u64> {
         match &self.inner {
-            super::Inner::Sqlite(pool) => execute_sqlite(pool, sql, binds).await,
-            super::Inner::Postgres(pool) => execute_postgres(pool, sql, binds).await,
+            super::Inner::Sqlite(pool) => execute_rows_sqlite(pool, sql, binds).await,
+            super::Inner::Postgres(pool) => execute_rows_postgres(pool, sql, binds).await,
         }
     }
 
@@ -92,25 +97,23 @@ impl Db {
     }
 }
 
-async fn execute_sqlite(pool: &SqlitePool, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<()> {
+async fn execute_rows_sqlite(pool: &SqlitePool, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<u64> {
     let owned = owned_binds(binds);
     let mut query = sqlx::query(sql);
     for bind in &owned {
         query = bind_sqlite_query(query, bind);
     }
-    query.execute(pool).await?;
-    Ok(())
+    Ok(query.execute(pool).await?.rows_affected())
 }
 
-async fn execute_postgres(pool: &PgPool, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<()> {
+async fn execute_rows_postgres(pool: &PgPool, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<u64> {
     let sql = Driver::Postgres.sql(sql);
     let owned = owned_binds(binds);
     let mut query = sqlx::query(&sql);
     for bind in &owned {
         query = bind_postgres_query(query, bind);
     }
-    query.execute(pool).await?;
-    Ok(())
+    Ok(query.execute(pool).await?.rows_affected())
 }
 
 async fn fetch_optional_sqlite<T>(
