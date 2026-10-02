@@ -1,6 +1,7 @@
 use super::bind::Bind;
 use super::seed_data::GIFTS;
 use super::Db;
+use crate::host::is_public_host;
 
 const SEED_CHURCH_ID: &str = "seed_grace";
 const SEED_OWNER_ID: &str = "seed_owner";
@@ -15,6 +16,9 @@ impl Db {
         if self.gift_count().await? == 0 {
             insert_gift_rows(self, GIFTS).await?;
             tracing::info!("seeded gift catalog");
+        }
+        if is_public_host() {
+            return Ok(());
         }
         self.ensure_grace_fellowship().await
     }

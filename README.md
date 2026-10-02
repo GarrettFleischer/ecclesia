@@ -45,7 +45,7 @@ Fly sets `FLY_APP_NAME`, which turns on public-host checks. You can mimic that l
 3. Copy the **pooled** connection string whose host includes `-pooler`. Use the **session** pooler, not the transaction pooler. Scheme must be `postgres` or `postgresql`.
 4. Set it as `DATABASE_URL` on Fly (secret, below).
 
-The app and worker run schema migration on boot. An empty database seeds the gift catalog and Grace Fellowship (same dev logins as local). Treat `admin@seed.test` / `password` as bootstrap only on a real host: change those passwords or remove the seed accounts once your church is live.
+The app and worker run schema migration on boot. An empty database seeds the gift catalog. Grace Fellowship and `admin@seed.test` / `owner@seed.test` exist only on local SQLite (see **Local** above).
 
 ### 2. Upstash (Redis)
 
