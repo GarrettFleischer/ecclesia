@@ -78,15 +78,33 @@ function hookInstall(native) {
   }
   const install = bar.querySelector("[data-install]");
   const dismiss = bar.querySelector("[data-install-dismiss]");
+  if (!install || !dismiss) {
+    return;
+  }
   let pending = null;
+  let prompting = false;
+  const manual = needsManualInstall();
+
+  if (!manual) {
+    install.hidden = true;
+  }
 
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     pending = event;
+    if (!manual) {
+      install.hidden = false;
+    }
     bar.hidden = false;
   });
 
-  if (needsManualInstall()) {
+  window.addEventListener("appinstalled", () => {
+    pending = null;
+    prompting = false;
+    bar.hidden = true;
+  });
+
+  if (manual) {
     const hint = bar.querySelector(".install-bar-ios");
     if (hint) {
       hint.hidden = false;
@@ -98,14 +116,26 @@ function hookInstall(native) {
     hookInstallHelp(bar);
   }
 
-  install.addEventListener("click", async () => {
-    if (!pending) {
+  install.addEventListener("click", () => {
+    if (!pending || prompting) {
       return;
     }
-    pending.prompt();
-    await pending.userChoice;
-    pending = null;
-    bar.hidden = true;
+    const event = pending;
+    prompting = true;
+    install.disabled = true;
+    void (async () => {
+      try {
+        await event.prompt();
+        await event.userChoice;
+      } catch {
+        /* prompt already used or browser refused */
+      } finally {
+        pending = null;
+        prompting = false;
+        install.disabled = false;
+        bar.hidden = true;
+      }
+    })();
   });
   dismiss.addEventListener("click", () => {
     bar.hidden = true;

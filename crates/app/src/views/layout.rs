@@ -255,7 +255,7 @@ pub fn page(
                 @if app_chrome(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=10" defer {}
+                script src="/static/app.js?v=11" defer {}
             }
         }
     }
