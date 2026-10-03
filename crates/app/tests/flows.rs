@@ -1322,12 +1322,14 @@ async fn us_app_03_auth_routes_carry_one_form_each() {
     assert!(register.contains("site-account"));
     assert!(!register.contains("install-bar"));
     assert!(register.contains("href=\"/session/new\""));
+    assert!(register.contains("data-auth=\"register\""));
     assert!(!register.contains("We are the ecclesia"));
 
     let (sign_in, _, _) = get_page(world.app.clone(), None, "/session/new").await;
     assert!(sign_in.contains(r#"action="/session""#));
     assert!(sign_in.contains("<h1>Sign in</h1>"));
     assert!(sign_in.contains("data-password-toggle"));
+    assert!(sign_in.contains("data-auth=\"sign-in\""));
     assert!(sign_in.contains("href=\"/register\""));
     assert!(!sign_in.contains(r#"action="/register""#));
     assert!(!sign_in.contains("install-bar"));

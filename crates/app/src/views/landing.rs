@@ -229,10 +229,11 @@ fn landing_story() -> Markup {
 
 fn sign_in_form(csrf: &str, email: &str) -> Markup {
     html! {
-        form class="stack panel auth-card" method="post" action="/session" {
+        form class="stack panel auth-card" method="post" action="/session" data-auth="sign-in" novalidate {
             (csrf_input(csrf))
-            label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" value=(email); }
+            label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" maxlength="120" value=(email); }
             (password_field("Password", "password", "current-password"))
+            p class="form-error" id="auth-error" data-auth-error role="alert" hidden {}
             button class="btn" type="submit" { "Sign in" }
         }
     }
@@ -260,7 +261,7 @@ fn forgot_password_form(csrf: &str) -> Markup {
 
 fn register_form(csrf: &str, draft: &RegisterDraft<'_>, church: Option<&Church>) -> Markup {
     html! {
-        form class="stack panel auth-card" method="post" action="/register" {
+        form class="stack panel auth-card" method="post" action="/register" data-auth="register" novalidate {
             (csrf_input(csrf))
             @if !draft.code.is_empty() {
                 input type="hidden" name="code" value=(draft.code);
@@ -269,6 +270,7 @@ fn register_form(csrf: &str, draft: &RegisterDraft<'_>, church: Option<&Church>)
             label { "Last name" input name="last_name" required autocomplete="family-name" autocapitalize="words" placeholder="Cole" maxlength="80" value=(draft.last_name); }
             label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" maxlength="120" value=(draft.email); }
             (password_field("Password", "password", "new-password"))
+            p class="form-error" id="auth-error" data-auth-error role="alert" hidden {}
             button class="btn" type="submit" { (register_button(church)) }
         }
     }

@@ -21,6 +21,7 @@
   hookPickers();
   hookChurchSearch();
   hookPasswordToggle();
+  hookAuthForms();
   hookHaptics(native);
   hookAlerts(csrf, native);
   if (native) {
@@ -737,6 +738,263 @@ function hookPasswordToggle() {
     if (hideIcon) {
       hideIcon.hidden = showing;
     }
+  });
+}
+
+function hookAuthForms() {
+  document.addEventListener(
+    "submit",
+    (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || !form.matches("[data-auth]")) {
+        return;
+      }
+      const problem = authProblem(form);
+      if (!problem) {
+        clearAuthError(form);
+        return;
+      }
+      event.preventDefault();
+      showAuthError(form, problem);
+    },
+    true,
+  );
+
+  document.addEventListener("input", (event) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement)) {
+      return;
+    }
+    const form = field.closest("[data-auth]");
+    if (!form) {
+      return;
+    }
+    field.classList.remove("is-invalid");
+    field.removeAttribute("aria-invalid");
+    field.removeAttribute("aria-describedby");
+    const error = form.querySelector("[data-auth-error]");
+    if (error && !form.querySelector(".is-invalid")) {
+      error.hidden = true;
+      error.textContent = "";
+    }
+  });
+}
+
+function authProblem(form) {
+  const kind = form.getAttribute("data-auth");
+  const first = fieldValue(form, "first_name");
+  const last = fieldValue(form, "last_name");
+  const email = fieldValue(form, "email");
+  const password = fieldValue(form, "password");
+  if (kind === "register") {
+    if (!first.trim()) {
+      return { name: "first_name", message: "Fill in the required fields." };
+    }
+    if (!last.trim()) {
+      return { name: "last_name", message: "Fill in the required fields." };
+    }
+  }
+  const emailIssue = emailIssueOf(email);
+  if (emailIssue === "empty") {
+    return { name: "email", message: "Fill in the required fields." };
+  }
+  if (emailIssue === "bad") {
+    return { name: "email", message: "Check the email address." };
+  }
+  if (!password) {
+    return { name: "password", message: "Fill in the required fields." };
+  }
+  if (kind === "register" && weakPassword(password, first, last, email)) {
+    return { name: "password", message: "Pick a stronger password." };
+  }
+  return null;
+}
+
+function fieldValue(form, name) {
+  const field = form.querySelector(`[name="${name}"]`);
+  return field instanceof HTMLInputElement ? field.value : "";
+}
+
+function emailIssueOf(value) {
+  const email = value.trim().toLowerCase();
+  if (!email) {
+    return "empty";
+  }
+  if ([...email].length > 120 || [...email].some(emailForbidden)) {
+    return "bad";
+  }
+  const at = email.indexOf("@");
+  if (at <= 0 || email.indexOf("@", at + 1) !== -1) {
+    return "bad";
+  }
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (!localOk(local) || !domainOk(domain)) {
+    return "bad";
+  }
+  return "";
+}
+
+function emailForbidden(ch) {
+  return /\s/u.test(ch) || ch.charCodeAt(0) < 32;
+}
+
+function localOk(local) {
+  if (!local || local.startsWith(".") || local.endsWith(".")) {
+    return false;
+  }
+  return [...local].every(
+    (ch) => /[a-z0-9]/i.test(ch) || ch === "." || ch === "+" || ch === "-" || ch === "_",
+  );
+}
+
+function domainOk(domain) {
+  if (!domain.includes(".") || domain.includes("..")) {
+    return false;
+  }
+  return domain.split(".").every(labelOk);
+}
+
+function labelOk(label) {
+  if (!label || label.startsWith("-") || label.endsWith("-")) {
+    return false;
+  }
+  return [...label].every((ch) => /[a-z0-9]/i.test(ch) || ch === "-");
+}
+
+const COMMON_PASSWORDS = new Set([
+  "password",
+  "password1",
+  "password123",
+  "passw0rd",
+  "123456",
+  "1234567",
+  "12345678",
+  "123456789",
+  "1234567890",
+  "qwerty",
+  "qwerty123",
+  "qwertyuiop",
+  "letmein",
+  "welcome",
+  "welcome1",
+  "admin",
+  "admin123",
+  "iloveyou",
+  "sunshine",
+  "princess",
+  "football",
+  "baseball",
+  "dragon",
+  "master",
+  "login",
+  "abc123",
+  "abcdef",
+  "abcdefg",
+  "111111",
+  "000000",
+  "trustno1",
+  "starwars",
+  "monkey",
+  "shadow",
+  "michael",
+  "jordan",
+  "harley",
+  "ranger",
+  "hunter",
+  "buster",
+  "soccer",
+  "hockey",
+  "killer",
+  "george",
+  "andrew",
+  "charlie",
+  "thomas",
+  "robert",
+  "daniel",
+  "jessica",
+  "pepper",
+  "access",
+  "flower",
+  "summer",
+  "winter",
+  "orange",
+  "ginger",
+  "cheese",
+  "computer",
+  "internet",
+  "freedom",
+  "mustang",
+  "secret",
+  "changeme",
+  "asdfghjkl",
+  "zxcvbnm",
+  "1q2w3e4r",
+  "pass",
+  "pass123",
+  "guest",
+  "default",
+  "654321",
+  "123123",
+  "112233",
+  "superman",
+  "batman",
+]);
+
+function weakPassword(password, first, last, email) {
+  const chars = [...password];
+  if (chars.length === 0 || chars.length > 128 || chars.length < 8) {
+    return true;
+  }
+  const lower = password.toLowerCase();
+  if (COMMON_PASSWORDS.has(lower)) {
+    return true;
+  }
+  if (new Set(chars).size < 3) {
+    return true;
+  }
+  if (/^\d+$/.test(password) && chars.length < 12) {
+    return true;
+  }
+  const local = email.trim().toLowerCase().split("@")[0] || "";
+  const hints = [first, last, local]
+    .map((hint) => hint.trim().toLowerCase())
+    .filter((hint) => hint.length >= 3);
+  return hints.some((hint) => lower.includes(hint));
+}
+
+function showAuthError(form, problem) {
+  const field = form.querySelector(`[name="${problem.name}"]`);
+  const error = form.querySelector("[data-auth-error]");
+  form.querySelectorAll(".is-invalid").forEach((node) => {
+    node.classList.remove("is-invalid");
+    node.removeAttribute("aria-invalid");
+    node.removeAttribute("aria-describedby");
+  });
+  if (error) {
+    error.hidden = false;
+    error.textContent = problem.message;
+  }
+  if (field instanceof HTMLInputElement) {
+    field.classList.add("is-invalid");
+    field.setAttribute("aria-invalid", "true");
+    if (error) {
+      field.setAttribute("aria-describedby", error.id);
+    }
+    field.focus();
+  }
+}
+
+function clearAuthError(form) {
+  const error = form.querySelector("[data-auth-error]");
+  if (error) {
+    error.hidden = true;
+    error.textContent = "";
+  }
+  form.querySelectorAll(".is-invalid").forEach((node) => {
+    node.classList.remove("is-invalid");
+    node.removeAttribute("aria-invalid");
+    node.removeAttribute("aria-describedby");
   });
 }
 

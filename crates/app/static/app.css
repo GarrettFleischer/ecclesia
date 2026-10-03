@@ -2492,6 +2492,22 @@ main.sheet-auth {
   box-shadow: none;
 }
 
+.form-error {
+  margin: 0;
+  color: var(--err);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.form-error[hidden] {
+  display: none;
+}
+
+input.is-invalid,
+input.is-invalid:focus {
+  border-color: var(--err);
+}
+
 .sheet-auth .auth-card .split {
   grid-template-columns: 1fr;
 }
