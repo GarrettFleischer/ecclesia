@@ -1,20 +1,19 @@
 //! One function per user story. HTTP extracts a form and calls one of these.
 
 use ecclesia_domain::{
-    CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect,
-    EndorsementQueue, Gift, GiftOnProfile, NeedCard, PriorOffer, SkillSource, User,
-    VoiceKind, Viewer, churches_with_counts, coordinates, visible_need_cards,
+    CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect, EndorsementQueue, Gift,
+    GiftOnProfile, NeedCard, PriorOffer, SkillSource, User, Viewer, VoiceKind,
     accept_application as domain_accept_application,
     accept_endorsement as domain_accept_endorsement, accept_invite as domain_accept_invite,
     add_gift as domain_add_gift, apply_to_need as domain_apply_to_need,
-    approve_membership as domain_approve_membership, close_need as domain_close_need,
+    approve_membership as domain_approve_membership, churches_with_counts,
+    close_need as domain_close_need, coordinates,
     decline_application as domain_decline_application,
     decline_endorsement as domain_decline_endorsement,
     decline_membership as domain_decline_membership, endorse as domain_endorse,
-    plant_church as domain_plant_church,
-    post_need as domain_post_need, replace_with_code, replace_with_pending,
-    remove_gift as domain_remove_gift,
-    update_profile as domain_update_profile,
+    plant_church as domain_plant_church, post_need as domain_post_need,
+    remove_gift as domain_remove_gift, replace_with_code, replace_with_pending,
+    update_profile as domain_update_profile, visible_need_cards,
 };
 
 use crate::cache::Cache;
@@ -27,10 +26,10 @@ use crate::refine::RefineHub;
 
 pub use crate::bearer::ApiSessionTokens;
 pub use crate::identity::{
+    ApiProfile, BearerIdentity, DeviceMeta, MailOrigin, api_logout_bearer, api_me_profile,
     change_password, complete_reset, consume_magic, logout, logout_all, refresh_api, register,
     request_magic, request_reset, reset_form_ok, resolve_bearer, resolve_session, revoke_session,
-    api_logout_bearer, api_me_profile, sign_in, sign_in_api, ApiProfile, BearerIdentity,
-    DeviceMeta, MailOrigin,
+    sign_in, sign_in_api,
 };
 
 #[derive(Clone)]
@@ -65,11 +64,7 @@ impl Sdk {
         self.commit_with(effect, &StoryExtras::default()).await
     }
 
-    pub async fn commit_with(
-        &self,
-        effect: &Effect,
-        extras: &StoryExtras,
-    ) -> anyhow::Result<()> {
+    pub async fn commit_with(&self, effect: &Effect, extras: &StoryExtras) -> anyhow::Result<()> {
         let keys = self.db.apply_with(effect, extras).await?;
         self.cache.del_many(&keys).await;
         Ok(())
@@ -107,7 +102,10 @@ impl StoryOk {
     pub fn from_effect(effect: &Effect) -> Self {
         Self {
             user_id: effect.inserted_user_id().map(str::to_owned),
-            church_id: effect.inserted_church_id().map(str::to_owned),
+            church_id: effect
+                .inserted_church_id()
+                .or_else(|| effect.linked_church_id())
+                .map(str::to_owned),
             need_id: effect.inserted_need_id().map(str::to_owned),
             membership_id: None,
             session_id: None,
@@ -208,8 +206,7 @@ pub async fn redeem_invite(
         return Ok(Err(DomainError::NotFound));
     };
     let church_id = church.id.clone();
-    match finish(sdk, replace_with_code(user, &church)).await?
-    {
+    match finish(sdk, replace_with_code(user, &church)).await? {
         Ok(mut ok) => {
             if ok.church_id.is_none() {
                 ok.church_id = Some(church_id);
@@ -242,10 +239,7 @@ pub async fn decline_membership(
     finish(sdk, domain_decline_membership(viewer, &target, &church)).await
 }
 
-pub async fn accept_invite(
-    sdk: &Sdk,
-    user: &User,
-) -> anyhow::Result<Result<StoryOk, DomainError>> {
+pub async fn accept_invite(sdk: &Sdk, user: &User) -> anyhow::Result<Result<StoryOk, DomainError>> {
     let church_id = user.church_id.clone();
     match finish(sdk, domain_accept_invite(user)).await? {
         Ok(mut ok) => {
@@ -306,7 +300,16 @@ pub async fn apply_to_need(
     let posture = sdk.weigh(VoiceKind::Offer, &[message]).await;
     finish(
         sdk,
-        domain_apply_to_need(viewer, &need, &church, prior, message, posture, new_id(), now_iso()),
+        domain_apply_to_need(
+            viewer,
+            &need,
+            &church,
+            prior,
+            message,
+            posture,
+            new_id(),
+            now_iso(),
+        ),
     )
     .await
 }
@@ -364,7 +367,16 @@ pub async fn endorse(
         .await;
     finish(
         sdk,
-        domain_endorse(from, &person, skill, queue, note, posture, new_id(), now_iso()),
+        domain_endorse(
+            from,
+            &person,
+            skill,
+            queue,
+            note,
+            posture,
+            new_id(),
+            now_iso(),
+        ),
     )
     .await
 }
@@ -400,7 +412,9 @@ pub async fn update_profile(
     last_name: &str,
     bio: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let posture = sdk.weigh(VoiceKind::Bio, &[first_name, last_name, bio]).await;
+    let posture = sdk
+        .weigh(VoiceKind::Bio, &[first_name, last_name, bio])
+        .await;
     finish(
         sdk,
         domain_update_profile(user_id, first_name, last_name, bio, posture),
@@ -434,7 +448,11 @@ pub async fn add_gift(
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
     let presence = CatalogPresence::of_lookup(sdk.db.gift(gift_id).await?);
     let posture = sdk.weigh(VoiceKind::GiftNote, &[note]).await;
-    finish(sdk, domain_add_gift(user_id, gift_id, presence, note, posture)).await
+    finish(
+        sdk,
+        domain_add_gift(user_id, gift_id, presence, note, posture),
+    )
+    .await
 }
 
 pub async fn remove_gift(
@@ -497,9 +515,7 @@ pub async fn register_device(
         Ok(platform) => platform,
         Err(error) => return Ok(Err(error)),
     };
-    sdk.db
-        .upsert_push_device(user_id, &token, platform)
-        .await?;
+    sdk.db.upsert_push_device(user_id, &token, platform).await?;
     Ok(Ok(StoryOk::default()))
 }
 
@@ -701,11 +717,7 @@ fn next_member_cursor(members: &[ChurchMember]) -> Option<String> {
     ))
 }
 
-fn take_visible_cards(
-    viewer: &Viewer,
-    cards: &[NeedCard],
-    churches: &[Church],
-) -> Vec<NeedCard> {
+fn take_visible_cards(viewer: &Viewer, cards: &[NeedCard], churches: &[Church]) -> Vec<NeedCard> {
     let mut kept = Vec::new();
     for card in visible_need_cards(viewer, cards, churches) {
         kept.push(card.clone());
@@ -746,10 +758,7 @@ fn push_unique_church(out: &mut Vec<Church>, church: &Church) {
     out.push(church.clone());
 }
 
-async fn load_linked_church(
-    sdk: &Sdk,
-    user_id: &str,
-) -> anyhow::Result<Option<(User, Church)>> {
+async fn load_linked_church(sdk: &Sdk, user_id: &str) -> anyhow::Result<Option<(User, Church)>> {
     let Some(target) = sdk.db.user(user_id).await? else {
         return Ok(None);
     };
@@ -781,9 +790,12 @@ mod tests {
     }
 
     async fn fresh_sdk() -> Sdk {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "ecclesia-story-{}-{}.db",
+            "ecclesia-story-{}-{}-{}.db",
             std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -797,14 +809,6 @@ mod tests {
             user_agent: String::new(),
             ip: "local".into(),
         }
-    }
-
-    async fn seed_test_church(sdk: &Sdk) -> String {
-        sdk.db
-            .seed_grace_church()
-            .await
-            .expect("seed church")
-            .into()
     }
 
     async fn register_named(sdk: &Sdk, name: &str, email: &str) -> User {
@@ -833,12 +837,11 @@ mod tests {
                 .as_nanos()
         ));
         let first = sdk_on(&path).await;
-        let church_id = seed_test_church(&first).await;
         let ok = register(
             &first,
-            "Ada Cole",
+            "Ada",
+            "Cole",
             "ada@share.test",
-            &church_id,
             "Thursday dinners at six oclock",
             &test_device(),
         )
@@ -907,12 +910,11 @@ mod tests {
     #[tokio::test]
     async fn us_auth_01_weak_register_inserts_no_user() {
         let sdk = fresh_sdk().await;
-        let church_id = seed_test_church(&sdk).await;
         let error = register(
             &sdk,
-            "Cara Nguyen",
+            "Cara",
+            "Nguyen",
             "cara@verify.test",
-            &church_id,
             "password",
             &test_device(),
         )
@@ -920,7 +922,13 @@ mod tests {
         .unwrap()
         .expect_err("weak");
         assert_eq!(error, DomainError::WeakPassword);
-        assert!(sdk.db.user_by_email("cara@verify.test").await.unwrap().is_none());
+        assert!(
+            sdk.db
+                .user_by_email("cara@verify.test")
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(sdk.db.pending_outbox().await.unwrap().is_empty());
     }
 
@@ -953,18 +961,13 @@ mod tests {
         .unwrap()
         .unwrap();
         let church_id = planted.church_id.expect("church");
+        let pastor = sdk.db.user(&pastor.id).await.unwrap().expect("pastor");
         let _guest = register_named(&sdk, "James Whitaker", "james@stlukes.test").await;
         let viewer = sdk.viewer(pastor).await.unwrap();
-        invite_member(
-            &sdk,
-            &viewer,
-            &church_id,
-            "nobody@x.test",
-            &mail_origin(),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        invite_member(&sdk, &viewer, &church_id, "nobody@x.test", &mail_origin())
+            .await
+            .unwrap()
+            .unwrap();
         let after_unknown = sdk.db.pending_outbox().await.unwrap();
         assert!(
             after_unknown
@@ -985,7 +988,10 @@ mod tests {
         let church = sdk.db.church(&church_id).await.unwrap().expect("church");
         let text = latest_mail_text(&sdk).await;
         assert!(text.contains(&church.invite_code), "mail was {text}");
-        assert!(text.contains("http://127.0.0.1:43781/churches"), "mail was {text}");
+        assert!(
+            text.contains("http://127.0.0.1:43781/churches"),
+            "mail was {text}"
+        );
     }
 
     #[tokio::test]
@@ -1219,6 +1225,7 @@ mod tests {
             }));
         }
         sdk.db.apply(&effect).await.unwrap();
+        let user = sdk.db.user(&user.id).await.unwrap().expect("planter");
         let viewer = sdk.viewer(user).await.unwrap();
         let page = home_needs(&sdk, &viewer, None).await.unwrap();
         assert_eq!(page.cards.len(), 20);

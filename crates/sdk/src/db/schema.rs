@@ -1,5 +1,5 @@
-use super::bind::Bind;
 use super::Db;
+use super::bind::Bind;
 
 impl Db {
     pub(crate) async fn migrate(&self) -> anyhow::Result<()> {
@@ -12,6 +12,7 @@ impl Db {
         add_auth_tables(self).await?;
         add_session_api_columns(self).await?;
         reshape_account_place(self).await?;
+        ensure_account_indexes(self).await?;
         Ok(())
     }
 }
@@ -167,7 +168,6 @@ const SCHEMA: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_needs_status_created ON needs (status, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_needs_church_status ON needs (church_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_churches_name_id ON churches (name, id)",
-    "CREATE INDEX IF NOT EXISTS idx_users_church ON users (church_id)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_outbox_available ON outbox (available_at) WHERE status != 'done'",
 ];
@@ -219,7 +219,6 @@ async fn add_auth_tables(db: &Db) -> anyhow::Result<()> {
                 refresh_token_hash TEXT
             )"#,
         "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_refresh_hash ON sessions (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL",
         r#"CREATE TABLE IF NOT EXISTS magic_links (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -284,6 +283,15 @@ async fn reshape_account_place(db: &Db) -> anyhow::Result<()> {
         &[],
     )
     .await?;
+    Ok(())
+}
+
+async fn ensure_account_indexes(db: &Db) -> anyhow::Result<()> {
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_churches_name_id ON churches (name, id)",
+        &[],
+    )
+    .await?;
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_users_church ON users (church_id)",
         &[],
@@ -326,4 +334,110 @@ const USERS_AND_CHURCHES: &[&str] = &[
 
 async fn count_sql(db: &Db, sql: &str) -> anyhow::Result<bool> {
     Ok(db.fetch_scalar_i64(sql, &[]).await? > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Db;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    const LEGACY: &[&str] = &[
+        r#"CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                city TEXT NOT NULL,
+                region TEXT NOT NULL,
+                bio TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                password_hash TEXT
+            )"#,
+        r#"CREATE TABLE churches (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                city TEXT NOT NULL,
+                region TEXT NOT NULL,
+                country TEXT NOT NULL DEFAULT 'US',
+                description TEXT NOT NULL,
+                gathering TEXT NOT NULL DEFAULT '',
+                owner_id TEXT NOT NULL,
+                invite_code TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL
+            )"#,
+        r#"CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                csrf TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                user_agent TEXT NOT NULL DEFAULT '',
+                ip TEXT NOT NULL DEFAULT ''
+            )"#,
+        r#"CREATE TABLE memberships (
+                id TEXT PRIMARY KEY,
+                church_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(church_id, user_id)
+            )"#,
+        "CREATE INDEX idx_sessions_user ON sessions (user_id)",
+    ];
+
+    fn temp_sqlite_url() -> String {
+        let path = std::env::temp_dir().join(format!(
+            "ecclesia-legacy-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        format!("sqlite://{}", path.display())
+    }
+
+    async fn has_column(db: &Db, table: &str, name: &str) -> bool {
+        let sql =
+            format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{name}'");
+        db.fetch_scalar_i64(&sql, &[]).await.unwrap() > 0
+    }
+
+    #[tokio::test]
+    async fn legacy_sqlite_migrates_to_account_without_a_church() {
+        let url = temp_sqlite_url();
+        let options = SqliteConnectOptions::from_str(&url)
+            .unwrap()
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        for sql in LEGACY {
+            sqlx::query(sql).execute(&pool).await.unwrap();
+        }
+        pool.close().await;
+
+        let db = Db::connect(&url).await.expect("legacy database migrates");
+        assert!(has_column(&db, "users", "first_name").await);
+        assert!(has_column(&db, "users", "last_name").await);
+        assert!(!has_column(&db, "users", "name").await);
+        assert!(!has_column(&db, "users", "city").await);
+        assert!(has_column(&db, "sessions", "refresh_token_hash").await);
+        assert!(has_column(&db, "sessions", "transport").await);
+        assert!(has_column(&db, "churches", "address").await);
+        assert!(has_column(&db, "churches", "latitude").await);
+        assert!(has_column(&db, "churches", "longitude").await);
+        assert!(!has_column(&db, "churches", "city").await);
+        let memberships = db
+            .fetch_scalar_i64(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'memberships'",
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(memberships, 0);
+    }
 }

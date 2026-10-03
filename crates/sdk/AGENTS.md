@@ -29,6 +29,7 @@ The only crate the App may call. Stories load rows, call Domain, and commit one 
 - Local mail with no `RESEND_API_KEY` is marked done and not sent.
 - A public host refuses to boot without the mail env vars.
 - sqlx `query!` cannot share one SQL string across SQLite and Postgres. Use runtime `?` text.
+- Local SQLite is built with `SQLITE_ENABLE_MATH_FUNCTIONS` from `.cargo/config.toml`. Closest church search uses `sqrt`. A build started outside this repo does not get that flag.
 
 ## Agent skills
 

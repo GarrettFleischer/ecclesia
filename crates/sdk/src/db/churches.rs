@@ -1,7 +1,7 @@
-use super::bind::{placeholders, Bind};
+use super::Db;
+use super::bind::{Bind, placeholders};
 use super::distance::haversine_km_sql;
 use super::rows::{ChurchMemberRow, ChurchRow, CountRow, map_all};
-use super::Db;
 use ecclesia_domain::{Church, ChurchMember};
 
 impl Db {
@@ -12,10 +12,7 @@ impl Db {
         ))
     }
 
-    pub async fn churches_page(
-        &self,
-        after: Option<(&str, &str)>,
-    ) -> anyhow::Result<Vec<Church>> {
+    pub async fn churches_page(&self, after: Option<(&str, &str)>) -> anyhow::Result<Vec<Church>> {
         match after {
             None => Ok(map_all(
                 self.fetch_all::<ChurchRow>(
@@ -44,9 +41,7 @@ impl Db {
         except_id: Option<&str>,
     ) -> anyhow::Result<Option<Church>> {
         let distance = haversine_km_sql("?", "?", "latitude", "longitude");
-        let sql = format!(
-            "SELECT * FROM churches WHERE id != ? ORDER BY {distance} LIMIT 1"
-        );
+        let sql = format!("SELECT * FROM churches WHERE id != ? ORDER BY {distance} LIMIT 1");
         Ok(self
             .fetch_optional::<ChurchRow>(
                 &sql,
@@ -68,10 +63,14 @@ impl Db {
     }
 
     pub async fn church_by_invite(&self, code: &str) -> anyhow::Result<Option<Church>> {
+        let code = code.trim().to_lowercase();
+        if code.is_empty() {
+            return Ok(None);
+        }
         Ok(self
             .fetch_optional::<ChurchRow>(
-                "SELECT * FROM churches WHERE lower(invite_code) = lower(?)",
-                &[Bind::Text(code.trim())],
+                "SELECT * FROM churches WHERE lower(invite_code) = ?",
+                &[Bind::Text(&code)],
             )
             .await?
             .map(Church::from))
