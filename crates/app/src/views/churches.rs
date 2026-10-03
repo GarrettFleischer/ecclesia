@@ -414,7 +414,7 @@ pub fn join_church_page(
                     button class="btn btn-quiet" type="submit" { "Sign out" }
                 }
             }
-            script src="/static/join.js?v=5" defer {}
+            script src="/static/join.js?v=6" defer {}
         },
     )
 }

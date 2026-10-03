@@ -114,6 +114,17 @@ function inviteCode(raw) {
     schedule(true);
   }
 
+  var placeDone = false;
+
+  function placeSettled() {
+    if (placeDone) {
+      return;
+    }
+    placeDone = true;
+    document.documentElement.dataset.placeSettled = "1";
+    document.dispatchEvent(new Event("ecclesia-place"));
+  }
+
   /**
    * @brief Read a position the browser can already share.
    */
@@ -121,8 +132,11 @@ function inviteCode(raw) {
     navigator.geolocation.getCurrentPosition(
       function (pos) {
         rememberPlace(pos.coords.latitude, pos.coords.longitude);
+        placeSettled();
       },
-      function () {},
+      function () {
+        placeSettled();
+      },
       { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 }
     );
   }
@@ -133,6 +147,7 @@ function inviteCode(raw) {
    */
   function askForPlace() {
     if (!navigator.geolocation || (fieldValue("lat") && fieldValue("lng"))) {
+      placeSettled();
       return;
     }
     if (!navigator.permissions || !navigator.permissions.query) {
@@ -143,6 +158,7 @@ function inviteCode(raw) {
       .query({ name: "geolocation" })
       .then(function (status) {
         if (status.state === "denied") {
+          placeSettled();
           return;
         }
         requestPlace();

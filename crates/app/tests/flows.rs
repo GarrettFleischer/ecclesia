@@ -457,7 +457,15 @@ async fn us_auth_01_join_search_finds_grace() {
     let page = get(&world, &cookie, "/churches/join?q=grace").await;
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
-    assert!(page.contains("/static/join.js?v=5"));
+    assert!(page.contains("/static/join.js?v=6"));
+    assert!(page.contains("/static/app.js?v=17"));
+    let shell = get_public(&world, "/static/app.js").await;
+    assert!(shell.contains("ecclesia-place"));
+    assert!(shell.contains("placeSettled"));
+    assert!(shell.contains("Notification.requestPermission"));
+    let finder = get_public(&world, "/static/join.js").await;
+    assert!(finder.contains("ecclesia-place"));
+    assert!(finder.contains("placeSettled"));
     assert!(page.contains("Grace Fellowship"));
     let by_city = get(&world, &cookie, "/churches/join?q=Cedar+Falls").await;
     assert!(by_city.contains("Grace Fellowship"));

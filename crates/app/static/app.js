@@ -24,6 +24,7 @@
   hookAuthForms();
   hookHaptics(native);
   hookAlerts(csrf, native);
+  hookJoinAlerts(csrf, native);
   if (native) {
     bootNative(native);
     if (csrf) {
@@ -408,6 +409,55 @@ function hookHaptics(native) {
   document.addEventListener("submit", () => {
     native.Haptics.impact({ style: "Light" });
   });
+}
+
+/**
+ * @brief On the find-church screen, ask to show notifications after location settles.
+ * @param {string} csrf Session token for the push subscription.
+ * @param {object|null} native Capacitor plugins, when the app is installed.
+ * @returns {void}
+ */
+function hookJoinAlerts(csrf, native) {
+  if (!csrf || window.location.pathname !== "/churches/join") {
+    return;
+  }
+  if (native && native.PushNotifications) {
+    return;
+  }
+  let started = false;
+  const ask = async () => {
+    if (started || notificationState() !== "default") {
+      return;
+    }
+    started = true;
+    try {
+      await enableWebPush(csrf);
+    } finally {
+      started = false;
+    }
+  };
+  const begin = () => {
+    ask().then(() => {
+      if (notificationState() !== "default") {
+        return;
+      }
+      const once = () => {
+        document.removeEventListener("pointerdown", once, true);
+        document.removeEventListener("keydown", once, true);
+        ask();
+      };
+      document.addEventListener("pointerdown", once, true);
+      document.addEventListener("keydown", once, true);
+    });
+  };
+  const beginOnce = () => {
+    document.removeEventListener("ecclesia-place", beginOnce);
+    begin();
+  };
+  document.addEventListener("ecclesia-place", beginOnce);
+  if (document.documentElement.dataset.placeSettled === "1") {
+    beginOnce();
+  }
 }
 
 function hookAlerts(csrf, native) {

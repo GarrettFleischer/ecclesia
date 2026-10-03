@@ -321,7 +321,9 @@ fn attach_security_headers(headers: &mut axum::http::HeaderMap) {
     );
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
-        HeaderValue::from_static("camera=(self), microphone=(), geolocation=(self)"),
+        HeaderValue::from_static(
+            "camera=(self), microphone=(), geolocation=(self), notifications=(self)",
+        ),
     );
     headers.insert(
         header::HeaderName::from_static("x-permitted-cross-domain-policies"),

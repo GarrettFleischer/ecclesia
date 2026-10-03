@@ -59,7 +59,7 @@ Invite codes for new churches use an 8-character nonce when a church is planted.
 
 ## Headers
 
-`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Permissions-Policy` allows camera and geolocation for this origin, and keeps the microphone closed, `X-Permitted-Cross-Domain-Policies: none`, and a CSP that allows this origin plus Google Fonts.
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Permissions-Policy` allows camera, geolocation, and notifications for this origin, and keeps the microphone closed, `X-Permitted-Cross-Domain-Policies: none`, and a CSP that allows this origin plus Google Fonts.
 
 ## Local work
 
