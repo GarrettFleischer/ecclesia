@@ -6,6 +6,17 @@ pub fn nearby_km() -> f64 {
     40.0
 }
 
+/// A point the browser shared. Domain does not read a device.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Place {
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+pub fn place_is_near(latitude: f64, longitude: f64, place: Place) -> bool {
+    distance_km(latitude, longitude, place.latitude, place.longitude) <= nearby_km()
+}
+
 pub fn distance_km(a_lat: f64, a_lng: f64, b_lat: f64, b_lng: f64) -> f64 {
     let phi1 = a_lat.to_radians();
     let phi2 = b_lat.to_radians();

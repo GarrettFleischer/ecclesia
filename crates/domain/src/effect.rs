@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::household::Church;
-use super::need::{Application, Need};
+use super::need::{Application, Need, NeedReply, Prayer};
 use super::person::{Endorsement, User};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -48,6 +48,12 @@ pub enum DomainError {
     WeakPassword,
     #[error("Write it so it lifts someone up.")]
     TearsDown,
+    #[error("You already marked this prayer.")]
+    AlreadyMarked,
+    #[error("Only the author can do that.")]
+    NotAuthor,
+    #[error("This prayer is already answered.")]
+    PrayerAnswered,
 }
 
 impl DomainError {
@@ -70,6 +76,9 @@ impl DomainError {
             Self::NotFound => "not_found",
             Self::WeakPassword => "password",
             Self::TearsDown => "tone",
+            Self::AlreadyMarked => "already",
+            Self::NotAuthor => "not_yours",
+            Self::PrayerAnswered => "prayer_answered",
         }
     }
 }
@@ -122,6 +131,19 @@ pub enum Write {
     RemoveMemberGift {
         user_id: String,
         gift_id: String,
+    },
+    InsertNeedReply(NeedReply),
+    InsertPrayer(Prayer),
+    SetPrayerAnswered {
+        id: String,
+        praise: String,
+        answered_at: String,
+    },
+    UpsertPrayerMark {
+        user_id: String,
+        prayer_id: String,
+        day: String,
+        kind: &'static str,
     },
 }
 

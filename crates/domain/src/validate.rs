@@ -151,6 +151,10 @@ pub fn note_field(value: &str) -> Result<String, DomainError> {
     require_text(value, NOTE_MAX)
 }
 
+pub fn prayer_body(value: &str) -> Result<String, DomainError> {
+    require_text(value, BODY_MAX)
+}
+
 pub fn skill_field(value: &str) -> Result<String, DomainError> {
     require_text(value, TITLE_MAX)
 }

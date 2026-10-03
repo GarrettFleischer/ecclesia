@@ -2,11 +2,11 @@
 
 use super::flags::{CatalogPresence, Posture, PriorOffer};
 use super::model::{
-    Application, ApplicationCard, ApplicationStatus, Church, DomainError, Effect, Need, NeedSight,
-    NeedStatus, Viewer, Write,
+    Application, ApplicationCard, ApplicationStatus, Church, DomainError, Effect, Need, NeedReply,
+    NeedSight, NeedStatus, Viewer, Write,
 };
 use super::notice::notice;
-use super::rules::{can_apply, is_need_steward};
+use super::rules::{NeedApproach, can_apply, can_reply, is_need_steward};
 use super::person::display_name;
 use super::validate::{need_fields, note_field};
 
@@ -105,6 +105,43 @@ pub fn close_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> {
         id: need.id.clone(),
         status: NeedStatus::Closed.as_str(),
     }))
+}
+
+/// A public reply on a need the person can see.
+pub fn reply_to_need(
+    viewer: &Viewer,
+    need: &Need,
+    church: &Church,
+    approach: NeedApproach,
+    body: &str,
+    posture: Posture,
+    id: String,
+    now: String,
+) -> Result<Effect, DomainError> {
+    super::flags::require_uplifting(posture)?;
+    can_reply(viewer, need.sight(), church, approach)?;
+    let body = note_field(body)?;
+    let mut effect = Effect::write(Write::InsertNeedReply(NeedReply {
+        id,
+        need_id: need.id.clone(),
+        author_id: viewer.user.id.clone(),
+        body,
+        created_at: now,
+    }));
+    if viewer.user.id != need.author_id {
+        effect = effect.with_notice(notice(
+            &need.author_id,
+            "reply",
+            format!(
+                "{} replied on {}",
+                display_name(&viewer.user.first_name, &viewer.user.last_name),
+                need.title
+            ),
+            "Open the need.",
+            format!("/needs/{}", need.id),
+        ));
+    }
+    Ok(effect)
 }
 
 fn require_need_steward(viewer: &Viewer, need: &Need) -> Result<(), DomainError> {
@@ -250,6 +287,72 @@ mod tests {
         )
         .unwrap();
         assert_eq!(effect.notices[0].user_id, "miriam");
+    }
+
+    #[test]
+    fn us_need_02_reply_notifies_the_author() {
+        let mercy = church_at("mercy", 42.4928, -92.3426);
+        let elena = viewer_of(
+            user_in_church("elena", "mercy", "member", "active"),
+            Some(mercy),
+        );
+        let need = Need {
+            id: "need_spanish".into(),
+            church_id: "grace".into(),
+            author_id: "miriam".into(),
+            title: "Spanish interpreter".into(),
+            body: "Thursday".into(),
+            gift_id: None,
+            scope: "neighboring".into(),
+            status: "open".into(),
+            created_at: "t0".into(),
+        };
+        let effect = reply_to_need(
+            &elena,
+            &need,
+            &church("grace"),
+            NeedApproach::Membership,
+            "I can hold Thursday.",
+            Posture::Lifts,
+            "r1".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        assert!(matches!(effect.writes[0], Write::InsertNeedReply(_)));
+        assert_eq!(effect.notices[0].user_id, "miriam");
+        assert_eq!(effect.notices[0].kind, "reply");
+    }
+
+    #[test]
+    fn us_need_02_the_author_can_reply() {
+        let grace = church("grace");
+        let miriam = viewer_of(
+            user_in_church("miriam", "grace", "owner", "active"),
+            Some(grace.clone()),
+        );
+        let need = Need {
+            id: "need_dinners".into(),
+            church_id: "grace".into(),
+            author_id: "miriam".into(),
+            title: "Dinners".into(),
+            body: "This week.".into(),
+            gift_id: None,
+            scope: "church".into(),
+            status: "open".into(),
+            created_at: "t0".into(),
+        };
+        let effect = reply_to_need(
+            &miriam,
+            &need,
+            &grace,
+            NeedApproach::Membership,
+            "I can bring Thursday.",
+            Posture::Lifts,
+            "r2".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        assert!(effect.notices.is_empty());
     }
 
     #[test]

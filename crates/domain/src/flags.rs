@@ -134,6 +134,8 @@ pub enum VoiceKind {
     GiftNote,
     Bio,
     Church,
+    Prayer,
+    Reply,
 }
 
 impl VoiceKind {
@@ -145,6 +147,8 @@ impl VoiceKind {
             Self::GiftNote => "gift",
             Self::Bio => "bio",
             Self::Church => "church",
+            Self::Prayer => "prayer",
+            Self::Reply => "reply",
         }
     }
 
@@ -156,6 +160,8 @@ impl VoiceKind {
             "gift" => Some(Self::GiftNote),
             "bio" => Some(Self::Bio),
             "church" => Some(Self::Church),
+            "prayer" => Some(Self::Prayer),
+            "reply" => Some(Self::Reply),
             _ => None,
         }
     }

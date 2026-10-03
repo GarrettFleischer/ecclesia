@@ -224,3 +224,89 @@ impl ApplicationCard {
         ApplicationStatus::parse(&self.status)
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NeedReply {
+    pub id: String,
+    pub need_id: String,
+    pub author_id: String,
+    pub body: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NeedReplyCard {
+    pub id: String,
+    pub need_id: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub body: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrayerStatus {
+    Open,
+    Answered,
+}
+
+impl PrayerStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Answered => "answered",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "open" => Some(Self::Open),
+            "answered" => Some(Self::Answered),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Prayer {
+    pub id: String,
+    pub church_id: String,
+    pub author_id: Option<String>,
+    pub body: String,
+    pub status: String,
+    pub praise: Option<String>,
+    pub manage_hash: Option<String>,
+    pub created_at: String,
+    pub answered_at: Option<String>,
+}
+
+impl Prayer {
+    pub fn is_open(&self) -> bool {
+        self.status == PrayerStatus::Open.as_str()
+    }
+
+    pub fn status(&self) -> Option<PrayerStatus> {
+        PrayerStatus::parse(&self.status)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PrayerCard {
+    pub id: String,
+    pub church_id: String,
+    pub church_name: String,
+    pub author_id: Option<String>,
+    pub author_name: Option<String>,
+    pub body: String,
+    pub status: String,
+    pub praise: Option<String>,
+    pub prayed_count: i64,
+    pub created_at: String,
+}
+
+impl PrayerCard {
+    pub fn is_open(&self) -> bool {
+        self.status == PrayerStatus::Open.as_str()
+    }
+}

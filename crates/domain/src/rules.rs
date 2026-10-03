@@ -1,4 +1,4 @@
-use super::geo::{distance_km, nearby_km};
+use super::geo::{Place, distance_km, nearby_km, place_is_near};
 use super::model::{
     Church, ChurchLinkStatus, DomainError, NeedCard, NeedScope, NeedSight, User, Viewer,
 };
@@ -27,6 +27,45 @@ pub fn can_view_need(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> b
         }
         None => false,
     }
+}
+
+pub fn can_view_need_near(
+    viewer: &Viewer,
+    need: NeedSight<'_>,
+    church: &Church,
+    place: Place,
+) -> bool {
+    if !place_is_near(church.latitude, church.longitude, place) {
+        return false;
+    }
+    can_view_need(viewer, need, church) || viewer.is_active_anywhere()
+}
+
+pub enum NeedApproach {
+    Membership,
+    Near(Place),
+}
+
+pub fn can_reply(
+    viewer: &Viewer,
+    need: NeedSight<'_>,
+    church: &Church,
+    approach: NeedApproach,
+) -> Result<(), DomainError> {
+    if !need.is_open() {
+        return Err(DomainError::NeedClosed);
+    }
+    let allowed = match approach {
+        NeedApproach::Membership => can_view_need(viewer, need, church),
+        NeedApproach::Near(place) => can_view_need_near(viewer, need, church, place),
+    };
+    if !allowed {
+        return Err(need_hidden(need));
+    }
+    if !viewer.is_active_anywhere() {
+        return Err(DomainError::NotInTheBody);
+    }
+    Ok(())
 }
 
 pub fn can_apply(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> Result<(), DomainError> {
@@ -91,6 +130,19 @@ pub fn link_after_approval(current: ChurchLinkStatus) -> Result<ChurchLinkStatus
     } else {
         Err(DomainError::NothingPending)
     }
+}
+
+pub fn visible_needs_near<'a>(
+    viewer: &'a Viewer,
+    cards: &'a [NeedCard],
+    churches: &'a [Church],
+    place: Place,
+) -> impl Iterator<Item = &'a NeedCard> + 'a {
+    cards.iter().filter(move |card| {
+        church_for_card(card, churches).is_some_and(|church| {
+            card.is_open() && can_view_need_near(viewer, card.sight(), church, place)
+        })
+    })
 }
 
 pub fn visible_need_cards<'a>(
@@ -211,6 +263,30 @@ mod tests {
         assert!(churches_are_neighbors(&grace, &mercy));
         assert!(!churches_are_neighbors(&grace, &far));
         assert!(!churches_are_neighbors(&grace, &grace));
+    }
+
+    #[test]
+    fn us_need_07_a_shared_point_opens_a_church_need() {
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let luke = church("luke", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let far = church("far", AUSTIN.0, AUSTIN.1);
+        let james = viewer(linked("james", "luke", "active"), Some(luke));
+        let n = need(NeedScope::Church, "grace", "miriam");
+        let here = Place {
+            latitude: CEDAR_FALLS.0,
+            longitude: CEDAR_FALLS.1,
+        };
+        let away = Place {
+            latitude: AUSTIN.0,
+            longitude: AUSTIN.1,
+        };
+        assert!(can_view_need_near(&james, n.sight(), &grace, here));
+        assert!(!can_view_need_near(&james, n.sight(), &grace, away));
+        assert!(can_reply(&james, n.sight(), &grace, NeedApproach::Near(here)).is_ok());
+        assert_eq!(
+            can_reply(&james, n.sight(), &far, NeedApproach::Near(here)),
+            Err(DomainError::OutsideChurch)
+        );
     }
 
     #[test]

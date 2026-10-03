@@ -16,6 +16,7 @@ pub mod need;
 pub mod needs;
 pub mod notice;
 pub mod person;
+pub mod prayers;
 pub mod rules;
 pub mod validate;
 
@@ -30,6 +31,7 @@ pub use membership::*;
 pub use model::*;
 pub use needs::*;
 pub use notice::*;
+pub use prayers::*;
 pub use rules::*;
 pub use validate::*;
 

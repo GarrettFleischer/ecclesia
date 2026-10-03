@@ -587,7 +587,7 @@ proptest! {
     }
 
     #[test]
-    fn us_prop_err_01_flash_codes_are_tokens(index in 0usize..23) {
+    fn us_prop_err_01_flash_codes_are_tokens(index in 0usize..24) {
         let error = domain_error(index);
         let code = error.flash_code();
         assert!(!code.is_empty());
@@ -627,6 +627,9 @@ fn domain_error(index: usize) -> DomainError {
         18 => DomainError::NotFound,
         19 => DomainError::WeakPassword,
         20 => DomainError::TearsDown,
+        21 => DomainError::AlreadyMarked,
+        22 => DomainError::NotAuthor,
+        23 => DomainError::PrayerAnswered,
         _ => DomainError::OutsideChurch,
     }
 }
