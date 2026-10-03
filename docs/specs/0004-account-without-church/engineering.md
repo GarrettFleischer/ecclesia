@@ -44,11 +44,11 @@ Notices for a pending join stay on the domain effect, as `request_join` does tod
 - `POST /churches/join` with `church_id` calls `replace_with_pending`.
 - `POST /churches/join/code` with `invite_code` calls `replace_with_code`.
 
-Both are signed in, CSRF checked, and redirect to `/churches/join`.
+Both are signed in and CSRF checked. Success opens `/churches/{id}` for the church they joined. A failure stays on `/churches/join`.
 
 **Device location.** A small script `crates/app/static/join.js` runs only on that page. If `lat` and `lng` are absent, it calls `navigator.geolocation` once. On grant it navigates to the same path with those query values. On deny it does nothing. The server never stores them. Bad numbers use flash `missing` and render the page with no suggestion.
 
-**QR.** The QR payload is the existing `invite_code` string. The page has a text field for that code. The same script uses `BarcodeDetector` when the browser has it, and fills the field. No new crate (maintainability).
+**QR.** The QR payload is the existing `invite_code` string, or a `/join/{code}` link. On the finder, a QR icon beside the church name field opens the camera. `BarcodeDetector` reads it and the browser opens `/join/{code}`. No typed code field. No new crate.
 
 **Schema reshape.** `CREATE TABLE IF NOT EXISTS` will not drop old columns. `migrate` keeps the new `CREATE` text for empty databases, and adds `reshape_account_place`. If `users` still has `name`, or if `memberships` still exists, drop `memberships` and recreate `users` and `churches` with the new columns. Spec says there are no live rows to keep. Other tables are untouched. Fresh databases skip the drop because the new columns are already there and `memberships` is absent.
 
@@ -80,7 +80,7 @@ Drop `church_id`. Stop loading a church. Stop calling `request_join`. Still scor
 
 Files: `crates/app/src/views/landing.rs`, `crates/app/src/views/draft.rs`, `crates/app/src/http/forms.rs`, `crates/app/src/http/auth.rs`, `crates/app/src/http/mod.rs`.
 
-`RegisterForm` and `RegisterDraft` use `first_name` and `last_name`. Remove `church_id` and `church_query`. Delete the `GET /register/churches` route and `register_church_search`. Inputs: required, maxlength 80 on both names, email maxlength 120, password required. Weak password redisplays the draft. Success redirects to `/churches/join` with flash `welcome`.
+`RegisterForm` and `RegisterDraft` use `first_name` and `last_name`, plus an optional `code`. Remove `church_id` and `church_query`. Delete the `GET /register/churches` route and `register_church_search`. Inputs: required, maxlength 80 on both names, email maxlength 120, password required. The You page shows steps You and Church. A known code shows that church and the button joins it. Weak password redisplays the draft, including the code. Without a code, success redirects to `/churches/join` with flash `welcome`. With a code, success joins that church and opens it with flash `redeemed`. `GET /join/{code}` sends a guest to You with that church, and a signed in person straight into the church.
 
 ### 5. Home, profile, API (AC-5, AC-6, AC-10)
 
@@ -100,7 +100,7 @@ Files: `crates/domain/src/rules.rs` or a new `crates/domain/src/geo.rs` (distanc
 
 Needs query: replace the city or region `EXISTS` with haversine distance `<= nearby_km()` between the viewer's church (`users.church_id` where `church_status` is active) and the need's church. Keep the existing page limit.
 
-`GET /churches/join`: signed in. Parse optional `lat` and `lng`. In range: load the one nearest church that is not already this person's church, and show its name and address with a form that posts `church_id`. Out of range: flash `missing`, no suggestion. Missing params: no suggestion. Always show the name search (existing `search_churches`) and the invite code field.
+`GET /churches/join`: signed in. Parse optional `lat` and `lng`. In range: load the one nearest church that is not already this person's church, and show its name and address with a form that posts `church_id`. Out of range: flash `missing`, no suggestion. Missing params: no suggestion. Always show the name search (existing `search_churches`) and a QR icon beside that search box.
 
 Name results post `church_id` to `POST /churches/join`. The code form posts to `POST /churches/join/code`.
 

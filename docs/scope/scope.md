@@ -71,17 +71,18 @@ code in crates/sdk, crates/app
 ## Slice 2
 
 ### 4. Create account without a church · in-progress
-Create account asks for first name, last name, email, and password. The church building stores an address and coordinates. After the account exists, the person can join the closest church if they allow location, or search by name or scan a QR code.
+Create account asks for first name, last name, email, and password. Onboarding is You, then the church, unless an invite link already chose the church. The church building stores an address and coordinates. Until they have a church, Find your church is the only app page. They join the closest church if they allow location, or search by name or scan a QR code.
 **Done when:** creating an account no longer asks for a church, a signed in person can join or switch church from profile, they have at most one church, and a granted device location suggests the nearest church.
 - [x] Design it (spec): `/jsm-architect create account without a church`
 - [x] Engineer it: `/jsm-engineer create account without a church`
-- [ ] Build it: `/jsm-develop create account without a church`
-   - [ ] Person name columns and register without a church (AC-1, AC-2, AC-3, AC-4, AC-7)
-   - [ ] Home, profile, and `/api/me` without a person place; profile can open join for the one church (AC-5, AC-6, AC-10)
-   - [ ] Church address and coordinates, and closest suggestion on `/churches/join` (AC-8, AC-9)
-- [ ] Verify it: `/jsm-check verify create account without a church`
-- [ ] Test it: `/jsm-test create account without a church`
+- [x] Build it: `/jsm-develop create account without a church`
+   - [x] Person name columns and register without a church (AC-1, AC-2, AC-3, AC-4, AC-7)
+   - [x] Home, profile, and `/api/me` without a person place; profile can open join for the one church (AC-5, AC-6, AC-10)
+   - [x] Church address and coordinates, and closest suggestion on `/churches/join` (AC-8, AC-9)
+- [x] Verify it: `/jsm-check verify create account without a church`
+- [x] Test it: `/jsm-test create account without a church`
 spec [0004](../specs/0004-account-without-church/index.md)
+code in crates/domain, crates/sdk, crates/app
 
 ### 5. Join a church · planned · needs a decision
 After the account exists, `/churches/join` suggests the closest church when location is allowed (spec 0004). A church code makes them a member right away. A name search waits until a pastor accepts.

@@ -83,7 +83,7 @@ membership, visibility, or approval. The controls show it.
 | `Peace, Miriam.` | `Open needs` |
 | `Ask for help. Offer yours.` | `We are the ecclesia, one body called together, bound by a shared inheritance.` |
 | `You have a place at the table.` | `Account created.` |
-| `Your request is with the pastor. They will let you in.` | `Request sent. The pastor will approve or decline.` |
+| `Your request is with the pastor. They will let you in.` | `Your request to join Grace Fellowship has been sent.` |
 | `No needs posted. Either they are between crises, or they have not learned to ask.` | `No open needs.` |
 | `You let it go. That is allowed.` | `Declined.` |
 | `Something gave way` | `Sorry` |
