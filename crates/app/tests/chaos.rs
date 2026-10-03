@@ -335,7 +335,7 @@ async fn us_chaos_02_pending_member_cannot_post_a_need() {
 }
 
 #[tokio::test]
-async fn us_chaos_03_cannot_apply_to_your_own_need() {
+async fn us_chaos_03_author_can_reply_on_their_need() {
     let world = app().await;
     let cookie = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (cookie, church_id) = plant(&world, &cookie, "Grace Covenant").await;
@@ -357,11 +357,12 @@ async fn us_chaos_03_cannot_apply_to_your_own_need() {
         world.app,
         &cookie,
         &csrf,
-        &format!("/needs/{need_id}/apply"),
-        "message=I+will+cook+my+own+dinners",
+        &format!("/needs/{need_id}/replies"),
+        "body=I+will+cook+Thursday&pass=publish",
     )
     .await;
-    assert!(location.contains("err=own_need"), "got {location}");
+    assert!(location.contains("ok=replied"), "got {location}");
+    assert!(!location.contains("err=own_need"), "got {location}");
 }
 
 #[tokio::test]

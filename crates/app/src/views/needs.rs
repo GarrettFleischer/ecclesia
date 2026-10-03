@@ -1,17 +1,15 @@
 use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
-    ApplicationCard, Church, DomainError, Gift, NeedCard, NeedStatus, OfferState, Viewer,
-    VoiceKind, is_need_steward,
+    Church, DomainError, Gift, NeedCard, NeedReplyCard, NeedStatus, Viewer, VoiceKind,
+    is_need_steward,
 };
 
-use super::cards::{
-    StewardView, application_cards, church_options, gift_options, scope_label, scope_mark,
-};
+use super::cards::{StewardView, church_options, gift_options, scope_label, scope_mark};
 use super::draft::{NeedDraft, OfferDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
 use super::layout::{
-    Monogram, Nav, csrf_input, monogram, page, page_lead, rewrite_row, share_button,
+    Monogram, Nav, csrf_input, detail_lead, monogram, page, page_lead, rewrite_row, share_button,
 };
 
 pub fn need_new(
@@ -98,13 +96,13 @@ pub fn need_show(
     viewer: &Viewer,
     need: &NeedCard,
     church: &Church,
-    applications: &[&ApplicationCard],
-    can_help: Result<(), DomainError>,
-    offer: OfferState,
+    replies: &[NeedReplyCard],
+    can_reply: Result<(), DomainError>,
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
     draft: &OfferDraft<'_>,
+    place: Option<(&str, &str)>,
 ) -> Markup {
     let steward = steward_of(viewer, need);
     page(
@@ -122,7 +120,7 @@ pub fn need_show(
                     a href={ "/churches/" (church.id) } { (church.name) }
                 }
             }
-            (page_lead(&need.title))
+            (detail_lead(&need.title))
             p class="lede" { (need.body) }
             div class="card-foot need-meta" {
                 span class="byline" {
@@ -137,11 +135,10 @@ pub fn need_show(
                 (share_button("Share", &need.title, &need.body, ""))
                 (close_form(need, steward, csrf))
             }
-            (offer_panel(need, can_help, offer, steward, csrf, draft))
-            (already_offered(offer))
+            (reply_panel(need, can_reply, csrf, draft, place))
             section {
-                h2 { "Offers" }
-                (who_offered(applications, steward, csrf))
+                h2 { "Replies" }
+                (reply_list(replies))
             }
         },
     )
@@ -173,33 +170,30 @@ fn matching_gift_pill(viewer: &Viewer, need: &NeedCard) -> Markup {
     html! { p class="pill" { "This matches a gift on your profile." } }
 }
 
-fn offer_panel(
+fn reply_panel(
     need: &NeedCard,
-    can_help: Result<(), DomainError>,
-    offer: OfferState,
-    steward: StewardView,
+    can_reply: Result<(), DomainError>,
     csrf: &str,
     draft: &OfferDraft<'_>,
+    place: Option<(&str, &str)>,
 ) -> Markup {
-    if !need.is_open()
-        || matches!(steward, StewardView::Steward)
-        || matches!(offer, OfferState::AlreadyOffered)
-    {
+    if !need.is_open() {
         return html! {};
     }
-    match can_help {
+    match can_reply {
         Ok(()) => html! {
             section class="panel" {
-                h2 { "Offer to help" }
-                form class="stack" method="post" action={ "/needs/" (need.id) "/apply" } {
+                h2 { "Reply" }
+                form class="stack" method="post" action={ "/needs/" (need.id) "/replies" } {
                     (csrf_input(csrf))
+                    (place_fields(place))
                     (voice_pass_input(draft.kind))
                     (review_banner(draft.kind))
-                    label { "Message"
-                        textarea name="message" rows="3" required maxlength="600" placeholder="When you're free and what you can do." { (draft.message) }
-                        (rewrite_row(VoiceKind::Offer))
+                    label { "Reply"
+                        textarea name="body" rows="3" required maxlength="600" placeholder="I can bring dinner Thursday." { (draft.message) }
+                        (rewrite_row(VoiceKind::Reply))
                     }
-                    button class="btn" type="submit" { (draft.kind.submit_label("Apply to help")) }
+                    button class="btn" type="submit" { (draft.kind.submit_label("Reply")) }
                 }
             }
         },
@@ -209,12 +203,33 @@ fn offer_panel(
     }
 }
 
-fn already_offered(offer: OfferState) -> Markup {
-    match offer {
-        OfferState::AlreadyOffered => {
-            html! { p class="pill" { "You applied." } }
+fn place_fields(place: Option<(&str, &str)>) -> Markup {
+    let Some((lat, lng)) = place else {
+        return html! {};
+    };
+    html! {
+        input type="hidden" name="lat" value=(lat);
+        input type="hidden" name="lng" value=(lng);
+    }
+}
+
+fn reply_list(replies: &[NeedReplyCard]) -> Markup {
+    if replies.is_empty() {
+        return html! {
+            div class="empty" { p { "No replies yet." } }
+        };
+    }
+    html! {
+        div class="stack" {
+            @for reply in replies {
+                article class="card" {
+                    p class="meta" {
+                        a href={ "/members/" (reply.author_id) } { (reply.author_name) }
+                    }
+                    p { (reply.body) }
+                }
+            }
         }
-        OfferState::NotYet => html! {},
     }
 }
 
@@ -230,15 +245,3 @@ fn close_form(need: &NeedCard, steward: StewardView, csrf: &str) -> Markup {
     }
 }
 
-fn who_offered(applications: &[&ApplicationCard], steward: StewardView, csrf: &str) -> Markup {
-    if applications.is_empty() {
-        return html! {
-            div class="empty" { p { "No offers yet." } }
-        };
-    }
-    html! {
-        div class="stack" {
-            (application_cards(applications.iter().copied(), steward, csrf))
-        }
-    }
-}

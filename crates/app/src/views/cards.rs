@@ -3,13 +3,12 @@
 use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
-    ApplicationCard, ApplicationStatus, Church, ChurchCard, ChurchLinkStatus, ChurchMember,
-    EndorsementCard, Gift, MemberGift, MembershipRole, NeedCard, NeedScope, Notification,
-    PlaceGroup, Viewer, display_name,
+    Church, ChurchCard, ChurchLinkStatus, ChurchMember, EndorsementCard, Gift, MemberGift,
+    MembershipRole, NeedCard, NeedScope, Notification, PlaceGroup, Viewer, display_name,
 };
 
 use super::layout::{Icon, Monogram, csrf_input, icon, monogram};
-use super::words::{category_label, census_line, household_line, offer_status_word, role_word};
+use super::words::{category_label, census_line, household_line, role_word};
 
 #[derive(Clone, Copy)]
 pub enum NeedCardPlace {
@@ -252,57 +251,10 @@ pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift], selected: &str
     )
 }
 
-pub fn application_cards<'a>(
-    applications: impl IntoIterator<Item = &'a ApplicationCard>,
-    steward: StewardView,
-    csrf: &str,
-) -> Markup {
-    html! {
-        @for application in applications {
-            (application_card(application, steward, csrf))
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub enum StewardView {
     Steward,
     Guest,
-}
-
-fn application_card(application: &ApplicationCard, steward: StewardView, csrf: &str) -> Markup {
-    html! {
-        article class="card" {
-            div class="person-line" {
-                (monogram(&application.user_id, &application.user_name, Monogram::Person))
-                div {
-                    a href={ "/members/" (application.user_id) } { strong { (application.user_name) } }
-                    p class="meta" { (offer_status_word(application.status())) }
-                }
-            }
-            p { (application.message) }
-            @if matches!(steward, StewardView::Steward)
-                && application.status() == Some(ApplicationStatus::Pending)
-            {
-                (application_verdict_row(application, csrf))
-            }
-        }
-    }
-}
-
-fn application_verdict_row(application: &ApplicationCard, csrf: &str) -> Markup {
-    html! {
-        div class="row" {
-            form method="post" action={ "/applications/" (application.id) "/accept" } {
-                (csrf_input(csrf))
-                button class="btn" type="submit" { "Accept" }
-            }
-            form method="post" action={ "/applications/" (application.id) "/decline" } {
-                (csrf_input(csrf))
-                button class="btn btn-quiet" type="submit" { "Decline" }
-            }
-        }
-    }
 }
 
 pub fn church_link_item(

@@ -12,6 +12,7 @@ pub enum Nav {
     Home,
     Churches,
     Body,
+    Pray,
     Inbox,
     You,
     /// Signed in, no church yet. Join is the only page.
@@ -49,6 +50,7 @@ pub enum Icon {
     Check,
     Alert,
     Qr,
+    Pray,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -118,6 +120,10 @@ pub fn password_field(label: &str, name: &str, autocomplete: &str) -> Markup {
 
 pub fn page_lead(title: &str) -> Markup {
     html! { h1 { (title) } }
+}
+
+pub fn detail_lead(title: &str) -> Markup {
+    html! { h1 class="title-morph" { (title) } }
 }
 
 pub fn share_button(label: &str, title: &str, text: &str, url: &str) -> Markup {
@@ -220,6 +226,9 @@ fn icon_paths(glyph: Icon) -> Markup {
             path d="M6.6 6.6h1.3v1.3H6.6zM16.1 6.6h1.3v1.3h-1.3zM6.6 16.1h1.3v1.3H6.6z" fill="currentColor" stroke="none" {}
             path d="M14 14h2.2v2.2H14zM18.3 14H19.5v2.2h-1.2zM14 18.3h2.2V19.5H14zM16.8 16.2h2.7V19.5h-2.7z" {}
         },
+        Icon::Pray => html! {
+            path d="M12 3.2s4.2 4.4 4.2 7.6a4.2 4.2 0 0 1-8.4 0C7.8 7.6 12 3.2 12 3.2z" {}
+        },
     }
 }
 
@@ -296,7 +305,7 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=15";
+                link rel="stylesheet" href="/static/app.css?v=16";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
@@ -319,7 +328,7 @@ pub fn page(
                 @if show_dock(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=12" defer {}
+                script src="/static/app.js?v=14" defer {}
             }
         }
     }
@@ -420,6 +429,7 @@ fn site_class(nav: Nav) -> &'static str {
         Nav::Home => "site site-app site-home",
         Nav::Churches => "site site-app site-churches",
         Nav::Body => "site site-app site-body",
+        Nav::Pray => "site site-app site-pray",
         Nav::Inbox => "site site-app site-inbox",
         Nav::You => "site site-app site-you",
         Nav::Join => "site site-app site-churches",
@@ -473,8 +483,8 @@ fn dock(nav: Nav, unread: i64) -> Markup {
     html! {
         nav class="dock" aria-label="Primary" {
             (dock_link("/home", "Home", Icon::Home, DockState::for_nav(nav, Nav::Home), None))
-            (dock_link("/churches", "Churches", Icon::Church, DockState::for_nav(nav, Nav::Churches), None))
-            (dock_link("/the-body", "Nearby", Icon::Pin, DockState::for_nav(nav, Nav::Body), None))
+            (dock_link("/pray", "Pray", Icon::Pray, DockState::for_nav(nav, Nav::Pray), None))
+            (dock_link("/nearby", "Nearby", Icon::Pin, DockState::for_nav(nav, Nav::Body), None))
             (dock_link("/inbox", "Inbox", Icon::Inbox, DockState::for_nav(nav, Nav::Inbox), unread_badge(unread)))
             (dock_link("/me", "You", Icon::Person, DockState::for_nav(nav, Nav::You), None))
         }

@@ -103,6 +103,24 @@ impl NeedDraft<'static> {
     }
 }
 
+pub struct PrayerDraft<'a> {
+    pub church_id: &'a str,
+    pub body: &'a str,
+    pub byline: &'a str,
+    pub kind: DraftKind,
+}
+
+impl PrayerDraft<'static> {
+    pub fn blank(church_id: &str) -> PrayerDraft<'_> {
+        PrayerDraft {
+            church_id,
+            body: "",
+            byline: "signed",
+            kind: DraftKind::Blank,
+        }
+    }
+}
+
 pub struct OfferDraft<'a> {
     pub message: &'a str,
     pub kind: DraftKind,

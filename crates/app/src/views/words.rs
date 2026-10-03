@@ -1,6 +1,6 @@
 //! Human labels for stored status words. The database keeps snake_case.
 
-use ecclesia_sdk::prelude::{ApplicationStatus, ChurchLinkStatus, MembershipRole};
+use ecclesia_sdk::prelude::{ChurchLinkStatus, MembershipRole};
 
 pub fn census_line(members: i64, needs: i64) -> String {
     format!(
@@ -29,10 +29,6 @@ pub fn household_line(
         Some(status) => status.label(),
         None => role_word(role),
     }
-}
-
-pub fn offer_status_word(status: Option<ApplicationStatus>) -> &'static str {
-    status.map(ApplicationStatus::label).unwrap_or("Offer")
 }
 
 pub fn category_label(category: &str) -> String {

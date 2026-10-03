@@ -6,6 +6,8 @@ pub struct FlashQuery {
     pub err: Option<String>,
     pub after: Option<String>,
     pub members_after: Option<String>,
+    pub lat: Option<String>,
+    pub lng: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -126,11 +128,42 @@ pub struct NeedQuery {
 }
 
 #[derive(Deserialize)]
-pub struct ApplyForm {
+pub struct ReplyForm {
     pub csrf: String,
-    pub message: String,
+    pub body: String,
     #[serde(default)]
     pub pass: String,
+    #[serde(default)]
+    pub lat: String,
+    #[serde(default)]
+    pub lng: String,
+}
+
+#[derive(Deserialize)]
+pub struct PrayerForm {
+    pub csrf: String,
+    pub church_id: String,
+    pub body: String,
+    pub byline: String,
+    #[serde(default)]
+    pub pass: String,
+}
+
+#[derive(Deserialize)]
+pub struct PraiseForm {
+    pub csrf: String,
+    pub praise: String,
+    #[serde(default)]
+    pub pass: String,
+}
+
+#[derive(Deserialize)]
+pub struct PlaceForm {
+    pub csrf: String,
+    #[serde(default)]
+    pub lat: String,
+    #[serde(default)]
+    pub lng: String,
 }
 
 #[derive(Deserialize)]

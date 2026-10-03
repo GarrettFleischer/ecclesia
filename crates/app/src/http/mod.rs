@@ -7,6 +7,7 @@ mod context;
 mod forms;
 mod needs;
 mod people;
+mod prayers;
 mod push;
 mod voice;
 
@@ -225,7 +226,7 @@ pub fn router(state: AppState) -> Router {
         .route("/home", get(auth::home))
         .route(
             "/churches",
-            get(churches::churches_index).post(churches::create_church),
+            get(prayers::churches_nearby_redirect).post(churches::create_church),
         )
         .route("/churches/new", get(churches::church_new))
         .route(
@@ -249,16 +250,8 @@ pub fn router(state: AppState) -> Router {
         .route("/needs/new", get(needs::need_new))
         .route("/needs", post(needs::create_need))
         .route("/needs/{id}", get(needs::need_show))
-        .route("/needs/{id}/apply", post(needs::apply_need))
+        .route("/needs/{id}/replies", post(needs::reply_need))
         .route("/needs/{id}/close", post(needs::close_need_http))
-        .route(
-            "/applications/{id}/accept",
-            post(needs::accept_application_http),
-        )
-        .route(
-            "/applications/{id}/decline",
-            post(needs::decline_application_http),
-        )
         .route("/members/{id}", get(people::member_show))
         .route("/members/{id}/endorse", post(people::endorse_member))
         .route(
@@ -273,7 +266,15 @@ pub fn router(state: AppState) -> Router {
         .route("/me", get(people::me).post(people::update_me))
         .route("/me/gifts", post(people::add_gift_http))
         .route("/me/gifts/{id}/remove", post(people::remove_gift_http))
-        .route("/the-body", get(people::the_body))
+        .route("/the-body", get(prayers::churches_nearby_redirect))
+        .route("/nearby", get(prayers::nearby))
+        .route("/pray", get(prayers::pray))
+        .route("/prayers/new", get(prayers::prayer_new))
+        .route("/prayers", post(prayers::create_prayer))
+        .route("/prayers/{id}", get(prayers::prayer_show))
+        .route("/prayers/{id}/pray", post(prayers::pray_mark))
+        .route("/prayers/{id}/next", post(prayers::next_mark))
+        .route("/prayers/{id}/answer", post(prayers::answer_prayer))
         .route("/push/vapid", get(push::vapid_public))
         .route("/push/subscribe", post(push::subscribe))
         .route("/push/unsubscribe", post(push::unsubscribe))

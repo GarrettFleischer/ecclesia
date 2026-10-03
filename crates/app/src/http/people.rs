@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::views;
-use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind, group_churches_by_place};
+use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind};
 use ecclesia_sdk::story;
 
 use super::context::{
@@ -346,31 +346,6 @@ pub async fn remove_gift_http(
         story::remove_gift(&state.sdk, &signed.user.id, &id).await?,
         "gift_removed",
     )
-}
-
-pub async fn the_body(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    Query(flash): Query<FlashQuery>,
-) -> Result<Response, AppError> {
-    let signed = match signed_in(&state, jar).await {
-        Ok(signed) => signed,
-        Err(response) => return Ok(response),
-    };
-    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
-    let page = story::church_directory(&state.sdk, flash.after.as_deref()).await?;
-    let groups = group_churches_by_place(page.cards);
-    let count = unread(&state.sdk.db, &viewer.user.id).await?;
-    Ok(with_cookie(
-        signed.jar,
-        html(views::the_body(
-            &viewer,
-            &groups,
-            page.next_cursor.as_deref(),
-            count,
-            &signed.session.csrf,
-        )),
-    ))
 }
 
 pub async fn fallback(State(state): State<AppState>, jar: CookieJar) -> Response {

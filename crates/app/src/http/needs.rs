@@ -1,16 +1,19 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::views;
-use ecclesia_sdk::prelude::{OfferState, Viewer, VoiceKind, require_need_view, visible_offers};
+use ecclesia_sdk::prelude::{
+    NeedApproach, Place, Viewer, VoiceKind, can_reply, can_view_need_near, coordinates,
+    require_need_view,
+};
 use ecclesia_sdk::story;
 
 use super::context::{
     html, leaf_err, optional_gift_id, redirect_err, redirect_ok, signed_form, signed_in,
     story_redirect, unread, viewer_for, with_cookie,
 };
-use super::forms::{ApplyForm, CsrfForm, FlashQuery, NeedForm, NeedQuery};
+use super::forms::{CsrfForm, FlashQuery, NeedForm, NeedQuery, ReplyForm};
 use super::{AppError, AppState};
 
 pub async fn need_new(
@@ -118,15 +121,18 @@ pub async fn need_show(
         views::flash_from(flash.ok, flash.err),
         &signed.session.csrf,
         &views::OfferDraft::blank(),
+        shared_place(flash.lat.as_deref(), flash.lng.as_deref()),
+        flash.lat.as_deref(),
+        flash.lng.as_deref(),
     )
     .await
 }
 
-pub async fn apply_need(
+pub async fn reply_need(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
-    Form(form): Form<ApplyForm>,
+    Form(form): Form<ReplyForm>,
 ) -> Result<Response, AppError> {
     let dest = format!("/needs/{id}");
     let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
@@ -134,8 +140,8 @@ pub async fn apply_need(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
-    if state.awaiting_review(&form.pass, &[&form.message]) {
-        let message = state.polish(VoiceKind::Offer, &form.message).await;
+    if state.awaiting_review(&form.pass, &[&form.body]) {
+        let message = state.polish(VoiceKind::Reply, &form.body).await;
         return paint_need(
             &state,
             signed.jar,
@@ -147,14 +153,25 @@ pub async fn apply_need(
                 message: &message,
                 kind: views::DraftKind::Review,
             },
+            shared_place(Some(&form.lat), Some(&form.lng)),
+            Some(&form.lat),
+            Some(&form.lng),
         )
         .await;
     }
+    let back = place_back(&dest, &form.lat, &form.lng);
     story_redirect(
         signed.jar,
-        &dest,
-        story::apply_to_need(&state.sdk, &viewer, &id, &form.message).await?,
-        "applied",
+        &back,
+        story::reply_to_need(
+            &state.sdk,
+            &viewer,
+            &id,
+            &form.body,
+            shared_place(Some(&form.lat), Some(&form.lng)),
+        )
+        .await?,
+        "replied",
     )
 }
 
@@ -178,77 +195,22 @@ pub async fn close_need_http(
     )
 }
 
-pub async fn accept_application_http(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    Path(id): Path<String>,
-    Form(form): Form<CsrfForm>,
-) -> Result<Response, AppError> {
-    let loaded = match load_application_decision(&state, jar, &id, &form.csrf).await {
-        Ok(loaded) => loaded,
-        Err(response) => return Ok(response),
-    };
-    story_redirect(
-        loaded.jar,
-        &loaded.dest,
-        story::accept_application(&state.sdk, &loaded.viewer, &id).await?,
-        "application_accepted",
-    )
+fn shared_place(lat: Option<&str>, lng: Option<&str>) -> Option<Place> {
+    let latitude = lat?.parse().ok()?;
+    let longitude = lng?.parse().ok()?;
+    coordinates(latitude, longitude)
+        .ok()
+        .map(|(latitude, longitude)| Place {
+            latitude,
+            longitude,
+        })
 }
 
-pub async fn decline_application_http(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    Path(id): Path<String>,
-    Form(form): Form<CsrfForm>,
-) -> Result<Response, AppError> {
-    let loaded = match load_application_decision(&state, jar, &id, &form.csrf).await {
-        Ok(loaded) => loaded,
-        Err(response) => return Ok(response),
-    };
-    story_redirect(
-        loaded.jar,
-        &loaded.dest,
-        story::decline_application(&state.sdk, &loaded.viewer, &id).await?,
-        "declined",
-    )
-}
-
-struct ApplicationDecision {
-    jar: CookieJar,
-    viewer: Viewer,
-    dest: String,
-}
-
-async fn load_application_decision(
-    state: &AppState,
-    jar: CookieJar,
-    id: &str,
-    csrf: &str,
-) -> Result<ApplicationDecision, Response> {
-    let signed = signed_in(state, jar).await?;
-    let viewer = match viewer_for(&state.sdk.db, signed.user).await {
-        Ok(viewer) => viewer,
-        Err(error) => return Err(error.into_response()),
-    };
-    let Some(application) = state
-        .sdk
-        .db
-        .application(id)
-        .await
-        .map_err(|error| AppError::from(error).into_response())?
-    else {
-        return Err(with_cookie(signed.jar, redirect_err("/home", "not_found")));
-    };
-    let dest = format!("/needs/{}", application.need_id);
-    if !signed.session.check_csrf(csrf) {
-        return Err(with_cookie(signed.jar, super::context::fail_csrf(&dest)));
+fn place_back(dest: &str, lat: &str, lng: &str) -> String {
+    match shared_place(Some(lat), Some(lng)) {
+        Some(place) => format!("{dest}?lat={}&lng={}", place.latitude, place.longitude),
+        None => dest.to_string(),
     }
-    Ok(ApplicationDecision {
-        jar: signed.jar,
-        viewer,
-        dest,
-    })
 }
 
 async fn paint_need(
@@ -259,6 +221,9 @@ async fn paint_need(
     flash: Option<views::Flash>,
     csrf: &str,
     draft: &views::OfferDraft<'_>,
+    place: Option<Place>,
+    lat: Option<&str>,
+    lng: Option<&str>,
 ) -> Result<Response, AppError> {
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let Some(card) = state.sdk.db.need_card(id).await? else {
@@ -287,7 +252,11 @@ async fn paint_need(
             )),
         ));
     };
-    if let Err(error) = require_need_view(&viewer, card.sight(), &church) {
+    let member_view = require_need_view(&viewer, card.sight(), &church);
+    let seen = member_view.is_ok()
+        || place.is_some_and(|point| can_view_need_near(&viewer, card.sight(), &church, point));
+    if !seen {
+        let error = member_view.unwrap_err();
         return Ok(with_cookie(
             jar,
             html(views::sorry_page(
@@ -300,14 +269,23 @@ async fn paint_need(
             )),
         ));
     }
-    let applications = state.sdk.db.applications_for_need(&card.id).await?;
-    let offers: Vec<_> = visible_offers(&viewer, card.sight(), &applications).collect();
-    let offer = OfferState::of_existing(applications.iter().find(|a| a.user_id == viewer.user.id));
-    let help = ecclesia_sdk::prelude::can_apply(&viewer, card.sight(), &church);
+    let approach = if member_view.is_ok() {
+        NeedApproach::Membership
+    } else if let Some(point) = place {
+        NeedApproach::Near(point)
+    } else {
+        NeedApproach::Membership
+    };
+    let help = can_reply(&viewer, card.sight(), &church, approach);
+    let replies = state.sdk.db.need_replies(&card.id).await?;
+    let fields = match (place, lat, lng) {
+        (Some(_), Some(lat), Some(lng)) => Some((lat, lng)),
+        _ => None,
+    };
     Ok(with_cookie(
         jar,
         html(views::need_show(
-            &viewer, &card, &church, &offers, help, offer, count, flash, csrf, draft,
+            &viewer, &card, &church, &replies, help, count, flash, csrf, draft, fields,
         )),
     ))
 }

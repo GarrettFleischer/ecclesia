@@ -16,31 +16,6 @@ use super::forms::{
 };
 use super::{AppError, AppState};
 
-pub async fn churches_index(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    Query(flash): Query<FlashQuery>,
-) -> Result<Response, AppError> {
-    let signed = match signed_in(&state, jar).await {
-        Ok(signed) => signed,
-        Err(response) => return Ok(response),
-    };
-    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
-    let page = story::church_directory(&state.sdk, flash.after.as_deref()).await?;
-    let count = unread(&state.sdk.db, &viewer.user.id).await?;
-    Ok(with_cookie(
-        signed.jar,
-        html(views::churches_index(
-            &viewer,
-            views::flash_from(flash.ok, flash.err),
-            &page.cards,
-            page.next_cursor.as_deref(),
-            count,
-            &signed.session.csrf,
-        )),
-    ))
-}
-
 pub async fn church_new(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -179,6 +154,7 @@ pub async fn church_show(
             &page.church,
             &page.members,
             &page.needs,
+            &page.answered,
             page.next_need_cursor.as_deref(),
             page.next_member_cursor.as_deref(),
             views::flash_for(flash.ok, flash.err, Some(page.church.name.as_str())),

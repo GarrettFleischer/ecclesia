@@ -1,8 +1,8 @@
 use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
-    Church, ChurchCard, ChurchLinkStatus, ChurchMember, NeedCard, PlaceGroup, Viewer, VoiceKind,
-    visible_need_cards,
+    Church, ChurchCard, ChurchLinkStatus, ChurchMember, NeedCard, PlaceGroup, PrayerCard, Viewer,
+    VoiceKind, visible_need_cards,
 };
 use ecclesia_sdk::story::ChurchSearchHit;
 
@@ -14,7 +14,7 @@ use super::draft::{ChurchDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
 use super::layout::{
     Icon, Monogram, Nav, OnboardStep, csrf_input, icon, join_href, monogram, onboard_steps, page,
-    page_lead, rewrite_row, share_button,
+    detail_lead, page_lead, rewrite_row, share_button,
 };
 
 pub fn churches_index(
@@ -113,6 +113,7 @@ pub fn church_show(
     church: &Church,
     members: &[ChurchMember],
     needs: &[NeedCard],
+    answered: &[PrayerCard],
     next_need_cursor: Option<&str>,
     next_member_cursor: Option<&str>,
     flash: Option<Flash>,
@@ -133,7 +134,7 @@ pub fn church_show(
                 (monogram(&church.id, &church.name, Monogram::ChurchLarge))
                 div {
                     p class="eyebrow" { (church.address) }
-                    (page_lead(&church.name))
+                    (detail_lead(&church.name))
                 }
             }
             p class="lede" { (church.description) }
@@ -147,8 +148,37 @@ pub fn church_show(
             (governor_door(church, door, csrf))
             (people_section(&church.id, members, door, csrf, &church_path, next_member_cursor))
             (needs_section(viewer, church, needs, &church_path, next_need_cursor))
+            (answered_section(answered))
         },
     )
+}
+
+fn answered_section(prayers: &[PrayerCard]) -> Markup {
+    if prayers.is_empty() {
+        return html! {};
+    }
+    html! {
+        section {
+            h2 { "Answered prayers" }
+            div class="stack" {
+                @for prayer in prayers {
+                    article class="card" {
+                        p { (prayer.body) }
+                        @if let Some(name) = &prayer.author_name {
+                            @if let Some(author_id) = &prayer.author_id {
+                                p class="meta" {
+                                    a href={ "/members/" (author_id) } { (name) }
+                                }
+                            }
+                        }
+                        @if let Some(praise) = &prayer.praise {
+                            p { (praise) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn membership_status(viewer: &Viewer, church: &Church, csrf: &str) -> Markup {
@@ -362,6 +392,14 @@ pub fn join_church_page(
                 (onboard_steps(OnboardStep::Church))
             }
             (page_lead("Find your church"))
+            a class="btn btn-quiet" href="/churches/new" { "Add your church" }
+            form class="row-form invite-form" method="post" action="/invites/redeem" {
+                (csrf_input(csrf))
+                label { "Invite code"
+                    input name="code" placeholder="a1b2c3d4" autocomplete="off" autocapitalize="none" spellcheck="false";
+                }
+                button class="btn btn-quiet" type="submit" { "Join" }
+            }
             (suggestion_block(suggestion, csrf))
             section {
                 h2 { "Search by name" }

@@ -659,7 +659,8 @@ proptest! {
                 if !matches!(
                     code.as_str(),
                     "joined_request" | "invited" | "redeemed" | "approved" | "declined"
-                        | "need_posted" | "applied" | "application_accepted" | "need_closed"
+                        | "need_posted" | "prayer_posted" | "prayed" | "next" | "answered"
+                        | "replied" | "applied" | "application_accepted" | "need_closed"
                         | "endorsed" | "endorsement_accepted" | "endorsement_declined"
                         | "gift_added" | "gift_removed" | "church_planted" | "invite_accepted"
                 ) {
@@ -675,6 +676,7 @@ proptest! {
                     code.as_str(),
                     "email" | "auth" | "not_found" | "forbidden" | "steward" | "not_yours"
                         | "self" | "already" | "not_member" | "scope" | "own_need" | "closed"
+                        | "prayer_answered"
                         | "invite" | "pending" | "bad_email" | "tone" | "rate" | "miss"
                         | "mail" | "password"
                 ) {

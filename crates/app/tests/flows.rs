@@ -171,10 +171,20 @@ async fn sign_in(world: &World, email: &str) -> String {
 }
 
 async fn plant(world: &World, cookie: &str, name: &str) -> (String, String) {
+    plant_at(world, cookie, name, "42.5349", "-92.4453").await
+}
+
+async fn plant_at(
+    world: &World,
+    cookie: &str,
+    name: &str,
+    latitude: &str,
+    longitude: &str,
+) -> (String, String) {
     let (_page, cookie, csrf) = get_page(world.app.clone(), Some(cookie), "/churches/new").await;
     let csrf = csrf.expect("church csrf");
     let body = format!(
-        "csrf={csrf}&name={}&address=100+Main+Street&latitude=42.5349&longitude=-92.4453&gathering=Sunday+at+10.&description=A+church+on+Main+Street.&pass=publish",
+        "csrf={csrf}&name={}&address=100+Main+Street&latitude={latitude}&longitude={longitude}&gathering=Sunday+at+10.&description=A+church+on+Main+Street.&pass=publish",
         enc(name)
     );
     let response = post_form(world.app.clone(), Some(&cookie), "/churches", body).await;
@@ -931,7 +941,7 @@ async fn us_need_05_neighboring_need_is_visible_across_the_valley() {
 }
 
 #[tokio::test]
-async fn us_need_02_apply_form_and_offer() {
+async fn us_need_02_public_reply() {
     let world = app().await;
     let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
@@ -954,25 +964,30 @@ async fn us_need_02_apply_form_and_offer() {
     )
     .await;
     let csrf = csrf.expect("need csrf");
-    let after_open = page.split_once("<textarea").expect("apply textarea").1;
+    let after_open = page.split_once("<textarea").expect("reply textarea").1;
     let (inside, rest) = after_open
         .split_once("</textarea>")
         .expect("textarea must be closed");
-    assert!(!inside.contains("Apply to help"));
-    assert!(rest.contains(r#"<button class="btn" type="submit">Apply to help</button>"#));
+    assert!(!inside.contains("Reply"));
+    assert!(rest.contains(r#"<button class="btn" type="submit">Reply</button>"#));
 
-    let status = post(
-        &world,
-        &cookie,
-        &csrf,
-        &format!("/needs/{need_id}/apply"),
-        "message=I+can+hold+both+languages+on+Thursday",
+    let sent = post_form(
+        world.app.clone(),
+        Some(&cookie),
+        &format!("/needs/{need_id}/replies"),
+        format!("csrf={csrf}&body=I+can+hold+both+languages+on+Thursday&pass=publish"),
     )
     .await;
-    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(sent.status(), StatusCode::SEE_OTHER);
+    let location = location_of(&sent);
+    assert!(location.contains("ok=replied"), "got {location}");
 
     let again = get(&world, &cookie, &format!("/needs/{need_id}")).await;
-    assert!(again.contains("You applied."));
+    assert!(again.contains("I can hold both languages on Thursday"));
+    assert!(again.contains("Elena Vasquez"));
+    assert!(again.contains("/members/"));
+    let flashed = get(&world, &cookie, &location).await;
+    assert!(flashed.contains("Replied."));
 }
 
 #[tokio::test]
@@ -1399,7 +1414,7 @@ async fn us_refine_01_silent_echoes_the_same_words() {
     let elena = register(&world, "Elena Vasquez", "elena@mercy.test").await;
     let (_elena, _) = plant(&world, &elena, "New Mercy").await;
     let need = get(&world, &elena, &format!("/needs/{need_id}")).await;
-    assert!(need.contains(r#"data-kind="offer""#));
+    assert!(need.contains(r#"data-kind="reply""#));
     let daniel_id = user_id(&world, "daniel@grace.test").await;
     let member = get(&world, &elena, &format!("/members/{daniel_id}")).await;
     assert!(member.contains(r#"data-kind="endorsement""#));
@@ -1819,4 +1834,224 @@ async fn us_api_01_json_sign_in_refresh_and_me() {
         .await
         .unwrap();
     assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn us_near_01_nearby_stays_empty_until_a_point_is_shared() {
+    let world = app().await;
+    let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
+    let (miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
+    let (_miriam, _) = post_need(
+        &world,
+        &miriam,
+        &grace,
+        "Church dinners",
+        "Five dinners this week.",
+        "church",
+    )
+    .await;
+    let traveler = register(&world, "Ada Lovelace", "ada@austin.test").await;
+    let (traveler, _) = plant_at(&world, &traveler, "Austin Chapel", "30.2672", "-97.7431").await;
+
+    let empty = get(&world, &traveler, "/nearby").await;
+    assert!(empty.contains("Share where you are"));
+    assert!(!empty.contains("Church dinners"));
+
+    let here = get(&world, &traveler, "/nearby?lat=42.5349&lng=-92.4453").await;
+    assert!(here.contains("Church dinners"));
+
+    let away = get(&world, &traveler, "/nearby?lat=30.2672&lng=-97.7431").await;
+    assert!(!away.contains("Church dinners"));
+
+    let home = get(&world, &traveler, "/home").await;
+    assert!(!home.contains("Church dinners"));
+}
+
+#[tokio::test]
+async fn us_need_07_a_traveler_can_reply_when_the_church_is_near() {
+    let world = app().await;
+    let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
+    let (miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
+    let (_miriam, need_id) = post_need(
+        &world,
+        &miriam,
+        &grace,
+        "Church dinners",
+        "Five dinners this week.",
+        "church",
+    )
+    .await;
+    let traveler = register(&world, "Ada Lovelace", "ada@austin.test").await;
+    let (traveler, _) = plant_at(&world, &traveler, "Austin Chapel", "30.2672", "-97.7431").await;
+
+    let (page, cookie, csrf) = get_page(
+        world.app.clone(),
+        Some(&traveler),
+        &format!("/needs/{need_id}?lat=42.5349&lng=-92.4453"),
+    )
+    .await;
+    assert!(page.contains("Church dinners"));
+    let csrf = csrf.expect("need csrf");
+    let status = post(
+        &world,
+        &cookie,
+        &csrf,
+        &format!("/needs/{need_id}/replies"),
+        "body=I+can+bring+dinner+Thursday.&lat=42.5349&lng=-92.4453&pass=publish",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let thread = get(
+        &world,
+        &cookie,
+        &format!("/needs/{need_id}?lat=42.5349&lng=-92.4453"),
+    )
+    .await;
+    assert!(thread.contains("I can bring dinner Thursday."));
+    assert!(thread.contains("Ada Lovelace"));
+    assert!(thread.contains("/members/"));
+
+    let refused = post_form(
+        world.app.clone(),
+        Some(&cookie),
+        &format!("/needs/{need_id}/replies"),
+        format!("csrf={csrf}&body=Too+far+to+help.&lat=30.2672&lng=-97.7431&pass=publish"),
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::SEE_OTHER);
+    let location = location_of(&refused);
+    assert!(location.contains("err=scope"), "got {location}");
+}
+
+#[tokio::test]
+async fn us_pray_02_church_prayers_come_before_the_shared_point() {
+    let world = app().await;
+    let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
+    let (miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
+    let elena = register(&world, "Elena Vasquez", "elena@grace.test").await;
+    let elena = join(&world, &elena, &grace).await;
+    let (church, miriam, csrf) = get_page(
+        world.app.clone(),
+        Some(&miriam),
+        &format!("/churches/{grace}"),
+    )
+    .await;
+    let elena_id = waiting_user_id(&church, &grace);
+    let status = post(
+        &world,
+        &miriam,
+        &csrf.expect("church csrf"),
+        &format!("/churches/{grace}/members/{elena_id}/approve"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let james = register(&world, "James Wright", "james@mercy.test").await;
+    let (james, mercy) = plant_at(&world, &james, "Mercy Chapel", "42.4928", "-92.3426").await;
+    let ada = register(&world, "Ada Lovelace", "ada@austin.test").await;
+    let (ada, austin) = plant_at(&world, &ada, "Austin Chapel", "30.2672", "-97.7431").await;
+
+    let (_miriam, church_prayer) = post_prayer(
+        &world,
+        &miriam,
+        &grace,
+        "Surgery on Thursday.",
+        "signed",
+    )
+    .await;
+    post_prayer(&world, &james, &mercy, "Mercy roof prayer.", "signed").await;
+    post_prayer(&world, &ada, &austin, "Austin far prayer.", "signed").await;
+
+    let deck = get(&world, &elena, "/pray").await;
+    assert!(deck.contains("Surgery on Thursday."));
+    assert!(deck.contains("Your church"));
+    assert!(!deck.contains("Mercy roof prayer."));
+    assert!(!deck.contains("Austin far prayer."));
+
+    let (_page, cookie, csrf) = get_page(world.app.clone(), Some(&elena), "/pray").await;
+    let status = post(
+        &world,
+        &cookie,
+        &csrf.expect("pray csrf"),
+        &format!("/prayers/{church_prayer}/next"),
+        "pass=publish",
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let after = get(&world, &elena, "/pray").await;
+    assert!(!after.contains("Surgery on Thursday."));
+    assert!(after.contains("Share where you are"));
+    assert!(!after.contains("Mercy roof prayer."));
+
+    let travel = get(&world, &elena, "/pray?lat=42.5349&lng=-92.4453").await;
+    assert!(travel.contains("Mercy roof prayer."));
+    assert!(travel.contains("Nearby"));
+    assert!(!travel.contains("Surgery on Thursday."));
+    assert!(!travel.contains("Austin far prayer."));
+
+    let nearby = get(&world, &elena, "/nearby?lat=42.5349&lng=-92.4453").await;
+    assert!(nearby.contains("Mercy roof prayer."));
+    assert!(!nearby.contains("Surgery on Thursday."));
+    assert!(!nearby.contains("Austin far prayer."));
+}
+
+#[tokio::test]
+async fn us_pray_01_an_unnamed_prayer_shows_no_author() {
+    let world = app().await;
+    let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
+    let (miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
+    let miriam_id = user_id(&world, "miriam@grace.test").await;
+    let elena = register(&world, "Elena Vasquez", "elena@grace.test").await;
+    let elena = join(&world, &elena, &grace).await;
+    let (church, miriam, csrf) = get_page(
+        world.app.clone(),
+        Some(&miriam),
+        &format!("/churches/{grace}"),
+    )
+    .await;
+    let elena_id = waiting_user_id(&church, &grace);
+    post(
+        &world,
+        &miriam,
+        &csrf.expect("church csrf"),
+        &format!("/churches/{grace}/members/{elena_id}/approve"),
+        "",
+    )
+    .await;
+
+    let (_miriam, prayer_id) = post_prayer(
+        &world,
+        &miriam,
+        &grace,
+        "Surgery on Thursday.",
+        "unnamed",
+    )
+    .await;
+    let card = get(&world, &elena, &format!("/prayers/{prayer_id}")).await;
+    assert!(card.contains("Surgery on Thursday."));
+    assert!(!card.contains("Miriam Cole"));
+    assert!(!card.contains(&format!("/members/{miriam_id}")));
+}
+
+async fn post_prayer(
+    world: &World,
+    cookie: &str,
+    church_id: &str,
+    body: &str,
+    byline: &str,
+) -> (String, String) {
+    let (_page, cookie, csrf) = get_page(world.app.clone(), Some(cookie), "/prayers/new").await;
+    let csrf = csrf.expect("prayer csrf");
+    let extra = format!(
+        "csrf={csrf}&church_id={}&body={}&byline={}&pass=publish",
+        enc(church_id),
+        enc(body),
+        enc(byline)
+    );
+    let response = post_form(world.app.clone(), Some(&cookie), "/prayers", extra).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER, "post prayer");
+    let prayer_id = id_from_location(&location_of(&response), "/prayers/");
+    (try_cookie_from(&response).unwrap_or(cookie), prayer_id)
 }

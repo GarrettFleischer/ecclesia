@@ -17,6 +17,7 @@
   hookReview(csrf);
   hookBusySubmit();
   hookTitleMorph();
+  hookPlaceShare();
   hookPickers();
   hookChurchSearch();
   hookPasswordToggle();
@@ -603,6 +604,33 @@ function hookBusySubmit() {
   });
 }
 
+function hookPlaceShare() {
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-share-place]");
+    if (!button) {
+      return;
+    }
+    const status = document.querySelector("[data-place-status]");
+    if (!navigator.geolocation) {
+      if (status) {
+        status.textContent = "This browser has no location.";
+      }
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((position) => {
+      const path = button.getAttribute("data-share-place") || "nearby";
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set("lat", String(position.coords.latitude));
+      url.searchParams.set("lng", String(position.coords.longitude));
+      window.location.assign(url.pathname + url.search);
+    }, () => {
+      if (status) {
+        status.textContent = "Location stayed off.";
+      }
+    }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 });
+  });
+}
+
 function hookTitleMorph() {
   let morphHref = "";
   document.addEventListener("click", (event) => {
@@ -632,7 +660,7 @@ function hookTitleMorph() {
       morphHref = "";
     }
     const heading = document.querySelector("main h1");
-    if (!morphHref && heading && !onScreen(heading)) {
+    if (!morphHref && heading) {
       heading.style.viewTransitionName = "none";
     }
   });
@@ -650,11 +678,6 @@ function destinationPath(event) {
     return "";
   }
   return new URL(entry.url).pathname;
-}
-
-function onScreen(node) {
-  const box = node.getBoundingClientRect();
-  return box.bottom > 0 && box.top < window.innerHeight;
 }
 
 function clearMorph() {

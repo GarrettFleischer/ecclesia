@@ -383,7 +383,7 @@ main.sheet-landing {
 .page-rise > :nth-child(5) { animation-delay: 200ms; }
 .page-rise > :nth-child(n + 6) { animation-delay: 250ms; }
 
-.page-rise > :is(h1, :has(h1)) {
+.page-rise > :is(h1.title-morph, :has(h1.title-morph)) {
   animation: none;
 }
 
@@ -403,7 +403,7 @@ h1 {
   letter-spacing: -0.02em;
 }
 
-main h1 {
+h1.title-morph {
   view-transition-name: page-title;
 }
 

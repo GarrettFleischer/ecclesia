@@ -14,7 +14,7 @@ use super::cards::{
 use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
 use super::layout::{
-    Monogram, Nav, csrf_input, monogram, page, page_lead, rewrite_row, shown_name,
+    Monogram, Nav, csrf_input, detail_lead, monogram, page, page_lead, rewrite_row, shown_name,
 };
 
 pub fn member_show(
@@ -58,12 +58,20 @@ pub fn member_show(
 }
 
 fn profile_head(person: &User) -> Markup {
+    named_head(person, detail_lead(&shown_name(person)))
+}
+
+fn you_head(person: &User) -> Markup {
+    named_head(person, page_lead(&shown_name(person)))
+}
+
+fn named_head(person: &User, title: Markup) -> Markup {
     let name = shown_name(person);
     html! {
         div class="profile-head" {
             (monogram(&person.id, &name, Monogram::PersonLarge))
             div {
-                (page_lead(&name))
+                (title)
             }
         }
     }
@@ -297,7 +305,7 @@ pub fn me(
         flash,
         csrf,
         html! {
-            (profile_head(&viewer.user))
+            (you_head(&viewer.user))
             section {
                 h2 { "Profile" }
                 form class="stack" method="post" action="/me" {
@@ -417,6 +425,7 @@ fn my_church(viewer: &Viewer) -> Markup {
         return html! {
             p { "You're not in a church on Ecclesia yet." }
             a href="/churches/join" { "Find your church" }
+            a href="/churches/new" { "Add your church" }
         };
     };
     html! {
@@ -424,5 +433,6 @@ fn my_church(viewer: &Viewer) -> Markup {
             (church_link_item(church, viewer.user.link_status(), viewer.user.link_role()))
         }
         a href="/churches/join" { "Find your church" }
+        a href="/churches/new" { "Add your church" }
     }
 }
