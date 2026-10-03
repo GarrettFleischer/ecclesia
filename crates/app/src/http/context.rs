@@ -1,6 +1,6 @@
-use axum::extract::{ConnectInfo, FromRequestParts};
+use axum::extract::{ConnectInfo, FromRequestParts, Request, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
@@ -119,7 +119,9 @@ pub fn redirect_err(path: &str, code: &str) -> Redirect {
 }
 
 fn flash_location(path: &str, key: &str, code: &str) -> String {
-    format!("{}?{key}={code}", same_origin_path(path))
+    let path = same_origin_path(path);
+    let joiner = if path.contains('?') { '&' } else { '?' };
+    format!("{path}{joiner}{key}={code}")
 }
 
 fn same_origin_path(path: &str) -> &str {
@@ -188,6 +190,14 @@ pub async fn viewer_for(db: &Db, user: User) -> Result<Viewer, AppError> {
     })
 }
 
+/// Where a signed-in person lands. No church means the join step only.
+pub fn signed_home(user: &User) -> &'static str {
+    match user.church_id {
+        Some(_) => "/home",
+        None => "/churches/join",
+    }
+}
+
 pub async fn linked_church(db: &Db, user: &User) -> Result<Option<Church>, AppError> {
     match user.church_id.as_deref() {
         Some(id) => Ok(db.church(id).await?),
@@ -224,6 +234,70 @@ pub async fn soften_form_errors(request: axum::extract::Request, next: Next) -> 
         html(crate::views::error_page("Fill in the required fields.")),
     )
         .into_response()
+}
+
+/// Sends a signed-in person with no church back to the join step.
+pub async fn hold_without_church(
+    State(state): State<super::AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if onboarding_open(request.method(), request.uri().path()) {
+        return next.run(request).await;
+    }
+    let user = match known_user(&state, request.headers()).await {
+        Ok(user) => user,
+        Err(error) => return error.into_response(),
+    };
+    match user {
+        Some(user) if user.church_id.is_none() => Redirect::to("/churches/join").into_response(),
+        _ => next.run(request).await,
+    }
+}
+
+fn onboarding_open(method: &Method, path: &str) -> bool {
+    if path == "/churches/join" {
+        return matches!(*method, Method::GET | Method::HEAD | Method::POST);
+    }
+    if path == "/churches/new" && *method == Method::GET {
+        return true;
+    }
+    if *method == Method::POST
+        && (path == "/churches"
+            || path == "/churches/join/code"
+            || path == "/churches/join/accept"
+            || path == "/invites/redeem"
+            || path == "/session/logout"
+            || path == "/session/logout-all"
+            || path.ends_with("/join"))
+    {
+        return true;
+    }
+    path == "/"
+        || path == "/register"
+        || path.starts_with("/join/")
+        || path.starts_with("/session/")
+        || path.starts_with("/static/")
+        || path.starts_with("/api/")
+        || path.starts_with("/push/")
+        || path == "/sw.js"
+        || path == "/refine"
+}
+
+async fn known_user(
+    state: &super::AppState,
+    headers: &axum::http::HeaderMap,
+) -> Result<Option<User>, AppError> {
+    let jar = CookieJar::from_headers(headers);
+    let session = match ecclesia_sdk::session::from_jar(&state.secret, &jar) {
+        ecclesia_sdk::session::JarSession::Known(session) => session,
+        ecclesia_sdk::session::JarSession::Minted(_) => return Ok(None),
+    };
+    if session.session_id.is_none() {
+        return Ok(None);
+    }
+    let live = ecclesia_sdk::story::resolve_session(&state.sdk, session).await?;
+    load_user(&state.sdk.db, &live).await
 }
 
 fn attach_security_headers(headers: &mut axum::http::HeaderMap) {

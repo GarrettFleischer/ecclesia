@@ -1334,6 +1334,58 @@ form.stack > .btn {
   width: 100%;
 }
 
+.search-line {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+.search-line label {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-line .scan-btn {
+  width: 3rem;
+  min-height: 3rem;
+  padding: 0;
+  border-radius: var(--r-md);
+}
+
+.search-line .scan-btn .btn-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+}
+
+.scan-note:empty {
+  display: none;
+}
+
+.scan-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: rgb(0 0 0 / 0.72);
+}
+
+.scan-sheet[hidden] {
+  display: none;
+}
+
+.scan-sheet video {
+  width: min(22rem, 100%);
+  aspect-ratio: 3 / 4;
+  border-radius: 1.25rem;
+  background: #000;
+  object-fit: cover;
+}
+
 .btn.is-busy {
   color: transparent;
   pointer-events: none;
@@ -2393,6 +2445,32 @@ main.sheet-auth {
 .sheet-auth h1 {
   margin-bottom: 1.3rem;
   font-size: clamp(2.5rem, 2.1rem + 1.6vw, 3.1rem);
+}
+
+.steps {
+  display: flex;
+  gap: 0.4rem 1.4rem;
+  margin: 0 0 1.1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.92rem;
+}
+
+.steps li {
+  color: var(--ink-2);
+}
+
+.steps li.is-current {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.sheet-auth .church-pick {
+  margin: 0 0 1.25rem;
+}
+
+.church-pick .muted {
+  white-space: pre-line;
 }
 
 .sheet-auth .lede {

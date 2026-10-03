@@ -47,6 +47,18 @@ pub struct RegisterForm {
     pub last_name: String,
     pub email: String,
     pub password: String,
+    #[serde(default)]
+    pub code: String,
+}
+
+#[derive(Deserialize)]
+pub struct RegisterQuery {
+    #[serde(default)]
+    pub ok: Option<String>,
+    #[serde(default)]
+    pub err: Option<String>,
+    #[serde(default)]
+    pub code: String,
 }
 
 #[derive(Deserialize)]

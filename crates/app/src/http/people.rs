@@ -8,8 +8,8 @@ use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind, group_churches_by_plac
 use ecclesia_sdk::story;
 
 use super::context::{
-    bind_session, html, leaf_err, linked_church, load_user, redirect_err, signed_form,
-    signed_in, story_redirect, unread, viewer_for, with_cookie,
+    bind_session, html, leaf_err, linked_church, load_user, redirect_err, signed_form, signed_in,
+    story_redirect, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
 use super::{AppError, AppState};
@@ -461,16 +461,7 @@ async fn paint_me(
     Ok(with_cookie(
         jar,
         html(views::me(
-            viewer,
-            &gifts,
-            &catalog,
-            &devices,
-            None,
-            count,
-            flash,
-            csrf,
-            profile,
-            gift,
+            viewer, &gifts, &catalog, &devices, None, count, flash, csrf, profile, gift,
         )),
     ))
 }

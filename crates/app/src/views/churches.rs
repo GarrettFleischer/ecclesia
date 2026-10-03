@@ -13,7 +13,8 @@ use super::cards::{
 use super::draft::{ChurchDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
 use super::layout::{
-    Icon, Monogram, Nav, csrf_input, icon, monogram, page, page_lead, rewrite_row, share_button,
+    Icon, Monogram, Nav, OnboardStep, csrf_input, icon, join_href, monogram, onboard_steps, page,
+    page_lead, rewrite_row, share_button,
 };
 
 pub fn churches_index(
@@ -159,7 +160,7 @@ fn membership_status(viewer: &Viewer, church: &Church, csrf: &str) -> Markup {
             html! { p class="pill" { (role_line(viewer.user.church_role.as_deref().unwrap_or("member"))) } }
         }
         Some(ChurchLinkStatus::Pending) => {
-            html! { p class="pill pill-wait" { "You asked to join. Waiting on the pastor." } }
+            html! { p class="pill pill-wait" { "Your request to join " (church.name) " has been sent." } }
         }
         Some(ChurchLinkStatus::Invited) => html! {
             form method="post" action="/churches/join/accept" {
@@ -216,6 +217,7 @@ fn governor_door(church: &Church, door: DoorKeep, csrf: &str) -> Markup {
                     "Share code",
                     &church.name,
                     &format!("Join {} on Ecclesia. Code: {}", church.name, church.invite_code),
+                    &join_href(&church.invite_code),
                 ))
             }
             form class="row-form" method="post" action={ "/churches/" (church.id) "/invite" } {
@@ -344,14 +346,21 @@ pub fn join_church_page(
     lat: &str,
     lng: &str,
 ) -> Markup {
+    let nav = match viewer.user.church_id {
+        Some(_) => Nav::Churches,
+        None => Nav::Join,
+    };
     page(
         "Find your church",
         Some(&viewer.user),
         unread,
-        Nav::Churches,
+        nav,
         flash,
         csrf,
         html! {
+            @if viewer.user.church_id.is_none() {
+                (onboard_steps(OnboardStep::Church))
+            }
             (page_lead("Find your church"))
             (suggestion_block(suggestion, csrf))
             section {
@@ -359,25 +368,30 @@ pub fn join_church_page(
                 form class="stack" method="get" action="/churches/join" {
                     input type="hidden" name="lat" value=(lat);
                     input type="hidden" name="lng" value=(lng);
-                    label { "Church name"
-                        input name="q" value=(query) maxlength="120" placeholder="Grace Fellowship";
+                    div class="search-line" {
+                        label { "Church name"
+                            input name="q" value=(query) maxlength="120" placeholder="Grace Fellowship";
+                        }
+                        button class="btn btn-quiet scan-btn" type="button" data-scan-code aria-label="Scan church code" {
+                            span class="btn-icon" aria-hidden="true" { (icon(Icon::Qr)) }
+                        }
                     }
                     button class="btn" type="submit" { "Search churches" }
                 }
+                p class="scan-note" data-scan-status role="status" {}
+                div class="scan-sheet" data-scan-sheet hidden {
+                    video data-scan-video autoplay playsinline muted {}
+                    button class="btn" type="button" data-scan-close { "Close" }
+                }
                 (search_hits(hits, csrf))
             }
-            section class="panel" {
-                h2 { "Have a code" }
-                form class="stack" method="post" action="/churches/join/code" {
+            @if viewer.user.church_id.is_none() {
+                form class="account-end" method="post" action="/session/logout" {
                     (csrf_input(csrf))
-                    label { "Invite code"
-                        input name="code" required data-invite-code placeholder="GRACESEED" maxlength="32";
-                    }
-                    button class="btn btn-quiet" type="button" data-scan-code hidden { "Scan code" }
-                    button class="btn" type="submit" { "Join with code" }
+                    button class="btn btn-quiet" type="submit" { "Sign out" }
                 }
             }
-            script src="/static/join.js" defer {}
+            script src="/static/join.js?v=3" defer {}
         },
     )
 }

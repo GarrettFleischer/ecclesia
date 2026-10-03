@@ -1,8 +1,13 @@
 use maud::{Markup, html};
 
+use ecclesia_sdk::prelude::Church;
+
 use super::draft::RegisterDraft;
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, mark_glyph, page, page_lead, password_field};
+use super::layout::{
+    Nav, OnboardStep, csrf_input, mark_glyph, onboard_steps, page, page_lead, password_field,
+    vesica_lockup,
+};
 
 pub fn landing(flash: Option<Flash>, csrf: &str) -> Markup {
     page(
@@ -39,13 +44,27 @@ pub fn guest_home(flash: Option<Flash>, csrf: &str) -> Markup {
     )
 }
 
-pub fn register_page(flash: Option<Flash>, csrf: &str, draft: &RegisterDraft<'_>) -> Markup {
+pub fn register_page(
+    flash: Option<Flash>,
+    csrf: &str,
+    draft: &RegisterDraft<'_>,
+    church: Option<&Church>,
+) -> Markup {
     auth_page(
-        "Create an account",
+        "You",
         flash,
         csrf,
         html! {
-            (register_form(csrf, draft))
+            @if church.is_none() {
+                (onboard_steps(OnboardStep::You))
+            }
+            @if let Some(church) = church {
+                article class="card church-pick" {
+                    h2 { (church.name) }
+                    p class="muted" { (church.address) }
+                }
+            }
+            (register_form(csrf, draft, church))
             (auth_links(&[("/session/new", "Sign in")]))
         },
     )
@@ -163,13 +182,7 @@ fn landing_story() -> Markup {
             }
             div class="hero-inner" {
                 div class="hero-lockup" {
-                    div class="vesica" aria-hidden="true" {
-                        svg viewBox="0 0 80 80" width="80" height="80" {
-                            circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="1.2" pathLength="1" {}
-                            circle cx="40" cy="40" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" pathLength="1" {}
-                            path fill="currentColor" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
-                        }
-                    }
+                    (vesica_lockup())
                     p class="hero-name" { "Ecclesia" }
                 }
                 (page_lead("The Body of Christ"))
@@ -245,15 +258,25 @@ fn forgot_password_form(csrf: &str) -> Markup {
     }
 }
 
-fn register_form(csrf: &str, draft: &RegisterDraft<'_>) -> Markup {
+fn register_form(csrf: &str, draft: &RegisterDraft<'_>, church: Option<&Church>) -> Markup {
     html! {
         form class="stack panel auth-card" method="post" action="/register" {
             (csrf_input(csrf))
+            @if !draft.code.is_empty() {
+                input type="hidden" name="code" value=(draft.code);
+            }
             label { "First name" input name="first_name" required autocomplete="given-name" autocapitalize="words" placeholder="Miriam" maxlength="80" value=(draft.first_name); }
             label { "Last name" input name="last_name" required autocomplete="family-name" autocapitalize="words" placeholder="Cole" maxlength="80" value=(draft.last_name); }
             label { "Email" input type="email" name="email" required autocomplete="email" placeholder="you@church.org" maxlength="120" value=(draft.email); }
             (password_field("Password", "password", "new-password"))
-            button class="btn" type="submit" { "Create account" }
+            button class="btn" type="submit" { (register_button(church)) }
         }
+    }
+}
+
+fn register_button(church: Option<&Church>) -> String {
+    match church {
+        Some(church) => format!("Join {}", church.name),
+        None => "Find your church".to_string(),
     }
 }

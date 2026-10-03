@@ -14,6 +14,8 @@ pub enum Nav {
     Body,
     Inbox,
     You,
+    /// Signed in, no church yet. Join is the only page.
+    Join,
     None,
     Account,
 }
@@ -46,6 +48,7 @@ pub enum Icon {
     Plus,
     Check,
     Alert,
+    Qr,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -117,12 +120,51 @@ pub fn page_lead(title: &str) -> Markup {
     html! { h1 { (title) } }
 }
 
-pub fn share_button(label: &str, title: &str, text: &str) -> Markup {
+pub fn share_button(label: &str, title: &str, text: &str, url: &str) -> Markup {
     html! {
-        button type="button" class="btn btn-quiet" data-share data-share-title=(title) data-share-text=(text) {
+        button type="button" class="btn btn-quiet" data-share data-share-title=(title) data-share-text=(text) data-share-url=(url) {
             (label)
         }
     }
+}
+
+pub enum OnboardStep {
+    You,
+    Church,
+}
+
+pub fn onboard_steps(here: OnboardStep) -> Markup {
+    match here {
+        OnboardStep::You => html! {
+            ol class="steps" {
+                li class="is-current" aria-current="step" { "You" }
+                li { "Church" }
+            }
+        },
+        OnboardStep::Church => html! {
+            ol class="steps" {
+                li { "You" }
+                li class="is-current" aria-current="step" { "Church" }
+            }
+        },
+    }
+}
+
+pub fn join_href(code: &str) -> String {
+    format!("/join/{}", escape_segment(code))
+}
+
+pub fn escape_segment(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 pub fn icon(glyph: Icon) -> Markup {
@@ -173,14 +215,36 @@ fn icon_paths(glyph: Icon) -> Markup {
         Icon::Alert => html! {
             path d="M12 7.5v5.5M12 16.5h.01" {}
         },
+        Icon::Qr => html! {
+            path d="M4.5 4.5h5.5v5.5H4.5zM14 4.5h5.5v5.5H14zM4.5 14h5.5v5.5H4.5z" {}
+            path d="M6.6 6.6h1.3v1.3H6.6zM16.1 6.6h1.3v1.3h-1.3zM6.6 16.1h1.3v1.3H6.6z" fill="currentColor" stroke="none" {}
+            path d="M14 14h2.2v2.2H14zM18.3 14H19.5v2.2h-1.2zM14 18.3h2.2V19.5H14zM16.8 16.2h2.7V19.5h-2.7z" {}
+        },
+    }
+}
+
+pub fn vesica_mark() -> Markup {
+    html! {
+        circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="1.2" pathLength="1" {}
+        circle cx="40" cy="40" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" pathLength="1" {}
+        path fill="currentColor" d="M38.8 18h2.4v20.8H62v2.4H41.2V62h-2.4V41.2H18v-2.4h20.8z" {}
     }
 }
 
 pub fn mark_glyph() -> Markup {
     html! {
-        svg class="mark-glyph" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" {
-            circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" {}
-            circle cx="12" cy="12" r="3.2" fill="currentColor" {}
+        svg class="mark-glyph" viewBox="0 0 80 80" width="24" height="24" aria-hidden="true" focusable="false" {
+            (vesica_mark())
+        }
+    }
+}
+
+pub fn vesica_lockup() -> Markup {
+    html! {
+        div class="vesica" aria-hidden="true" {
+            svg viewBox="0 0 80 80" width="80" height="80" {
+                (vesica_mark())
+            }
         }
     }
 }
@@ -232,7 +296,7 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=13";
+                link rel="stylesheet" href="/static/app.css?v=15";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
@@ -244,7 +308,7 @@ pub fn page(
                     (install_help_dialog())
                 }
                 @if app_chrome(nav) {
-                    (topbar(user))
+                    (topbar(nav, user))
                 }
                 @if let Some(flash) = flash {
                     (flash_note(&flash))
@@ -252,10 +316,10 @@ pub fn page(
                 main id="content" class={ "sheet page-rise" (sheet_extra(nav)) } {
                     (main)
                 }
-                @if app_chrome(nav) {
+                @if show_dock(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=11" defer {}
+                script src="/static/app.js?v=12" defer {}
             }
         }
     }
@@ -342,7 +406,11 @@ fn flash_note(flash: &Flash) -> Markup {
 }
 
 fn flash_icon(flash: &Flash) -> Icon {
-    if flash.is_ok() { Icon::Check } else { Icon::Alert }
+    if flash.is_ok() {
+        Icon::Check
+    } else {
+        Icon::Alert
+    }
 }
 
 fn site_class(nav: Nav) -> &'static str {
@@ -354,12 +422,17 @@ fn site_class(nav: Nav) -> &'static str {
         Nav::Body => "site site-app site-body",
         Nav::Inbox => "site site-app site-inbox",
         Nav::You => "site site-app site-you",
+        Nav::Join => "site site-app site-churches",
         Nav::Account => "site site-guest site-account",
     }
 }
 
 fn app_chrome(nav: Nav) -> bool {
     !matches!(nav, Nav::Landing | Nav::None | Nav::Account)
+}
+
+fn show_dock(nav: Nav) -> bool {
+    app_chrome(nav) && nav != Nav::Join
 }
 
 fn sheet_extra(nav: Nav) -> &'static str {
@@ -370,14 +443,26 @@ fn sheet_extra(nav: Nav) -> &'static str {
     }
 }
 
-fn topbar(user: Option<&User>) -> Markup {
+fn topbar(nav: Nav, user: Option<&User>) -> Markup {
+    let home = if nav == Nav::Join {
+        "/churches/join"
+    } else {
+        "/home"
+    };
     html! {
         header class="topbar" {
-            a class="mark" href="/home" { (mark_glyph()) span { "Ecclesia" } }
+            a class="mark" href=(home) { (mark_glyph()) span { "Ecclesia" } }
             @if let Some(user) = user {
-                a class="who" href="/me" {
-                    (monogram(&user.id, &shown_name(user), Monogram::Person))
-                    span class="who-name" { (shown_name(user)) }
+                @if nav == Nav::Join {
+                    span class="who" {
+                        (monogram(&user.id, &shown_name(user), Monogram::Person))
+                        span class="who-name" { (shown_name(user)) }
+                    }
+                } @else {
+                    a class="who" href="/me" {
+                        (monogram(&user.id, &shown_name(user), Monogram::Person))
+                        span class="who-name" { (shown_name(user)) }
+                    }
                 }
             }
         }
@@ -400,13 +485,7 @@ fn unread_badge(unread: i64) -> Option<i64> {
     if unread > 0 { Some(unread) } else { None }
 }
 
-fn dock_link(
-    href: &str,
-    label: &str,
-    glyph: Icon,
-    state: DockState,
-    badge: Option<i64>,
-) -> Markup {
+fn dock_link(href: &str, label: &str, glyph: Icon, state: DockState, badge: Option<i64>) -> Markup {
     html! {
         a class={ "dock-link" (dock_class(state)) } href=(href) aria-current=[dock_current(state)] {
             (dock_pill(state))

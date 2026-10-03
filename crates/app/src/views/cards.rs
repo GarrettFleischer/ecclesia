@@ -97,8 +97,11 @@ pub fn waiting_church_card(
                 (monogram(&church.id, &church.name, Monogram::ChurchSmall))
                 div {
                     @if asked {
-                        p { "You asked to join " a href={ "/churches/" (church.id) } { (church.name) } }
-                        p class="muted" { "Waiting on the pastor." }
+                        p {
+                            "Your request to join "
+                            a href={ "/churches/" (church.id) } { (church.name) }
+                            " has been sent."
+                        }
                     } @else {
                         p { (church.name) " invited you." }
                     }

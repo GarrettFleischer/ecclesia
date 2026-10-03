@@ -43,6 +43,7 @@ pub struct RegisterDraft<'a> {
     pub first_name: &'a str,
     pub last_name: &'a str,
     pub email: &'a str,
+    pub code: &'a str,
 }
 
 impl RegisterDraft<'static> {
@@ -51,6 +52,7 @@ impl RegisterDraft<'static> {
             first_name: "",
             last_name: "",
             email: "",
+            code: "",
         }
     }
 }

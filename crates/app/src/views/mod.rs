@@ -16,15 +16,15 @@ pub use draft::{
     ChurchDraft, DraftKind, EndorseDraft, GiftDraft, NeedDraft, OfferDraft, ProfileDraft,
     RegisterDraft,
 };
-pub use flash::{Flash, flash_from};
+pub use flash::{Flash, flash_for, flash_from};
 pub use home::home;
 pub use landing::{
     forgot_password_page, guest_home, landing, magic_link_page, register_page, reset_password,
     sign_in_page,
 };
 pub use layout::{
-    Nav, SorrySeat, csrf_input, error_page, more_churches, more_needs, more_people, page,
-    rewrite_row, sorry_page,
+    Nav, SorrySeat, csrf_input, error_page, escape_segment, more_churches, more_needs, more_people,
+    page, rewrite_row, sorry_page,
 };
 pub use needs::{need_new, need_show};
 pub use people::{inbox, me, member_show};

@@ -30,6 +30,7 @@ cargo test -p ecclesia --test chaos
 
 - Depend on `ecclesia-sdk` only. Use `ecclesia_sdk::prelude` for domain types.
 - `signed_in` and `signed_form` gate member pages. Domain still refuses `TearsDown`.
+- A signed in person with no church stays on `/churches/join` until they have one.
 - Session `ip` is `Fly-Client-IP` or the peer socket.
 - Flashes are allow listed codes in `src/views/flash.rs`.
 - Guest account UI: `/` is the public story plus CTAs, and the only page with the install bar. Account pages (`/register`, `/session/new`, `/session/link/new`, `/session/reset/new`) use `Nav::Account`: one h1, a narrow card, one form. Unsigned `/home` is CTAs, not the full landing.

@@ -75,7 +75,12 @@ pub async fn create_church(
     };
     if state.awaiting_review(
         &form.pass,
-        &[&form.name, &form.address, &form.gathering, &form.description],
+        &[
+            &form.name,
+            &form.address,
+            &form.gathering,
+            &form.description,
+        ],
     ) {
         let description = state.polish(VoiceKind::Church, &form.description).await;
         let count = unread(&state.sdk.db, &signed.user.id).await?;
@@ -98,10 +103,9 @@ pub async fn create_church(
             )),
         ));
     }
-    let (Some(latitude), Some(longitude)) = (
-        parse_coord(&form.latitude),
-        parse_coord(&form.longitude),
-    ) else {
+    let (Some(latitude), Some(longitude)) =
+        (parse_coord(&form.latitude), parse_coord(&form.longitude))
+    else {
         return Ok(with_cookie(
             signed.jar,
             redirect_err("/churches/new", "missing"),
@@ -177,7 +181,7 @@ pub async fn church_show(
             &page.needs,
             page.next_need_cursor.as_deref(),
             page.next_member_cursor.as_deref(),
-            views::flash_from(flash.ok, flash.err),
+            views::flash_for(flash.ok, flash.err, Some(page.church.name.as_str())),
             count,
             &signed.session.csrf,
         )),
@@ -352,7 +356,8 @@ pub async fn join_page(
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
-    let mut flash = views::flash_from(query.ok.clone(), query.err.clone());
+    let church_name = viewer.church.as_ref().map(|church| church.name.as_str());
+    let mut flash = views::flash_for(query.ok.clone(), query.err.clone(), church_name);
     let suggestion = match read_coords(&query.lat, &query.lng) {
         Err(()) => {
             if flash.is_none() {
@@ -406,12 +411,21 @@ pub async fn join_by_search(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    story_redirect(
-        signed.jar,
-        "/churches/join",
-        story::request_join(&state.sdk, &signed.user, &form.church_id).await?,
-        "joined_request",
-    )
+    match story::request_join(&state.sdk, &signed.user, &form.church_id).await? {
+        Ok(ok) => {
+            let id = ok
+                .church_id
+                .as_deref()
+                .filter(|id| !id.is_empty())
+                .unwrap_or(form.church_id.as_str());
+            let dest = format!("/churches/{id}");
+            Ok(with_cookie(
+                signed.jar,
+                redirect_ok(&dest, "joined_request"),
+            ))
+        }
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err("/churches/join", error))),
+    }
 }
 
 pub async fn join_by_code(
@@ -425,16 +439,26 @@ pub async fn join_by_code(
         Err(response) => return Ok(response),
     };
     if let RateDecision::Refuse = state.decide_rate(RateKind::Redeem, &who.0).await {
-        return Ok(with_cookie(signed.jar, redirect_err("/churches/join", "rate")));
+        return Ok(with_cookie(
+            signed.jar,
+            redirect_err("/churches/join", "rate"),
+        ));
     }
     match story::redeem_invite(&state.sdk, &signed.user, &form.code).await? {
-        Ok(_) => Ok(with_cookie(
-            signed.jar,
-            redirect_ok("/churches/join", "redeemed"),
-        )),
-        Err(ecclesia_sdk::prelude::DomainError::NotFound) => {
-            Ok(with_cookie(signed.jar, redirect_err("/churches/join", "invite")))
+        Ok(ok) => {
+            let Some(id) = ok.church_id.as_deref().filter(|id| !id.is_empty()) else {
+                return Ok(with_cookie(
+                    signed.jar,
+                    redirect_ok("/churches/join", "redeemed"),
+                ));
+            };
+            let dest = format!("/churches/{id}");
+            Ok(with_cookie(signed.jar, redirect_ok(&dest, "redeemed")))
         }
+        Err(ecclesia_sdk::prelude::DomainError::NotFound) => Ok(with_cookie(
+            signed.jar,
+            redirect_err("/churches/join", "invite"),
+        )),
         Err(error) => Ok(with_cookie(signed.jar, leaf_err("/churches/join", error))),
     }
 }

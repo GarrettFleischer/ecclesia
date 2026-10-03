@@ -3,6 +3,7 @@ use axum::response::{Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use ecclesia_sdk::limit::{RateDecision, RateKind};
+use ecclesia_sdk::prelude::{Church, DomainError, User};
 use ecclesia_sdk::session::{self, Session};
 use ecclesia_sdk::story::{self, MailOrigin, StoryOk};
 
@@ -10,13 +11,24 @@ use crate::views;
 
 use super::context::{
     ClientKey, bind_session, device_meta, fail_csrf, html, leaf_err, load_user, redirect_err,
-    redirect_ok, unread, viewer_for, with_cookie,
+    redirect_ok, signed_home, unread, viewer_for, with_cookie,
 };
 use super::forms::{
-    CsrfForm, FlashQuery, PasswordForm, RegisterForm, ResetCompleteForm,
+    CsrfForm, FlashQuery, PasswordForm, RegisterForm, RegisterQuery, ResetCompleteForm,
     SessionForm, TokenQuery,
 };
 use super::{AppError, AppState};
+
+async fn redirect_signed(state: &AppState, user_id: Option<&str>) -> Result<Redirect, AppError> {
+    let dest = match user_id {
+        Some(id) => match state.sdk.db.user(id).await? {
+            Some(user) => signed_home(&user),
+            None => "/churches/join",
+        },
+        None => "/churches/join",
+    };
+    Ok(Redirect::to(dest))
+}
 
 pub async fn landing(
     State(state): State<AppState>,
@@ -24,11 +36,10 @@ pub async fn landing(
     Query(flash): Query<FlashQuery>,
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state).await?;
-    if load_user(&state.sdk.db, &session).await?.is_some()
-        && flash.err.is_none()
-        && flash.ok.is_none()
-    {
-        return Ok(with_cookie(jar, Redirect::to("/home")));
+    if flash.err.is_none() && flash.ok.is_none() {
+        if let Some(user) = load_user(&state.sdk.db, &session).await? {
+            return Ok(with_cookie(jar, Redirect::to(signed_home(&user))));
+        }
     }
     Ok(with_cookie(
         jar,
@@ -41,13 +52,45 @@ pub async fn landing(
 
 pub async fn register_form(
     State(state): State<AppState>,
+    who: ClientKey,
     jar: CookieJar,
-    Query(flash): Query<FlashQuery>,
+    Query(query): Query<RegisterQuery>,
 ) -> Result<Response, AppError> {
-    guest_auth_form(state, jar, flash, |csrf, flash| {
-        views::register_page(flash, csrf, &views::RegisterDraft::blank())
-    })
+    let (session, jar) = bind_session(jar, &state).await?;
+    if let Some(user) = load_user(&state.sdk.db, &session).await? {
+        let code = query.code.trim();
+        if code.is_empty() {
+            return Ok(with_cookie(jar, Redirect::to(signed_home(&user))));
+        }
+        return enter_with_code(&state, &who.0, jar, &user, code, signed_home(&user)).await;
+    }
+    paint_register(
+        &state,
+        jar,
+        &session.csrf,
+        views::flash_from(query.ok, query.err),
+        &views::RegisterDraft {
+            first_name: "",
+            last_name: "",
+            email: "",
+            code: query.code.trim(),
+        },
+    )
     .await
+}
+
+pub async fn join_link(
+    State(state): State<AppState>,
+    who: ClientKey,
+    jar: CookieJar,
+    Path(code): Path<String>,
+) -> Result<Response, AppError> {
+    let (session, jar) = bind_session(jar, &state).await?;
+    if let Some(user) = load_user(&state.sdk.db, &session).await? {
+        return enter_with_code(&state, &who.0, jar, &user, &code, signed_home(&user)).await;
+    }
+    let dest = format!("/register?code={}", views::escape_segment(code.trim()));
+    Ok(with_cookie(jar, Redirect::to(&dest)))
 }
 
 pub async fn sign_in_form(
@@ -90,8 +133,8 @@ async fn guest_auth_form(
     page: impl FnOnce(&str, Option<views::Flash>) -> maud::Markup,
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state).await?;
-    if load_user(&state.sdk.db, &session).await?.is_some() {
-        return Ok(with_cookie(jar, Redirect::to("/home")));
+    if let Some(user) = load_user(&state.sdk.db, &session).await? {
+        return Ok(with_cookie(jar, Redirect::to(signed_home(&user))));
     }
     let markup = page(&session.csrf, views::flash_from(flash.ok, flash.err));
     Ok(with_cookie(jar, html(markup)))
@@ -109,7 +152,10 @@ pub async fn start_session(
         return Ok(with_cookie(jar, fail_csrf("/session/new")));
     }
     if session.user_id.is_some() {
-        return Ok(with_cookie(jar, Redirect::to("/home")));
+        return Ok(with_cookie(
+            jar,
+            redirect_signed(&state, session.user_id.as_deref()).await?,
+        ));
     }
     if let RateDecision::Refuse = state.decide_rate(RateKind::Session, &who.0).await {
         return Ok(with_cookie(jar, redirect_err("/session/new", "rate")));
@@ -124,7 +170,7 @@ pub async fn start_session(
     {
         Ok(ok) => Ok(with_cookie(
             put_signed(&state, jar, &ok),
-            Redirect::to("/home"),
+            redirect_signed(&state, ok.user_id.as_deref()).await?,
         )),
         Err(_) => Ok(with_cookie(
             jar,
@@ -210,11 +256,28 @@ pub async fn register_user(
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state).await?;
+    let back = register_return(form.code.trim());
     if !session.check_csrf(&form.csrf) {
-        return Ok(with_cookie(jar, fail_csrf("/register")));
+        return Ok(with_cookie(jar, fail_csrf(&back)));
+    }
+    if let Some(user) = load_user(&state.sdk.db, &session).await? {
+        let code = form.code.trim();
+        if code.is_empty() {
+            return Ok(with_cookie(jar, Redirect::to(signed_home(&user))));
+        }
+        return enter_with_code(&state, &who.0, jar, &user, code, signed_home(&user)).await;
+    }
+    let draft = views::RegisterDraft {
+        first_name: &form.first_name,
+        last_name: &form.last_name,
+        email: &form.email,
+        code: form.code.trim(),
+    };
+    if !draft.code.is_empty() && church_named(&state, draft.code).await?.is_none() {
+        return paint_register(&state, jar, &session.csrf, None, &draft).await;
     }
     if let RateDecision::Refuse = state.decide_rate(RateKind::Register, &who.0).await {
-        return Ok(with_cookie(jar, redirect_err("/register", "rate")));
+        return Ok(with_cookie(jar, redirect_err(&back, "rate")));
     }
     match story::register(
         &state.sdk,
@@ -226,23 +289,31 @@ pub async fn register_user(
     )
     .await?
     {
-        Ok(ok) => Ok(with_cookie(
-            put_signed(&state, jar, &ok),
-            redirect_ok("/churches/join", "welcome"),
-        )),
-        Err(error) if error.flash_code() == "password" => Ok(with_cookie(
-            jar,
-            html(views::register_page(
-                views::flash_from(None, Some(error.flash_code().to_string())),
+        Ok(ok) => {
+            let jar = put_signed(&state, jar, &ok);
+            let code = form.code.trim();
+            if code.is_empty() {
+                return Ok(with_cookie(jar, redirect_ok("/churches/join", "welcome")));
+            }
+            let Some(user_id) = ok.user_id.as_deref() else {
+                return Ok(with_cookie(jar, redirect_ok("/churches/join", "welcome")));
+            };
+            let Some(user) = state.sdk.db.user(user_id).await? else {
+                return Ok(with_cookie(jar, redirect_ok("/churches/join", "welcome")));
+            };
+            enter_with_code(&state, &who.0, jar, &user, code, "/churches/join").await
+        }
+        Err(error) if error.flash_code() == "password" => {
+            paint_register(
+                &state,
+                jar,
                 &session.csrf,
-                &views::RegisterDraft {
-                    first_name: &form.first_name,
-                    last_name: &form.last_name,
-                    email: &form.email,
-                },
-            )),
-        )),
-        Err(error) => Ok(with_cookie(jar, leaf_err("/register", error))),
+                views::flash_from(None, Some(error.flash_code().to_string())),
+                &draft,
+            )
+            .await
+        }
+        Err(error) => Ok(with_cookie(jar, leaf_err(&back, error))),
     }
 }
 
@@ -282,7 +353,10 @@ async fn request_mail(
         return Ok(with_cookie(jar, fail_csrf(back)));
     }
     if session.user_id.is_some() {
-        return Ok(with_cookie(jar, Redirect::to("/home")));
+        return Ok(with_cookie(
+            jar,
+            redirect_signed(state, session.user_id.as_deref()).await?,
+        ));
     }
     if let RateDecision::Refuse = state.decide_rate(RateKind::Session, &who.0).await {
         return Ok(with_cookie(jar, redirect_err(back, "mail")));
@@ -316,7 +390,10 @@ pub async fn consume_link(
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state).await?;
     if session.user_id.is_some() {
-        return Ok(with_cookie(jar, Redirect::to("/home")));
+        return Ok(with_cookie(
+            jar,
+            redirect_signed(&state, session.user_id.as_deref()).await?,
+        ));
     }
     match story::consume_magic(
         &state.sdk,
@@ -328,7 +405,7 @@ pub async fn consume_link(
     {
         Ok(ok) => Ok(with_cookie(
             put_signed(&state, jar, &ok),
-            Redirect::to("/home"),
+            redirect_signed(&state, ok.user_id.as_deref()).await?,
         )),
         Err(_) => Ok(with_cookie(jar, redirect_err("/", "miss"))),
     }
@@ -342,7 +419,10 @@ pub async fn reset_form(
 ) -> Result<Response, AppError> {
     let (session, jar) = bind_session(jar, &state).await?;
     if session.user_id.is_some() {
-        return Ok(with_cookie(jar, Redirect::to("/home")));
+        return Ok(with_cookie(
+            jar,
+            redirect_signed(&state, session.user_id.as_deref()).await?,
+        ));
     }
     let secret = query.t.as_deref().unwrap_or("");
     if !story::reset_form_ok(&state.sdk, &id, secret).await? {
@@ -377,7 +457,7 @@ pub async fn complete_reset(
     {
         Ok(ok) => Ok(with_cookie(
             put_signed(&state, jar, &ok),
-            Redirect::to("/home"),
+            redirect_signed(&state, ok.user_id.as_deref()).await?,
         )),
         Err(error) if error.flash_code() == "password" => Ok(with_cookie(
             jar,
@@ -461,6 +541,77 @@ async fn member_home(
             &session.csrf,
         )),
     ))
+}
+
+fn register_return(code: &str) -> String {
+    let code = code.trim();
+    if code.is_empty() {
+        "/register".to_string()
+    } else {
+        format!("/register?code={}", views::escape_segment(code))
+    }
+}
+
+async fn church_named(state: &AppState, code: &str) -> Result<Option<Church>, AppError> {
+    let code = code.trim();
+    if code.is_empty() {
+        return Ok(None);
+    }
+    Ok(state.sdk.db.church_by_invite(code).await?)
+}
+
+async fn paint_register(
+    state: &AppState,
+    jar: CookieJar,
+    csrf: &str,
+    flash: Option<views::Flash>,
+    draft: &views::RegisterDraft<'_>,
+) -> Result<Response, AppError> {
+    let asked = draft.code.trim();
+    let church = church_named(state, asked).await?;
+    let code = if church.is_some() { asked } else { "" };
+    let flash = if church.is_none() && !asked.is_empty() && flash.is_none() {
+        views::flash_from(None, Some("invite".into()))
+    } else {
+        flash
+    };
+    let draft = views::RegisterDraft {
+        first_name: draft.first_name,
+        last_name: draft.last_name,
+        email: draft.email,
+        code,
+    };
+    Ok(with_cookie(
+        jar,
+        html(views::register_page(flash, csrf, &draft, church.as_ref())),
+    ))
+}
+
+async fn enter_with_code(
+    state: &AppState,
+    who: &str,
+    jar: CookieJar,
+    user: &User,
+    code: &str,
+    fail: &str,
+) -> Result<Response, AppError> {
+    if let RateDecision::Refuse = state.decide_rate(RateKind::Redeem, who).await {
+        return Ok(with_cookie(jar, redirect_err(fail, "rate")));
+    }
+    let Some(church) = church_named(state, code).await? else {
+        return Ok(with_cookie(jar, redirect_err(fail, "invite")));
+    };
+    match story::redeem_invite(&state.sdk, user, code.trim()).await? {
+        Ok(_) => {
+            let dest = format!("/churches/{}", church.id);
+            Ok(with_cookie(jar, redirect_ok(&dest, "redeemed")))
+        }
+        Err(DomainError::AlreadyMember) => {
+            let dest = format!("/churches/{}", church.id);
+            Ok(with_cookie(jar, Redirect::to(&dest)))
+        }
+        Err(error) => Ok(with_cookie(jar, leaf_err(fail, error))),
+    }
 }
 
 fn put_signed(state: &AppState, jar: CookieJar, ok: &StoryOk) -> CookieJar {

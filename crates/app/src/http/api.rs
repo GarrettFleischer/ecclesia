@@ -1,16 +1,16 @@
 //! JSON session endpoints for native and API clients.
 
-use axum::extract::State;
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum::extract::State;
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use ecclesia_sdk::limit::RateKind;
 use ecclesia_sdk::prelude::DomainError;
 use ecclesia_sdk::story::{api_logout_bearer, api_me_profile, refresh_api, sign_in_api};
 use serde::{Deserialize, Serialize};
 
-use super::context::{ClientKey, device_meta};
 use super::AppState;
+use super::context::{ClientKey, device_meta};
 
 #[derive(Deserialize)]
 pub struct SignInBody {
@@ -51,10 +51,9 @@ pub async fn api_not_found() -> Response {
 }
 
 fn no_store(mut response: Response) -> Response {
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
 }
 
@@ -91,11 +90,7 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
         return None;
     }
     let token = token.trim();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token)
-    }
+    if token.is_empty() { None } else { Some(token) }
 }
 
 pub async fn api_sign_in(

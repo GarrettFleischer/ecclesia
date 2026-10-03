@@ -26,6 +26,14 @@ impl Flash {
 }
 
 pub fn flash_from(ok: Option<String>, err: Option<String>) -> Option<Flash> {
+    flash_for(ok, err, None)
+}
+
+/// `joined_request` names the church when the page already loaded it.
+pub fn flash_for(ok: Option<String>, err: Option<String>, church: Option<&str>) -> Option<Flash> {
+    if ok.as_deref() == Some("joined_request") {
+        return Some(Flash::Ok(join_request_sent(church)));
+    }
     if let Some(code) = err {
         Some(Flash::Err(flash_err(&code)))
     } else {
@@ -33,16 +41,23 @@ pub fn flash_from(ok: Option<String>, err: Option<String>) -> Option<Flash> {
     }
 }
 
+fn join_request_sent(church: Option<&str>) -> String {
+    match church.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(name) => format!("Your request to join {name} has been sent."),
+        None => "Your request to join has been sent.".into(),
+    }
+}
+
 fn flash_ok(code: &str) -> String {
     match code {
         "welcome" => "Account created.".into(),
-        "joined_request" => "Request sent. The pastor will approve or decline.".into(),
+        "joined_request" => join_request_sent(None),
         "invited" => "Invite sent.".into(),
         "redeemed" => "You're in.".into(),
         "approved" => "Approved.".into(),
         "declined" => "Declined.".into(),
         "need_posted" => "Posted.".into(),
-        "applied" => "Sent. They'll see your offer.".into(),
+        "applied" => "Sent.".into(),
         "application_accepted" => "Accepted.".into(),
         "need_closed" => "Closed.".into(),
         "endorsed" => "Sent.".into(),
@@ -97,5 +112,20 @@ mod tests {
         assert_eq!(bait.unwrap().text(), "That didn't work.");
         let known = flash_from(Some("saved".into()), None);
         assert_eq!(known.unwrap().text(), "Saved.");
+    }
+
+    #[test]
+    fn join_request_names_the_church() {
+        let named = flash_for(
+            Some("joined_request".into()),
+            None,
+            Some("Grace Fellowship"),
+        );
+        assert_eq!(
+            named.unwrap().text(),
+            "Your request to join Grace Fellowship has been sent."
+        );
+        let plain = flash_from(Some("joined_request".into()), None);
+        assert_eq!(plain.unwrap().text(), "Your request to join has been sent.");
     }
 }

@@ -204,6 +204,7 @@ pub fn router(state: AppState) -> Router {
             "/register",
             get(auth::register_form).post(auth::register_user),
         )
+        .route("/join/{code}", get(auth::join_link))
         .route("/session/new", get(auth::sign_in_form))
         .route("/session/link/new", get(auth::magic_link_form))
         .route("/session/reset/new", get(auth::forgot_password_form))
@@ -283,6 +284,10 @@ pub fn router(state: AppState) -> Router {
             ServeDir::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")),
         )
         .fallback(people::fallback)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            context::hold_without_church,
+        ))
         .layer(middleware::from_fn(soften_form_errors))
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())

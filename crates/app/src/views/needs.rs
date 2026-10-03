@@ -134,7 +134,7 @@ pub fn need_show(
             }
             (matching_gift_pill(viewer, need))
             div class="page-actions" {
-                (share_button("Share", &need.title, &need.body))
+                (share_button("Share", &need.title, &need.body, ""))
                 (close_form(need, steward, csrf))
             }
             (offer_panel(need, can_help, offer, steward, csrf, draft))
@@ -212,7 +212,7 @@ fn offer_panel(
 fn already_offered(offer: OfferState) -> Markup {
     match offer {
         OfferState::AlreadyOffered => {
-            html! { p class="pill" { "You applied. They'll see your offer." } }
+            html! { p class="pill" { "You applied." } }
         }
         OfferState::NotYet => html! {},
     }

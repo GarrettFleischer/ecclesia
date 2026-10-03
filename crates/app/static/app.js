@@ -207,7 +207,10 @@ function hookShare(native) {
     }
     const title = btn.getAttribute("data-share-title") || "Ecclesia";
     const text = btn.getAttribute("data-share-text") || "";
-    const url = btn.getAttribute("data-share-url") || window.location.href;
+    let url = btn.getAttribute("data-share-url") || window.location.href;
+    if (url.startsWith("/")) {
+      url = window.location.origin + url;
+    }
     try {
       if (native && native.Share) {
         await native.Share.share({ title, text, url, dialogTitle: title });

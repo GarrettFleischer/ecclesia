@@ -1,3 +1,17 @@
+function inviteCode(raw) {
+  var value = String(raw || "").trim();
+  try {
+    var url = new URL(value);
+    var parts = url.pathname.split("/").filter(Boolean);
+    if (parts[0] === "join" && parts.length > 1) {
+      return decodeURIComponent(parts.slice(1).join("/"));
+    }
+  } catch (_error) {
+    return value;
+  }
+  return value;
+}
+
 (function () {
   var params = new URLSearchParams(window.location.search);
   if (!params.has("lat") && navigator.geolocation) {
@@ -8,40 +22,79 @@
     });
   }
 
-  var field = document.querySelector("[data-invite-code]");
   var button = document.querySelector("[data-scan-code]");
-  if (!field || !button || !("BarcodeDetector" in window) || !navigator.mediaDevices) {
+  var sheet = document.querySelector("[data-scan-sheet]");
+  var video = document.querySelector("[data-scan-video]");
+  var note = document.querySelector("[data-scan-status]");
+  var close = document.querySelector("[data-scan-close]");
+  if (!button || !sheet || !video) {
     return;
   }
-  button.hidden = false;
+
+  var stream = null;
+
+  function say(text) {
+    if (note) {
+      note.textContent = text;
+    }
+  }
+
+  function stop() {
+    if (stream) {
+      stream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+      stream = null;
+    }
+    video.srcObject = null;
+    sheet.hidden = true;
+  }
+
+  if (close) {
+    close.addEventListener("click", function () {
+      say("");
+      stop();
+    });
+  }
+
   button.addEventListener("click", function () {
+    say("");
+    if (!("BarcodeDetector" in window) || !navigator.mediaDevices) {
+      say("The camera didn't open. Try again.");
+      return;
+    }
     var detector = new BarcodeDetector({ formats: ["qr_code"] });
     navigator.mediaDevices
       .getUserMedia({ video: { facingMode: "environment" } })
-      .then(function (stream) {
-        var video = document.createElement("video");
-        video.srcObject = stream;
-        video.playsInline = true;
+      .then(function (opened) {
+        stream = opened;
+        video.srcObject = opened;
+        sheet.hidden = false;
         video.play();
-        var stop = function () {
-          stream.getTracks().forEach(function (track) {
-            track.stop();
-          });
-        };
         var tick = function () {
+          if (!stream) {
+            return;
+          }
           detector
             .detect(video)
             .then(function (codes) {
               if (codes.length > 0) {
-                field.value = codes[0].rawValue;
+                var code = inviteCode(codes[0].rawValue);
                 stop();
+                if (code) {
+                  window.location.assign("/join/" + encodeURIComponent(code));
+                }
                 return;
               }
               requestAnimationFrame(tick);
             })
             .catch(stop);
         };
-        video.addEventListener("loadeddata", tick);
+        video.addEventListener("loadeddata", tick, { once: true });
+      })
+      .catch(function () {
+        say("The camera didn't open. Try again.");
+        stop();
       });
   });
 })();
