@@ -9,6 +9,7 @@ mod extras;
 mod gifts;
 mod needs;
 mod notices;
+mod prayers;
 mod outbox;
 mod push;
 mod query;

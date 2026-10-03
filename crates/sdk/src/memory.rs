@@ -1,5 +1,5 @@
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Need, Notification, User, Write,
+    Application, Church, Effect, Endorsement, Need, NeedReply, Notification, Prayer, User, Write,
 };
 
 /// In-process world. The SDK applies Domain effects here so stories can be
@@ -11,6 +11,9 @@ pub struct MemoryWorld {
     pub member_gifts: Vec<(String, String, String)>,
     pub needs: Vec<Need>,
     pub applications: Vec<Application>,
+    pub need_replies: Vec<NeedReply>,
+    pub prayers: Vec<Prayer>,
+    pub prayer_marks: Vec<(String, String, String, String)>,
     pub endorsements: Vec<Endorsement>,
     pub notifications: Vec<Notification>,
 }
@@ -69,6 +72,19 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
             note,
         } => upsert_member_gift(world, user_id, gift_id, note),
         Write::RemoveMemberGift { user_id, gift_id } => remove_member_gift(world, user_id, gift_id),
+        Write::InsertNeedReply(reply) => world.need_replies.push(reply),
+        Write::InsertPrayer(prayer) => world.prayers.push(prayer),
+        Write::SetPrayerAnswered {
+            id,
+            praise,
+            answered_at,
+        } => answer_prayer(world, id, praise, answered_at),
+        Write::UpsertPrayerMark {
+            user_id,
+            prayer_id,
+            day,
+            kind,
+        } => upsert_prayer_mark(world, user_id, prayer_id, day, kind),
     }
 }
 
@@ -134,6 +150,35 @@ fn remove_member_gift(world: &mut MemoryWorld, user_id: String, gift_id: String)
     world
         .member_gifts
         .retain(|(u, g, _)| !(u == &user_id && g == &gift_id));
+}
+
+fn answer_prayer(world: &mut MemoryWorld, id: String, praise: String, answered_at: String) {
+    let Some(prayer) = world.prayers.iter_mut().find(|prayer| prayer.id == id) else {
+        return;
+    };
+    prayer.status = "answered".into();
+    prayer.praise = Some(praise);
+    prayer.answered_at = Some(answered_at);
+}
+
+fn upsert_prayer_mark(
+    world: &mut MemoryWorld,
+    user_id: String,
+    prayer_id: String,
+    day: String,
+    kind: &str,
+) {
+    if let Some(mark) = world
+        .prayer_marks
+        .iter_mut()
+        .find(|mark| mark.0 == user_id && mark.1 == prayer_id && mark.2 == day)
+    {
+        mark.3 = kind.to_string();
+        return;
+    }
+    world
+        .prayer_marks
+        .push((user_id, prayer_id, day, kind.to_string()));
 }
 
 fn apply_notices(world: &mut MemoryWorld, notices: Vec<ecclesia_domain::NoticeDraft>, now: &str) {

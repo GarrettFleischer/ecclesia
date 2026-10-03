@@ -1,7 +1,7 @@
 use sqlx::{PgPool, SqlitePool};
 
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Need, NoticeDraft, User, Write,
+    Application, Church, Effect, Endorsement, Need, NeedReply, NoticeDraft, Prayer, User, Write,
 };
 
 use crate::cache::keys_for_write;
@@ -309,6 +309,19 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
         Write::RemoveMemberGift { user_id, gift_id } => {
             remove_member_gift(exec, user_id, gift_id).await
         }
+        Write::InsertNeedReply(reply) => insert_need_reply(exec, reply).await,
+        Write::InsertPrayer(prayer) => insert_prayer(exec, prayer).await,
+        Write::SetPrayerAnswered {
+            id,
+            praise,
+            answered_at,
+        } => set_prayer_answered(exec, id, praise, answered_at).await,
+        Write::UpsertPrayerMark {
+            user_id,
+            prayer_id,
+            day,
+            kind,
+        } => upsert_prayer_mark(exec, user_id, prayer_id, day, kind).await,
     }
 }
 
@@ -474,6 +487,72 @@ async fn insert_application(exec: &mut impl Exec, application: &Application) -> 
             Bind::Text(&application.message),
             Bind::Text(&application.status),
             Bind::Text(&application.created_at),
+        ],
+    )
+    .await
+}
+
+async fn insert_need_reply(exec: &mut impl Exec, reply: &NeedReply) -> anyhow::Result<()> {
+    exec.exec(
+        "INSERT INTO need_replies (id, need_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)",
+        &[
+            Bind::Text(&reply.id),
+            Bind::Text(&reply.need_id),
+            Bind::Text(&reply.author_id),
+            Bind::Text(&reply.body),
+            Bind::Text(&reply.created_at),
+        ],
+    )
+    .await
+}
+
+async fn insert_prayer(exec: &mut impl Exec, prayer: &Prayer) -> anyhow::Result<()> {
+    exec.exec(
+        "INSERT INTO prayers (id, church_id, author_id, body, status, praise, manage_hash, created_at, answered_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        &[
+            Bind::Text(&prayer.id),
+            Bind::Text(&prayer.church_id),
+            Bind::OptText(prayer.author_id.as_deref()),
+            Bind::Text(&prayer.body),
+            Bind::Text(&prayer.status),
+            Bind::OptText(prayer.praise.as_deref()),
+            Bind::OptText(prayer.manage_hash.as_deref()),
+            Bind::Text(&prayer.created_at),
+            Bind::OptText(prayer.answered_at.as_deref()),
+        ],
+    )
+    .await
+}
+
+async fn set_prayer_answered(
+    exec: &mut impl Exec,
+    id: &str,
+    praise: &str,
+    answered_at: &str,
+) -> anyhow::Result<()> {
+    exec.exec(
+        "UPDATE prayers SET status = 'answered', praise = ?, answered_at = ? WHERE id = ?",
+        &[Bind::Text(praise), Bind::Text(answered_at), Bind::Text(id)],
+    )
+    .await
+}
+
+async fn upsert_prayer_mark(
+    exec: &mut impl Exec,
+    user_id: &str,
+    prayer_id: &str,
+    day: &str,
+    kind: &str,
+) -> anyhow::Result<()> {
+    exec.exec(
+        "INSERT INTO prayer_marks (user_id, prayer_id, day, kind) VALUES (?, ?, ?, ?)
+         ON CONFLICT (user_id, prayer_id, day) DO UPDATE SET kind = excluded.kind",
+        &[
+            Bind::Text(user_id),
+            Bind::Text(prayer_id),
+            Bind::Text(day),
+            Bind::Text(kind),
         ],
     )
     .await

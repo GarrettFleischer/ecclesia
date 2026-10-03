@@ -1,8 +1,12 @@
 use super::bind::{placeholders, Bind};
 use super::distance::haversine_km_sql;
-use super::rows::{ApplicationCardRow, ApplicationRow, NeedCardRow, NeedRow, map_all};
+use super::rows::{
+    ApplicationCardRow, ApplicationRow, NeedCardRow, NeedReplyCardRow, NeedRow, map_all,
+};
 use super::Db;
-use ecclesia_domain::{Application, ApplicationCard, Need, NeedCard, Viewer, nearby_km};
+use ecclesia_domain::{
+    Application, ApplicationCard, Need, NeedCard, NeedReplyCard, Viewer, nearby_km,
+};
 
 const NEED_CARD_SELECT: &str = r#"
         SELECT n.id, n.church_id, c.name AS church_name, c.address AS church_address,
@@ -166,6 +170,36 @@ impl Db {
             )
             .await?
             .map(Application::from))
+    }
+
+    pub async fn need_replies(&self, need_id: &str) -> anyhow::Result<Vec<NeedReplyCard>> {
+        Ok(map_all(
+            self.fetch_all::<NeedReplyCardRow>(
+                "SELECT r.id, r.need_id, r.author_id, u.first_name AS author_first,
+                        u.last_name AS author_last, r.body, r.created_at
+                 FROM need_replies r
+                 JOIN users u ON u.id = r.author_id
+                 WHERE r.need_id = ?
+                 ORDER BY r.created_at ASC, r.id ASC",
+                &[Bind::Text(need_id)],
+            )
+            .await?,
+        ))
+    }
+
+    pub async fn needs_near(&self, latitude: f64, longitude: f64) -> anyhow::Result<Vec<NeedCard>> {
+        let distance = haversine_km_sql(
+            &latitude.to_string(),
+            &longitude.to_string(),
+            "c.latitude",
+            "c.longitude",
+        );
+        let sql = format!(
+            "{NEED_CARD_SELECT} WHERE n.status = 'open' AND {distance} <= {cutoff}
+             ORDER BY n.created_at DESC, n.id DESC LIMIT 40",
+            cutoff = nearby_km()
+        );
+        Ok(map_all(self.fetch_all::<NeedCardRow>(&sql, &[]).await?))
     }
 }
 

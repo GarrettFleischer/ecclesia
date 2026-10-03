@@ -274,7 +274,11 @@ pub fn keys_for_write(write: &Write, church_id: Option<&str>) -> Vec<String> {
         | Write::InsertEndorsement(_)
         | Write::SetEndorsementStatus { .. }
         | Write::UpsertMemberGift { .. }
-        | Write::RemoveMemberGift { .. } => Vec::new(),
+        | Write::RemoveMemberGift { .. }
+        | Write::InsertNeedReply(_)
+        | Write::InsertPrayer(_)
+        | Write::SetPrayerAnswered { .. }
+        | Write::UpsertPrayerMark { .. } => Vec::new(),
     }
 }
 

@@ -13,8 +13,21 @@ impl Db {
         add_session_api_columns(self).await?;
         reshape_account_place(self).await?;
         ensure_account_indexes(self).await?;
+        copy_offers_into_replies(self).await?;
         Ok(())
     }
+}
+
+async fn copy_offers_into_replies(db: &Db) -> anyhow::Result<()> {
+    db.execute(
+        "INSERT INTO need_replies (id, need_id, author_id, body, created_at)
+         SELECT a.id, a.need_id, a.user_id, a.message, a.created_at
+         FROM applications a
+         WHERE NOT EXISTS (SELECT 1 FROM need_replies r WHERE r.id = a.id)",
+        &[] as &[Bind<'_>],
+    )
+    .await?;
+    Ok(())
 }
 
 async fn add_endorsement_skill_column(db: &Db) -> anyhow::Result<()> {
@@ -103,6 +116,37 @@ const SCHEMA: &[&str] = &[
             )
             "#,
     r#"
+            CREATE TABLE IF NOT EXISTS need_replies (
+                id TEXT PRIMARY KEY,
+                need_id TEXT NOT NULL,
+                author_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            "#,
+    r#"
+            CREATE TABLE IF NOT EXISTS prayers (
+                id TEXT PRIMARY KEY,
+                church_id TEXT NOT NULL,
+                author_id TEXT,
+                body TEXT NOT NULL,
+                status TEXT NOT NULL,
+                praise TEXT,
+                manage_hash TEXT,
+                created_at TEXT NOT NULL,
+                answered_at TEXT
+            )
+            "#,
+    r#"
+            CREATE TABLE IF NOT EXISTS prayer_marks (
+                user_id TEXT NOT NULL,
+                prayer_id TEXT NOT NULL,
+                day TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                PRIMARY KEY (user_id, prayer_id, day)
+            )
+            "#,
+    r#"
             CREATE TABLE IF NOT EXISTS applications (
                 id TEXT PRIMARY KEY,
                 need_id TEXT NOT NULL,
@@ -167,6 +211,9 @@ const SCHEMA: &[&str] = &[
             "#,
     "CREATE INDEX IF NOT EXISTS idx_needs_status_created ON needs (status, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_needs_church_status ON needs (church_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_need_replies_need ON need_replies (need_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_prayers_church_status ON prayers (church_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_prayer_marks_user_day ON prayer_marks (user_id, day)",
     "CREATE INDEX IF NOT EXISTS idx_churches_name_id ON churches (name, id)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_outbox_available ON outbox (available_at) WHERE status != 'done'",

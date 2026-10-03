@@ -2,22 +2,27 @@
 
 use ecclesia_domain::{
     CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect, EndorsementQueue, Gift,
-    GiftOnProfile, NeedCard, PriorOffer, SkillSource, User, Viewer, VoiceKind,
+    GiftOnProfile, NeedApproach, NeedCard, Place, PrayerByline, PrayerCard, PrayerMarkKind,
+    PrayerProof, PrayerReach, PrayerSight, PrayerSource, PriorOffer, PriorPrayerMark, SkillSource,
+    User, Viewer, VoiceKind,
     accept_application as domain_accept_application,
     accept_endorsement as domain_accept_endorsement, accept_invite as domain_accept_invite,
-    add_gift as domain_add_gift, apply_to_need as domain_apply_to_need,
+    add_gift as domain_add_gift,     answer_prayer as domain_answer_prayer, apply_to_need as domain_apply_to_need,
+    mark_prayer as domain_mark_prayer,
     approve_membership as domain_approve_membership, churches_with_counts,
     close_need as domain_close_need, coordinates,
     decline_application as domain_decline_application,
     decline_endorsement as domain_decline_endorsement,
     decline_membership as domain_decline_membership, endorse as domain_endorse,
-    plant_church as domain_plant_church, post_need as domain_post_need,
-    remove_gift as domain_remove_gift, replace_with_code, replace_with_pending,
-    update_profile as domain_update_profile, visible_need_cards,
+    pick_daily_prayer, plant_church as domain_plant_church, post_need as domain_post_need,
+    post_prayer as domain_post_prayer, remove_gift as domain_remove_gift, replace_with_code,
+    replace_with_pending, reply_to_need as domain_reply_to_need,
+    update_profile as domain_update_profile, visible_need_cards, visible_needs_near,
+    visible_prayers_near,
 };
 
 use crate::cache::Cache;
-use crate::clock::{new_id, nonce, now_iso};
+use crate::clock::{new_id, nonce, now_iso, today_utc};
 use crate::db::{Db, StoryExtras};
 use crate::judge::JudgeHub;
 use crate::limit::RateGate;
@@ -535,6 +540,7 @@ pub struct ChurchPage {
     pub church: Church,
     pub members: Vec<ChurchMember>,
     pub needs: Vec<NeedCard>,
+    pub answered: Vec<PrayerCard>,
     pub next_need_cursor: Option<String>,
     pub next_member_cursor: Option<String>,
 }
@@ -620,12 +626,14 @@ pub async fn church_show(
         .db
         .church_members_page(church_id, parse_member_cursor(member_after))
         .await?;
+    let answered = sdk.db.answered_prayers(church_id).await?;
     let next_need_cursor = next_need_cursor(&needs);
     let next_member_cursor = next_member_cursor(&members);
     Ok(Some(ChurchPage {
         church,
         members,
         needs,
+        answered,
         next_need_cursor,
         next_member_cursor,
     }))
@@ -1347,6 +1355,242 @@ mod tests {
         assert!(!next.needs.is_empty());
         assert!(next.needs.len() < 20);
     }
+}
+
+pub enum PrayerName {
+    Signed,
+    Unnamed,
+}
+
+pub struct PrayerPost {
+    pub prayer_id: String,
+    pub manage_token: Option<String>,
+}
+
+pub enum PrayerDeck {
+    Card {
+        card: PrayerCard,
+        source: PrayerSource,
+    },
+    SharePlace,
+    Finished,
+}
+
+pub struct NearbyFeed {
+    pub needs: Vec<NeedCard>,
+    pub prayers: Vec<PrayerCard>,
+}
+
+pub async fn post_prayer(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    church_id: &str,
+    body: &str,
+    name: PrayerName,
+) -> anyhow::Result<Result<PrayerPost, DomainError>> {
+    let (byline, manage_token) = match name {
+        PrayerName::Signed => (PrayerByline::Signed, None),
+        PrayerName::Unnamed => {
+            let token = crate::password::mint_token();
+            let manage_hash = crate::password::hash_token(&token);
+            (
+                PrayerByline::Unnamed { manage_hash },
+                Some(token),
+            )
+        }
+    };
+    let posture = sdk.weigh(VoiceKind::Prayer, &[body]).await;
+    let effect = domain_post_prayer(
+        viewer,
+        church_id,
+        body,
+        byline,
+        posture,
+        new_id(),
+        now_iso(),
+    );
+    match effect {
+        Ok(effect) => {
+            let prayer_id = effect
+                .writes
+                .iter()
+                .find_map(|write| match write {
+                    ecclesia_domain::Write::InsertPrayer(prayer) => Some(prayer.id.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            if !effect.writes.is_empty() {
+                sdk.commit(&effect).await?;
+            }
+            Ok(Ok(PrayerPost {
+                prayer_id,
+                manage_token,
+            }))
+        }
+        Err(error) => Ok(Err(error)),
+    }
+}
+
+pub async fn prayer_deck(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    place: Option<Place>,
+) -> anyhow::Result<PrayerDeck> {
+    let day = today_utc();
+    let church_id = viewer.active_church().map(|church| church.id.as_str());
+    let located = sdk
+        .db
+        .open_prayers_for_deck(church_id, place.map(|point| (point.latitude, point.longitude)))
+        .await?;
+    let seen = sdk.db.seen_prayer_ids(&viewer.user.id, &day).await?;
+    let seen_ids: Vec<&str> = seen.iter().map(String::as_str).collect();
+    let sights: Vec<PrayerSight<'_>> = located
+        .iter()
+        .map(|(prayer, latitude, longitude)| PrayerSight {
+            prayer,
+            latitude: *latitude,
+            longitude: *longitude,
+        })
+        .collect();
+    let Some((prayer, source)) = pick_daily_prayer(viewer, &day, place, &sights, &seen_ids) else {
+        return Ok(if place.is_none() {
+            PrayerDeck::SharePlace
+        } else {
+            PrayerDeck::Finished
+        });
+    };
+    let Some(card) = sdk.db.prayer_card(&prayer.id).await? else {
+        return Ok(PrayerDeck::Finished);
+    };
+    Ok(PrayerDeck::Card { card, source })
+}
+
+pub async fn mark_prayer(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    prayer_id: &str,
+    place: Option<Place>,
+    kind: PrayerMarkKind,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(prayer) = sdk.db.prayer(prayer_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let Some(church) = sdk.db.church(&prayer.church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let reach = if viewer.is_active_in(&prayer.church_id) {
+        PrayerReach::HomeChurch
+    } else {
+        let Some(place) = place else {
+            return Ok(Err(DomainError::OutsideNeighborhood));
+        };
+        PrayerReach::Near(place)
+    };
+    let day = today_utc();
+    let prior = PriorPrayerMark::of_kind(
+        sdk.db
+            .prayer_mark_kind(&viewer.user.id, prayer_id, &day)
+            .await?
+            .as_deref(),
+    );
+    finish(
+        sdk,
+        domain_mark_prayer(viewer, &prayer, &church, reach, &day, kind, prior),
+    )
+    .await
+}
+
+pub async fn answer_prayer(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    prayer_id: &str,
+    praise: &str,
+    proof: PrayerProof,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(prayer) = sdk.db.prayer(prayer_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let posture = sdk.weigh(VoiceKind::Prayer, &[praise]).await;
+    finish(
+        sdk,
+        domain_answer_prayer(viewer, &prayer, praise, proof, posture, now_iso()),
+    )
+    .await
+}
+
+pub async fn reply_to_need(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need_id: &str,
+    body: &str,
+    place: Option<Place>,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(need) = sdk.db.need(need_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let Some(church) = sdk.db.church(&need.church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let approach = if ecclesia_domain::can_view_need(viewer, need.sight(), &church) {
+        NeedApproach::Membership
+    } else if let Some(place) = place {
+        NeedApproach::Near(place)
+    } else {
+        NeedApproach::Membership
+    };
+    let posture = sdk.weigh(VoiceKind::Reply, &[body]).await;
+    finish(
+        sdk,
+        domain_reply_to_need(
+            viewer,
+            &need,
+            &church,
+            approach,
+            body,
+            posture,
+            new_id(),
+            now_iso(),
+        ),
+    )
+    .await
+}
+
+pub async fn nearby_feed(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    place: Place,
+) -> anyhow::Result<NearbyFeed> {
+    let needs = sdk.db.needs_near(place.latitude, place.longitude).await?;
+    let prayers = sdk
+        .db
+        .prayers_near(place.latitude, place.longitude)
+        .await?;
+    let mut ids: Vec<&str> = unique_church_ids(&needs);
+    for card in &prayers {
+        if !ids.contains(&card.church_id.as_str()) {
+            ids.push(card.church_id.as_str());
+        }
+    }
+    let churches = sdk.db.churches_with_ids(&ids).await?;
+    let day = today_utc();
+    let seen = sdk.db.seen_prayer_ids(&viewer.user.id, &day).await?;
+    let seen_ids: Vec<&str> = seen.iter().map(String::as_str).collect();
+    let mut kept_needs = Vec::new();
+    for card in visible_needs_near(viewer, &needs, &churches, place) {
+        kept_needs.push(card.clone());
+    }
+    let mut kept_prayers = Vec::new();
+    for card in visible_prayers_near(viewer, &prayers, &churches, place, &seen_ids) {
+        kept_prayers.push(card.clone());
+    }
+    Ok(NearbyFeed {
+        needs: kept_needs,
+        prayers: kept_prayers,
+    })
+}
+
+pub async fn answered_prayers(sdk: &Sdk, church_id: &str) -> anyhow::Result<Vec<PrayerCard>> {
+    sdk.db.answered_prayers(church_id).await
 }
 
 async fn load_application_need(

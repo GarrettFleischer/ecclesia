@@ -2,6 +2,7 @@
 
 use ecclesia_domain::{
     Application, ApplicationCard, Church, ChurchMember, Endorsement, EndorsementCard, Gift,
+    NeedReplyCard, Prayer, PrayerCard,
     MemberGift, Need, NeedCard, Notification, User, display_name,
 };
 
@@ -342,5 +343,137 @@ impl From<ApplicationCardRow> for ApplicationCard {
             status: row.status,
             created_at: row.created_at,
         }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+pub struct NeedReplyCardRow {
+    pub id: String,
+    pub need_id: String,
+    pub author_id: String,
+    pub author_first: String,
+    pub author_last: String,
+    pub body: String,
+    pub created_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PrayerRow {
+    pub id: String,
+    pub church_id: String,
+    pub author_id: Option<String>,
+    pub body: String,
+    pub status: String,
+    pub praise: Option<String>,
+    pub manage_hash: Option<String>,
+    pub created_at: String,
+    pub answered_at: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PrayerCardRow {
+    pub id: String,
+    pub church_id: String,
+    pub church_name: String,
+    pub author_id: Option<String>,
+    pub author_first: Option<String>,
+    pub author_last: Option<String>,
+    pub body: String,
+    pub status: String,
+    pub praise: Option<String>,
+    pub prayed_count: i64,
+    pub created_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PrayerLocatedRow {
+    pub id: String,
+    pub church_id: String,
+    pub author_id: Option<String>,
+    pub body: String,
+    pub status: String,
+    pub praise: Option<String>,
+    pub manage_hash: Option<String>,
+    pub created_at: String,
+    pub answered_at: Option<String>,
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct MarkRow {
+    pub prayer_id: String,
+    pub kind: String,
+}
+
+impl From<NeedReplyCardRow> for NeedReplyCard {
+    fn from(row: NeedReplyCardRow) -> Self {
+        Self {
+            id: row.id,
+            need_id: row.need_id,
+            author_id: row.author_id,
+            author_name: display_name(&row.author_first, &row.author_last),
+            body: row.body,
+            created_at: row.created_at,
+        }
+    }
+}
+
+impl From<PrayerRow> for Prayer {
+    fn from(row: PrayerRow) -> Self {
+        Self {
+            id: row.id,
+            church_id: row.church_id,
+            author_id: row.author_id,
+            body: row.body,
+            status: row.status,
+            praise: row.praise,
+            manage_hash: row.manage_hash,
+            created_at: row.created_at,
+            answered_at: row.answered_at,
+        }
+    }
+}
+
+impl From<PrayerCardRow> for PrayerCard {
+    fn from(row: PrayerCardRow) -> Self {
+        let author_name = match (row.author_first, row.author_last) {
+            (Some(first), Some(last)) => Some(display_name(&first, &last)),
+            _ => None,
+        };
+        Self {
+            id: row.id,
+            church_id: row.church_id,
+            church_name: row.church_name,
+            author_id: row.author_id,
+            author_name,
+            body: row.body,
+            status: row.status,
+            praise: row.praise,
+            prayed_count: row.prayed_count,
+            created_at: row.created_at,
+        }
+    }
+}
+
+impl From<PrayerLocatedRow> for (Prayer, f64, f64) {
+    fn from(row: PrayerLocatedRow) -> Self {
+        let latitude = row.latitude;
+        let longitude = row.longitude;
+        (
+            Prayer {
+                id: row.id,
+                church_id: row.church_id,
+                author_id: row.author_id,
+                body: row.body,
+                status: row.status,
+                praise: row.praise,
+                manage_hash: row.manage_hash,
+                created_at: row.created_at,
+                answered_at: row.answered_at,
+            },
+            latitude,
+            longitude,
+        )
     }
 }
