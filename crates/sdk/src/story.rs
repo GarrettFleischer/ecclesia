@@ -14,6 +14,7 @@ use ecclesia_domain::{
     decline_application as domain_decline_application,
     decline_endorsement as domain_decline_endorsement,
     decline_membership as domain_decline_membership, endorse as domain_endorse,
+    leave_church as domain_leave_church,
     pick_daily_prayer, plant_church as domain_plant_church, post_need as domain_post_need,
     post_prayer as domain_post_prayer, remove_gift as domain_remove_gift, replace_with_code,
     replace_with_pending, reply_to_need as domain_reply_to_need,
@@ -242,6 +243,13 @@ pub async fn decline_membership(
         return Ok(Err(DomainError::NotFound));
     };
     finish(sdk, domain_decline_membership(viewer, &target, &church)).await
+}
+
+pub async fn leave_church(
+    sdk: &Sdk,
+    user: &User,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    finish(sdk, domain_leave_church(user)).await
 }
 
 pub async fn accept_invite(sdk: &Sdk, user: &User) -> anyhow::Result<Result<StoryOk, DomainError>> {

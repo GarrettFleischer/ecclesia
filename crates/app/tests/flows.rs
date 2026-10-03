@@ -393,11 +393,78 @@ async fn us_auth_01_register_then_sign_in() {
 }
 
 #[tokio::test]
+async fn us_church_04_leave_returns_to_the_join_step() {
+    let world = app().await;
+    let miriam = register(&world, "Miriam Cole", "miriam-leave@grace.test").await;
+    let (_miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
+    let peter = register(&world, "Peter Lane", "peter-leave@grace.test").await;
+    let peter = join(&world, &peter, &grace).await;
+    let (me, peter, csrf) = get_page(world.app.clone(), Some(&peter), "/me").await;
+    assert!(me.contains("Leave your church"));
+    assert!(me.contains("Grace Covenant"));
+    assert!(me.contains("Waiting"));
+    assert!(!me.contains("Find your church"));
+    assert!(!me.contains("Add your church"));
+    let location = post_location(
+        &world,
+        &peter,
+        &csrf.expect("me csrf"),
+        "/me/church/leave",
+        "",
+    )
+    .await;
+    assert!(
+        location.starts_with("/churches/join?ok=left"),
+        "leave should open the join step, got {location}"
+    );
+    let join = get(&world, &peter, &location).await;
+    assert!(join.contains("Find your church"));
+    assert!(join.contains("class=\"steps\""));
+    assert!(join.contains("Left."));
+    assert!(join.contains("Sign out"));
+    assert!(!join.contains("class=\"dock\""));
+    assert!(!join.contains("Leave your church"));
+    let user = world
+        .sdk
+        .db
+        .user_by_email("peter-leave@grace.test")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(user.church_id.is_none());
+
+    for path in ["/home", "/me", "/pray", "/inbox"] {
+        let response = world
+            .app
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header(header::COOKIE, &peter)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER, "{path}");
+        assert_eq!(location_of(&response), "/churches/join", "{path}");
+    }
+}
+
+#[tokio::test]
 async fn us_auth_01_join_search_finds_grace() {
     let world = app().await;
     let cookie = register(&world, "Miriam Cole", "miriam-search@grace.test").await;
     let page = get(&world, &cookie, "/churches/join?q=grace").await;
+    assert!(page.contains("Name or city"));
+    assert!(page.contains("Cedar Falls"));
+    assert!(page.contains("/static/join.js?v=5"));
     assert!(page.contains("Grace Fellowship"));
+    let by_city = get(&world, &cookie, "/churches/join?q=Cedar+Falls").await;
+    assert!(by_city.contains("Grace Fellowship"));
+    assert!(by_city.contains("seed_grace"));
+    let nearby = get(&world, &cookie, "/churches/join?lat=42.5349&lng=-92.4453").await;
+    assert!(nearby.contains("Nearby"));
+    assert!(nearby.contains("Grace Fellowship"));
     assert!(page.contains("seed_grace"));
     assert!(page.contains("data-scan-code"));
     assert!(page.contains("Scan church code"));
@@ -621,7 +688,7 @@ async fn us_auth_01_churchless_pages_stay_on_the_church_step() {
         assert_eq!(location_of(&response), "/churches/join", "{path}");
     }
     let (join, _, _) = get_page(world.app.clone(), Some(&cookie), "/churches/join").await;
-    assert!(join.contains("Search by name"));
+    assert!(join.contains("Name or city"));
     assert!(join.contains("Scan church code"));
     assert!(join.contains("data-join-query"));
     assert!(!join.contains("Search churches"));

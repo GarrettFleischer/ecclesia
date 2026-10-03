@@ -340,9 +340,11 @@ pub fn me(
                     button class="btn btn-quiet" type="submit" { (gift.kind.submit_label("Add")) }
                 }
             }
-            section {
-                h2 { "Your church" }
-                (my_church(viewer))
+            @if viewer.user.church_id.is_some() {
+                section {
+                    h2 { "Your church" }
+                    (my_church(viewer, csrf))
+                }
             }
             section class="panel" {
                 h2 { "Alerts" }
@@ -420,19 +422,18 @@ fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
     }
 }
 
-fn my_church(viewer: &Viewer) -> Markup {
-    let Some(church) = viewer.church.as_ref() else {
-        return html! {
-            p { "You're not in a church on Ecclesia yet." }
-            a href="/churches/join" { "Find your church" }
-            a href="/churches/new" { "Add your church" }
-        };
-    };
+fn my_church(viewer: &Viewer, csrf: &str) -> Markup {
     html! {
-        ul class="people" {
-            (church_link_item(church, viewer.user.link_status(), viewer.user.link_role()))
+        div class="stack" {
+            @if let Some(church) = viewer.church.as_ref() {
+                ul class="people" {
+                    (church_link_item(church, viewer.user.link_status(), viewer.user.link_role()))
+                }
+            }
+            form method="post" action="/me/church/leave" {
+                (csrf_input(csrf))
+                button class="btn btn-quiet" type="submit" { "Leave your church" }
+            }
         }
-        a href="/churches/join" { "Find your church" }
-        a href="/churches/new" { "Add your church" }
     }
 }

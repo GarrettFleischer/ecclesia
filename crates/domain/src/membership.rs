@@ -170,6 +170,14 @@ fn waiting_role(target: &User, church_id: &str) -> Result<MembershipRole, Domain
     }
 }
 
+/// Drop the person's church. They can find one again.
+pub fn leave_church(actor: &User) -> Result<Effect, DomainError> {
+    if actor.church_id.is_none() {
+        return Err(DomainError::NoChurch);
+    }
+    Ok(Effect::write(clear_link(&actor.id)))
+}
+
 /// The invited person accepts.
 pub fn accept_invite(actor: &User) -> Result<Effect, DomainError> {
     let church_id = actor
@@ -366,6 +374,30 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert_eq!(effect.notices[0].user_id, "peter");
+    }
+
+    #[test]
+    fn leave_clears_the_church() {
+        let peter = user_in_church("peter", "grace", "member", "pending");
+        let effect = leave_church(&peter).unwrap();
+        match &effect.writes[0] {
+            Write::SetChurchLink {
+                user_id,
+                church_id,
+                church_status,
+                church_role,
+            } => {
+                assert_eq!(user_id, "peter");
+                assert!(church_id.is_none());
+                assert!(church_status.is_none());
+                assert!(church_role.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(effect.notices.is_empty());
+        let owner = user_in_church("keisha", "grace", "owner", "active");
+        assert_eq!(leave_church(&owner).unwrap().writes.len(), 1);
+        assert_eq!(leave_church(&user("peter")), Err(DomainError::NoChurch));
     }
 
     #[test]

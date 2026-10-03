@@ -264,6 +264,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/inbox", get(people::inbox))
         .route("/me", get(people::me).post(people::update_me))
+        .route("/me/church/leave", post(people::leave_church_http))
         .route("/me/gifts", post(people::add_gift_http))
         .route("/me/gifts/{id}/remove", post(people::remove_gift_http))
         .route("/the-body", get(prayers::churches_nearby_redirect))

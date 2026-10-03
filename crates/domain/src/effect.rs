@@ -10,6 +10,8 @@ pub enum DomainError {
     SelfAction,
     #[error("Join a church to see this.")]
     NotInTheBody,
+    #[error("You're not in a church.")]
+    NoChurch,
     #[error("This need is only open to its church.")]
     OutsideChurch,
     #[error("This need is only open to churches nearby.")]
@@ -60,7 +62,7 @@ impl DomainError {
     pub fn flash_code(&self) -> &'static str {
         match self {
             Self::SelfAction => "self",
-            Self::NotInTheBody => "not_member",
+            Self::NotInTheBody | Self::NoChurch => "not_member",
             Self::OutsideChurch | Self::OutsideNeighborhood => "scope",
             Self::NeedClosed => "closed",
             Self::AlreadyApplied | Self::AlreadyMember | Self::DuplicateEndorsement => "already",

@@ -8,8 +8,8 @@ use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind};
 use ecclesia_sdk::story;
 
 use super::context::{
-    bind_session, html, leaf_err, linked_church, load_user, redirect_err, signed_form, signed_in,
-    story_redirect, unread, viewer_for, with_cookie,
+    bind_session, html, leaf_err, linked_church, load_user, redirect_err, redirect_ok, signed_form,
+    signed_in, story_redirect, unread, viewer_for, with_cookie,
 };
 use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
 use super::{AppError, AppState};
@@ -288,6 +288,24 @@ pub async fn update_me(
         .await?,
         "saved",
     )
+}
+
+pub async fn leave_church_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<CsrfForm>,
+) -> Result<Response, AppError> {
+    let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    match story::leave_church(&state.sdk, &signed.user).await? {
+        Ok(_) => Ok(with_cookie(
+            signed.jar,
+            redirect_ok("/churches/join", "left"),
+        )),
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err("/me", error))),
+    }
 }
 
 pub async fn add_gift_http(
