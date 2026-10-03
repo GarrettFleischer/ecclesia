@@ -386,13 +386,13 @@ pub fn join_church_page(
             (page_lead("Find your church"))
             a class="btn btn-quiet" href="/churches/new" { "Add your church" }
             section {
-                h2 { "Search by name" }
+                h2 { "Name or city" }
                 form class="stack" method="get" action="/churches/join" data-join-finder {
                     input type="hidden" name="lat" value=(lat);
                     input type="hidden" name="lng" value=(lng);
                     div class="search-line" {
-                        label { "Church name"
-                            input type="search" name="q" value=(query) maxlength="120" placeholder="Grace Fellowship" autocomplete="off" data-join-query;
+                        label { "Name or city"
+                            input type="search" name="q" value=(query) maxlength="120" placeholder="Cedar Falls" autocomplete="off" data-join-query;
                         }
                         button class="btn btn-quiet scan-btn" type="button" data-scan-code aria-label="Scan church code" {
                             span class="btn-icon" aria-hidden="true" { (icon(Icon::Qr)) }
@@ -414,7 +414,7 @@ pub fn join_church_page(
                     button class="btn btn-quiet" type="submit" { "Sign out" }
                 }
             }
-            script src="/static/join.js?v=4" defer {}
+            script src="/static/join.js?v=5" defer {}
         },
     )
 }
@@ -430,7 +430,7 @@ fn join_results(
     let located = !lat.trim().is_empty() && !lng.trim().is_empty();
     if hits.is_empty() {
         if named {
-            return html! { p class="muted" { "No churches with that name." } };
+            return html! { p class="muted" { "No churches match." } };
         }
         if located {
             return html! { p class="muted" { "No churches nearby." } };

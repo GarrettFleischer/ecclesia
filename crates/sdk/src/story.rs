@@ -451,7 +451,8 @@ pub async fn join_finder(
         None => None,
     };
     if !query.is_empty() {
-        return Ok(Ok(search_churches(sdk, query, 8).await?));
+        let here = place.map(|(latitude, longitude)| Place { latitude, longitude });
+        return Ok(Ok(search_churches(sdk, query, here, 8).await?));
     }
     let Some((latitude, longitude)) = place else {
         return Ok(Ok(Vec::new()));
@@ -613,14 +614,17 @@ pub struct ChurchSearchHit {
 pub async fn search_churches(
     sdk: &Sdk,
     query: &str,
+    place: Option<Place>,
     limit: usize,
 ) -> anyhow::Result<Vec<ChurchSearchHit>> {
-    use crate::church_search::rank_churches;
+    use crate::church_search::{prefer_nearby, rank_churches};
     let churches = sdk.db.churches_for_lookup().await?;
-    Ok(rank_churches(query, &churches, limit)
-        .into_iter()
-        .map(search_hit)
-        .collect())
+    let mut ranked = rank_churches(query, &churches, churches.len().max(limit));
+    if let Some(here) = place {
+        prefer_nearby(&mut ranked, here);
+    }
+    ranked.truncate(limit);
+    Ok(ranked.into_iter().map(search_hit).collect())
 }
 
 fn search_hit(church: &Church) -> ChurchSearchHit {

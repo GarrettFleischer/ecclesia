@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Find a church from the device location, a name, or a city, and scan a church code.
+ * @module join
+ */
+
 function inviteCode(raw) {
   var value = String(raw || "").trim();
   try {
@@ -97,19 +102,55 @@ function inviteCode(raw) {
     pause = window.setTimeout(run, immediate ? 0 : pauseMs);
   }
 
-  if ((!fieldValue("lat") || !fieldValue("lng")) && navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      var latField = form && form.querySelector("[name='lat']");
-      var lngField = form && form.querySelector("[name='lng']");
-      if (latField) {
-        latField.value = String(pos.coords.latitude);
-      }
-      if (lngField) {
-        lngField.value = String(pos.coords.longitude);
-      }
-      window.location.assign(finderUrl());
-    });
+  function rememberPlace(latitude, longitude) {
+    var latField = form && form.querySelector("[name='lat']");
+    var lngField = form && form.querySelector("[name='lng']");
+    if (latField) {
+      latField.value = String(latitude);
+    }
+    if (lngField) {
+      lngField.value = String(longitude);
+    }
+    schedule(true);
   }
+
+  /**
+   * @brief Read a position the browser can already share.
+   */
+  function requestPlace() {
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        rememberPlace(pos.coords.latitude, pos.coords.longitude);
+      },
+      function () {},
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 }
+    );
+  }
+
+  /**
+   * @brief Ask for location when it is not already granted, then list nearby churches.
+   * @returns {void}
+   */
+  function askForPlace() {
+    if (!navigator.geolocation || (fieldValue("lat") && fieldValue("lng"))) {
+      return;
+    }
+    if (!navigator.permissions || !navigator.permissions.query) {
+      requestPlace();
+      return;
+    }
+    navigator.permissions
+      .query({ name: "geolocation" })
+      .then(function (status) {
+        if (status.state === "denied") {
+          return;
+        }
+        requestPlace();
+      })
+      .catch(requestPlace);
+  }
+
+  askForPlace();
 
   if (form) {
     form.addEventListener("submit", function (event) {

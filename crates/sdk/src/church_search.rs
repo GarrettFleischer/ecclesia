@@ -1,6 +1,6 @@
-//! Rank churches by fuzzy name match for registration lookup.
+//! Rank churches by name or city for the find-church step.
 
-use ecclesia_domain::Church;
+use ecclesia_domain::{Church, Place, place_is_near};
 
 const MAX_QUERY_LEN: usize = 80;
 
@@ -21,11 +21,23 @@ fn normalize_query(query: &str) -> String {
     query.trim().to_lowercase().chars().take(MAX_QUERY_LEN).collect()
 }
 
+/// Churches inside the nearby radius move ahead of the rest. Rank order stays inside each group.
+pub fn prefer_nearby<'a>(ranked: &mut Vec<&'a Church>, here: Place) {
+    ranked.sort_by(|left, right| {
+        let left_near = place_is_near(left.latitude, left.longitude, here);
+        let right_near = place_is_near(right.latitude, right.longitude, here);
+        right_near.cmp(&left_near)
+    });
+}
+
 fn score_church(needle: &str, church: &Church) -> Option<i32> {
     let name = church.name.to_lowercase();
     let address = church.address.to_lowercase();
     let hay = format!("{name} {address}");
     let mut best = field_score(needle, &name);
+    for city in city_names(&church.address) {
+        best = best.max(field_score(needle, &city));
+    }
     best = best.max(field_score(needle, &address) / 2);
     best = best.max(field_score(needle, &hay) / 2);
     if best > 0 {
@@ -33,6 +45,26 @@ fn score_church(needle: &str, church: &Church) -> Option<i32> {
     } else {
         None
     }
+}
+
+fn city_names(address: &str) -> Vec<String> {
+    let mut cities = Vec::new();
+    for line in address.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let city = line.split(',').next().unwrap_or(line).trim();
+        if city.is_empty() || starts_with_digit(city) {
+            continue;
+        }
+        cities.push(city.to_lowercase());
+    }
+    cities
+}
+
+fn starts_with_digit(value: &str) -> bool {
+    value.chars().next().is_some_and(|ch| ch.is_ascii_digit())
 }
 
 fn field_score(needle: &str, haystack: &str) -> i32 {
@@ -121,6 +153,34 @@ mod tests {
             .map(|i| church(&format!("Grace Church {i}"), "Cedar Falls"))
             .collect();
         assert_eq!(rank_churches("grace", &churches, 5).len(), 5);
+    }
+
+    #[test]
+    fn us_search_01_city_matches_the_address() {
+        let churches = [
+            church("Grace Fellowship", "100 Main Street\nCedar Falls, IA 50613"),
+            church("Mercy Chapel", "200 Oak Street\nAustin, TX 78701"),
+        ];
+        let cedar = rank_churches("cedar falls", &churches, 5);
+        assert_eq!(cedar.len(), 1);
+        assert_eq!(cedar[0].name, "Grace Fellowship");
+        let austin = rank_churches("austin", &churches, 5);
+        assert_eq!(austin.first().map(|hit| hit.name.as_str()), Some("Mercy Chapel"));
+    }
+
+    #[test]
+    fn us_search_01_nearby_matches_come_first() {
+        let mut far = church("North Chapel", "200 Oak Street\nAustin, TX 78701");
+        far.latitude = 30.2672;
+        far.longitude = -97.7431;
+        let mut near = church("South Chapel", "100 Main Street\nCedar Falls, IA 50613");
+        near.latitude = 42.5349;
+        near.longitude = -92.4453;
+        let churches = [far, near];
+        let mut hits = rank_churches("chapel", &churches, 5);
+        assert_eq!(hits[0].name, "North Chapel");
+        prefer_nearby(&mut hits, Place { latitude: 42.5349, longitude: -92.4453 });
+        assert_eq!(hits[0].name, "South Chapel");
     }
 
     #[test]
