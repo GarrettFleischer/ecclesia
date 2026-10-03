@@ -284,7 +284,7 @@ async fn us_chaos_01_script_name_does_not_run() {
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let cookie = try_cookie(&response).expect("new cookie");
-    let (home, _, _) = get_ok(world.app, Some(&cookie), "/home").await;
+    let (home, _, _) = get_ok(world.app, Some(&cookie), "/churches/join").await;
     assert!(home.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     assert!(!home.contains("<script>alert(1)</script>"));
 }
@@ -311,12 +311,7 @@ async fn us_chaos_02_pending_member_cannot_post_a_need() {
     let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (_miriam, church_id) = plant(&world, &miriam, "Grace Covenant").await;
     let peter = register(&world, "Peter Lang", "peter@grace.test").await;
-    let (_page, cookie, csrf) = get_ok(
-        world.app.clone(),
-        Some(&peter),
-        &format!("/churches/{church_id}"),
-    )
-    .await;
+    let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&peter), "/churches/join").await;
     let _ = post_location(
         world.app.clone(),
         &cookie,
@@ -415,6 +410,7 @@ async fn us_chaos_03_neighbor_cannot_close_a_need() {
 async fn us_chaos_04_cannot_endorse_yourself() {
     let world = app().await;
     let cookie = register(&world, "Ruth Alvarez", "ruth@grace.test").await;
+    let (cookie, _) = plant(&world, &cookie, "Grace Covenant").await;
     let ruth_id = world
         .sdk
         .db
@@ -444,7 +440,7 @@ async fn us_chaos_04_cannot_endorse_yourself() {
 async fn us_chaos_05_junk_invite_and_missing_pages() {
     let world = app().await;
     let cookie = register(&world, "Miriam Cole", "miriam@grace.test").await;
-    let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&cookie), "/churches").await;
+    let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&cookie), "/churches/join").await;
     let location = post_location(
         world.app.clone(),
         &cookie,
@@ -455,13 +451,15 @@ async fn us_chaos_05_junk_invite_and_missing_pages() {
     .await;
     assert!(location.contains("err=invite"), "got {location}");
 
-    let (status, html, _, _) = get_any(world.app.clone(), Some(&cookie), "/asdf").await;
+    let (status, _, _, _) = get_any(world.app.clone(), Some(&cookie), "/asdf").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let (status, _, _, _) = get_any(world.app.clone(), Some(&cookie), "/needs/nope").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let (status, html, _, _) = get_any(world.app, None, "/asdf").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(html.contains("That page doesn't exist."));
-
-    let (status, html, _, _) = get_any(world.app, Some(&cookie), "/needs/nope").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("We couldn't find that need."));
 }
 
 #[tokio::test]
@@ -470,12 +468,7 @@ async fn us_chaos_06_double_approve_and_empty_profile() {
     let miriam = register(&world, "Miriam Cole", "miriam@grace.test").await;
     let (miriam, church_id) = plant(&world, &miriam, "Grace Covenant").await;
     let peter = register(&world, "Peter Lang", "peter@grace.test").await;
-    let (_page, cookie, csrf) = get_ok(
-        world.app.clone(),
-        Some(&peter),
-        &format!("/churches/{church_id}"),
-    )
-    .await;
+    let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&peter), "/churches/join").await;
     let _ = post_location(
         world.app.clone(),
         &cookie,
@@ -557,7 +550,7 @@ async fn us_chaos_07_refine_junk_and_push_junk() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let cookie = register(&world, "Miriam Cole", "miriam@grace.test").await;
-    let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&cookie), "/me").await;
+    let (_page, cookie, csrf) = get_ok(world.app.clone(), Some(&cookie), "/churches/join").await;
     let response = post_response(
         world.app,
         Some(&cookie),
