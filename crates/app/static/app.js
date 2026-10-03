@@ -1203,20 +1203,25 @@ function hookPickers() {
     }
   }, true);
 
+  const bus = {
+    claim(next) {
+      if (openMenu && openMenu !== next) {
+        openMenu.close(false);
+      }
+      openMenu = next;
+    },
+    release(next) {
+      if (openMenu === next) {
+        openMenu = null;
+      }
+    },
+  };
+
   for (const select of document.querySelectorAll("select")) {
-    mountPicker(select, {
-      claim(next) {
-        if (openMenu && openMenu !== next) {
-          openMenu.close(false);
-        }
-        openMenu = next;
-      },
-      release(next) {
-        if (openMenu === next) {
-          openMenu = null;
-        }
-      },
-    });
+    mountPicker(select, bus);
+  }
+  for (const input of document.querySelectorAll("input[list]")) {
+    mountSuggest(input, bus);
   }
 }
 
@@ -1288,33 +1293,7 @@ function mountPicker(select, bus) {
   }
 
   function place() {
-    const box = face.getBoundingClientRect();
-    const margin = 12;
-    const width = Math.min(box.width, window.innerWidth - margin * 2);
-    let left = box.left;
-    if (left + width > window.innerWidth - margin) {
-      left = window.innerWidth - margin - width;
-    }
-    if (left < margin) {
-      left = margin;
-    }
-    const floor = menuFloor();
-    const below = floor - box.bottom - 8;
-    const above = box.top - margin;
-    const upward = below < 180 && above > below;
-    const room = Math.max(96, Math.min(320, upward ? above - 8 : Math.max(96, below)));
-    menu.style.width = `${width}px`;
-    menu.style.left = `${left}px`;
-    menu.style.maxHeight = `${room}px`;
-    menu.classList.toggle("is-up", upward);
-    if (upward) {
-      const bottom = Math.max(window.innerHeight - box.top + 6, window.innerHeight - floor);
-      menu.style.top = "auto";
-      menu.style.bottom = `${bottom}px`;
-    } else {
-      menu.style.bottom = "auto";
-      menu.style.top = `${box.bottom + 6}px`;
-    }
+    placeMenu(menu, face);
   }
 
   const api = {
@@ -1431,6 +1410,199 @@ function labelText(label) {
     .map((node) => node.textContent.trim())
     .filter(Boolean)
     .join(" ");
+}
+
+function placeMenu(menu, anchor) {
+  const box = anchor.getBoundingClientRect();
+  const margin = 12;
+  const width = Math.min(box.width, window.innerWidth - margin * 2);
+  let left = box.left;
+  if (left + width > window.innerWidth - margin) {
+    left = window.innerWidth - margin - width;
+  }
+  if (left < margin) {
+    left = margin;
+  }
+  const floor = menuFloor();
+  const below = floor - box.bottom - 8;
+  const above = box.top - margin;
+  const upward = below < 180 && above > below;
+  const room = Math.max(96, Math.min(320, upward ? above - 8 : Math.max(96, below)));
+  menu.style.width = `${width}px`;
+  menu.style.left = `${left}px`;
+  menu.style.maxHeight = `${room}px`;
+  menu.classList.toggle("is-up", upward);
+  if (upward) {
+    const bottom = Math.max(window.innerHeight - box.top + 6, window.innerHeight - floor);
+    menu.style.top = "auto";
+    menu.style.bottom = `${bottom}px`;
+  } else {
+    menu.style.bottom = "auto";
+    menu.style.top = `${box.bottom + 6}px`;
+  }
+}
+
+function mountSuggest(input, bus) {
+  const source = document.getElementById(input.getAttribute("list") || "");
+  if (!source) {
+    return;
+  }
+  const names = [...source.querySelectorAll("option")]
+    .map((option) => option.value || option.textContent.trim())
+    .filter(Boolean);
+  if (names.length === 0) {
+    return;
+  }
+  input.removeAttribute("list");
+  input.setAttribute("autocomplete", "off");
+  input.classList.add("picker-suggest");
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+
+  const menu = document.createElement("div");
+  menu.className = "picker-menu";
+  menu.hidden = true;
+  menu.setAttribute("role", "listbox");
+  const listId = `picker-${Math.random().toString(36).slice(2, 8)}`;
+  menu.id = listId;
+  input.setAttribute("aria-controls", listId);
+  document.body.append(menu);
+
+  let active = 0;
+
+  function rows() {
+    const query = input.value.trim().toLowerCase();
+    if (!query) {
+      return names;
+    }
+    return names.filter((name) => name.toLowerCase().includes(query));
+  }
+
+  function paint(matches, reset) {
+    if (reset) {
+      const exact = matches.findIndex(
+        (name) => name.toLowerCase() === input.value.trim().toLowerCase(),
+      );
+      active = exact >= 0 ? exact : 0;
+    }
+    if (active >= matches.length) {
+      active = Math.max(0, matches.length - 1);
+    }
+    menu.replaceChildren();
+    matches.forEach((name, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "picker-option";
+      item.setAttribute("role", "option");
+      item.tabIndex = -1;
+      item.dataset.value = name;
+      item.textContent = name;
+      const on = index === active;
+      item.setAttribute("aria-selected", on ? "true" : "false");
+      item.classList.toggle("is-selected", on);
+      if (on) {
+        item.id = `${listId}-on`;
+      }
+      item.addEventListener("mousedown", (event) => event.preventDefault());
+      item.addEventListener("click", () => choose(name));
+      menu.append(item);
+    });
+    if (matches.length > 0) {
+      input.setAttribute("aria-activedescendant", `${listId}-on`);
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function choose(name) {
+    input.value = name;
+    input.removeAttribute("aria-invalid");
+    api.close(false);
+  }
+
+  const api = {
+    root: input.closest("label") || input,
+    menu,
+    place() {
+      placeMenu(menu, input);
+    },
+    close(focusInput) {
+      menu.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      bus.release(api);
+      if (focusInput) {
+        input.focus();
+      }
+    },
+  };
+
+  function show(reset) {
+    const matches = rows();
+    if (matches.length === 0) {
+      api.close(false);
+      return;
+    }
+    paint(matches, reset);
+    bus.claim(api);
+    menu.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    api.place();
+    const selected = menu.querySelector(".is-selected");
+    if (selected) {
+      revealOption(menu, selected);
+    }
+  }
+
+  input.addEventListener("focus", () => show(true));
+  input.addEventListener("click", () => {
+    if (menu.hidden) {
+      show(true);
+    }
+  });
+  input.addEventListener("input", () => show(true));
+  input.addEventListener("keydown", (event) => {
+    if (menu.hidden) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        show(true);
+      }
+      return;
+    }
+    const count = menu.children.length;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      active = Math.min(count - 1, active + 1);
+      show(false);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      active = Math.max(0, active - 1);
+      show(false);
+    } else if (event.key === "Enter") {
+      const pick = rows()[active];
+      if (input.value.trim() && pick && pick !== input.value) {
+        event.preventDefault();
+        choose(pick);
+      } else {
+        api.close(false);
+      }
+    }
+  });
+  input.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (document.activeElement !== input && !menu.contains(document.activeElement)) {
+        api.close(false);
+      }
+    }, 0);
+  });
+
+  let scrollTimer = 0;
+  menu.addEventListener("scroll", () => {
+    menu.classList.add("is-scrolling");
+    window.clearTimeout(scrollTimer);
+    scrollTimer = window.setTimeout(() => menu.classList.remove("is-scrolling"), 700);
+  });
 }
 
 function pickerOption(option, options) {

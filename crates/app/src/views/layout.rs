@@ -328,7 +328,7 @@ pub fn page(
                 @if show_dock(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=15" defer {}
+                script src="/static/app.js?v=16" defer {}
             }
         }
     }

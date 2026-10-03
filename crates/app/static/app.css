@@ -1739,6 +1739,14 @@ select.picker-native {
   color: var(--ink);
 }
 
+input.picker-suggest {
+  padding-right: 2.6rem;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  background-size: 1.1rem;
+}
+
 .scopes {
   display: grid;
   gap: 0.6rem;

@@ -178,7 +178,7 @@ fn endorse_panel(
                 (voice_pass_input(draft.kind))
                 (review_banner(draft.kind))
                 label { "Skill"
-                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality" value=(draft.skill);
+                    input name="skill" required maxlength="120" list="catalog-skills" placeholder="Hospitality" autocomplete="off" value=(draft.skill);
                     datalist id="catalog-skills" {
                         (catalog_name_options(catalog))
                     }
