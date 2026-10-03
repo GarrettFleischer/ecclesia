@@ -162,10 +162,45 @@ impl Effect {
         })
     }
 
+    /// Church id written by a join, a code, or a plant. A cleared link is not one.
+    pub fn linked_church_id(&self) -> Option<&str> {
+        self.writes.iter().find_map(|write| match write {
+            Write::SetChurchLink {
+                church_id: Some(id),
+                ..
+            } => Some(id.as_str()),
+            _ => None,
+        })
+    }
+
     pub fn inserted_need_id(&self) -> Option<&str> {
         self.writes.iter().find_map(|write| match write {
             Write::InsertNeed(need) => Some(need.id.as_str()),
             _ => None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_church_id_ignores_a_cleared_link() {
+        let mut effect = Effect::default();
+        effect.push(Write::SetChurchLink {
+            user_id: "u".into(),
+            church_id: None,
+            church_status: None,
+            church_role: None,
+        });
+        assert!(effect.linked_church_id().is_none());
+        effect.push(Write::SetChurchLink {
+            user_id: "u".into(),
+            church_id: Some("grace".into()),
+            church_status: Some("pending".into()),
+            church_role: Some("member".into()),
+        });
+        assert_eq!(effect.linked_church_id(), Some("grace"));
     }
 }

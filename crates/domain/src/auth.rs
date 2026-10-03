@@ -113,4 +113,36 @@ mod tests {
             Err(DomainError::WeakPassword)
         );
     }
+
+    #[test]
+    fn us_auth_01_overlong_first_name_is_rejected() {
+        let edge = "a".repeat(80);
+        assert!(
+            register(
+                &edge,
+                "Lovelace",
+                "ada@x.test",
+                EmailAvailability::Free,
+                Posture::Lifts,
+                Strength::Acceptable,
+                "u1".into(),
+                "t".into()
+            )
+            .is_ok()
+        );
+        let long = "a".repeat(81);
+        assert_eq!(
+            register(
+                &long,
+                "Lovelace",
+                "ada@x.test",
+                EmailAvailability::Free,
+                Posture::Lifts,
+                Strength::Acceptable,
+                "u1".into(),
+                "t".into()
+            ),
+            Err(DomainError::InvalidInput)
+        );
+    }
 }
