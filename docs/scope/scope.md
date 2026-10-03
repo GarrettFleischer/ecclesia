@@ -17,6 +17,7 @@ _These are recommendations to keep your build orderly, not requirements._
 | 4 | Create account without a church | Slice 2 | in-progress |
 | 5 | Join a church | Slice 2 | planned |
 | 6 | Start a church | Slice 2 | planned |
+| 7 | Prayer deck and public needs | Slice 3 | in-progress |
 
 ## Foundations
 
@@ -93,6 +94,18 @@ After the account exists, `/churches/join` suggests the closest church when loca
 A signed in person can start a church in a short wizard. They give the United States employer identification number, the state charity or corporation number, and the facts that show they are the pastor. A reviewer checks that claim. Other people cannot find or join the church until the check passes.
 **Done when:** a new church stays hidden until a reviewer accepts the pastor claim and both government numbers, and a refused claim never becomes a findable church.
 - [ ] Design it (spec): `/jsm-architect start a church`
+
+## Slice 3
+
+### 7. Prayer deck and public needs · in-progress
+Home stays the needs you can see from membership. Pray shows one open prayer at a time: your church first, then prayers within 40 km of a point the phone shares, each once per UTC day. Nearby lists open needs and open prayers in that same radius, including a church-scoped need when you are standing near that church. A prayer can carry your name or no name. An answered prayer leaves the deck and shows its praise report on the church page. A need is a public thread. Anyone who can see it can reply, and each name links to a profile.
+**Done when:** the dock is Home, Pray, Nearby, Inbox, and You; Nearby is empty until a point is shared; a church-scoped need opens for a traveler within 40 km and stays hidden farther away; a marked prayer stays off the deck until the next UTC day; an unnamed prayer stores no author; and a reply is public on the need.
+- [x] Title motion: dock and list headings rise, and a card title still morphs into its detail heading
+- [x] Nearby feed from the shared point, with church pages and Your church left in place
+- [x] Prayers, daily marks, unnamed manage token, praise report on the church page
+- [x] Public need replies, with existing offer messages copied once
+Stories are in [SPEC.md](../SPEC.md). This slice is separate from spec 0004.
+code in crates/domain, crates/sdk, crates/app
 
 ## Deferred
 

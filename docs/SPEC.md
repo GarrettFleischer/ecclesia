@@ -28,11 +28,21 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 | ID | Story | Domain | Tests |
 | --- | --- | --- | --- |
 | US-NEED-01 | An approved member can post a need for their church, scoped to the church, churches nearby, or everyone. | `post_need` | `us_need_01_*` |
-| US-NEED-02 | I can apply to a need I am allowed to see. The author is notified. I cannot apply to my own. | `apply_to_need` | `us_need_02_*`, HTTP |
+| US-NEED-02 | I can reply on a need I am allowed to see, including my own. The author is notified when someone else replies. The name on a reply links to that profile. | `reply_to_need` | `us_need_02_*`, HTTP |
 | US-NEED-03 | The author or a governor can close a need. | `close_need` | Domain |
-| US-NEED-04 | The author or a governor can receive or decline an offer. | `decide_application` | Domain |
+| US-NEED-04 | A traveler can reply on a church-scoped need when that church is within 40 km of the point they share. A farther point is refused. | `can_reply`, `NeedApproach::Near` | `us_need_07_*`, HTTP |
 | US-NEED-05 | Church / neighboring / body visibility. Pending members are not yet in the body. | `can_view_need`, `visible_need_cards`, `require_need_view` | `us_need_05_*`, HTTP |
-| US-NEED-06 | Offer messages are visible to the author or pastor, and to the person who wrote the offer. | `visible_offers` | `us_need_06_*` |
+| US-NEED-06 | Replies are public to anyone who can see the need. | `need_replies` | `us_need_02_public_reply` |
+| US-NEED-07 | Nearby lists open needs within 40 km of a shared point, including church-scoped needs. With no point, the list stays empty. | `visible_needs_near` | `us_near_01_*`, `us_need_07_*` |
+
+## Prayer
+
+| ID | Story | Domain | Tests |
+| --- | --- | --- | --- |
+| US-PRAY-01 | I can ask for prayer with my name or with no name. An unnamed prayer stores no author. The posting browser keeps a manage token. | `post_prayer` | `us_pray_01_*`, Domain |
+| US-PRAY-02 | The deck shows open prayers from my church first, then open prayers within 40 km of a shared point. My own signed prayers are skipped. With no point, the deck stops after my church. | `pick_daily_prayer` | `us_pray_02_*`, Domain |
+| US-PRAY-03 | Pray and Next each hide that prayer until the next UTC day. A prayed mark stays prayed. | `mark_prayer` | Domain, HTTP |
+| US-PRAY-04 | The author, or the browser that holds the manage token, can mark a prayer answered and write a praise report. It leaves the deck and shows on the church page. | `answer_prayer` | Domain |
 
 ## Gifts and endorsements
 
@@ -67,5 +77,5 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 | US-PROSE-01 | User-facing copy follows [PROSE.md](PROSE.md). | `style` | `us_prose_01` |
 | US-DOMAIN-01 | Domain does no I/O. | `style` | `us_domain_01` |
 | US-TONE-01 | Posted words must lift people up. The skin weighs them (Jev, OpenRouter, a local model, or the word gate) and Domain refuses `TearsDown`. | `require_uplifting`, `JudgeHub` | `us_tone_01_*` |
-| US-REFINE-01 | I can ask to rewrite a bio, need, offer, endorsement, gift note, or church description. | `RefineHub`, `/refine` | `us_refine_01_*` |
+| US-REFINE-01 | I can ask to rewrite a bio, need, reply, prayer, endorsement, gift note, or church description. | `RefineHub`, `/refine` | `us_refine_01_*` |
 | US-REFINE-02 | When I submit, I see the rewritten words, I can edit them, then I publish. | `VoicePass`, writing forms | `us_refine_02_*` |

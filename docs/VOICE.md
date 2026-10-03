@@ -106,6 +106,10 @@ Bio: Rewrite this short bio so it is clear. Keep how they named themselves. Retu
 
 Church: Rewrite this church description so it is clear. Keep where they are and who comes. Return only the rewritten text.
 
+Prayer: Rewrite this prayer request so it is clear and kind. Keep who it is for and what is happening. Return only the rewritten text.
+
+Reply: Rewrite this reply so it is clear and kind. Keep when they can come and what they can do. Return only the rewritten text.
+
 The user message for rewrite is the raw field.
 
 ## What Domain sees
