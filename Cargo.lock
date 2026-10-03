@@ -668,6 +668,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "p256",
+ "proptest",
  "rand",
  "redis",
  "reqwest",

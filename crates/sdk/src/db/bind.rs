@@ -18,3 +18,35 @@ pub fn placeholders(count: usize) -> String {
     }
     sql
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn config() -> ProptestConfig {
+        ProptestConfig {
+            cases: 64,
+            max_shrink_iters: 256,
+            ..ProptestConfig::default()
+        }
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        #[test]
+        fn us_prop_sql_01_placeholders_are_question_marks(count in 0usize..24) {
+            let sql = placeholders(count);
+            assert_eq!(sql.chars().filter(|ch| *ch == '?').count(), count);
+            assert_eq!(sql.chars().filter(|ch| *ch == ',').count(), count.saturating_sub(1));
+            assert!(!sql.contains(' '));
+            if count == 0 {
+                assert!(sql.is_empty());
+            } else {
+                assert!(sql.starts_with('?'));
+                assert!(sql.ends_with('?'));
+            }
+        }
+    }
+}
