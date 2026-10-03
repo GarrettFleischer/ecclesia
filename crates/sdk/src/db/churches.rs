@@ -2,7 +2,9 @@ use super::Db;
 use super::bind::{Bind, placeholders};
 use super::distance::haversine_km_sql;
 use super::rows::{ChurchMemberRow, ChurchRow, CountRow, map_all};
-use ecclesia_domain::{Church, ChurchMember};
+use ecclesia_domain::{Church, ChurchMember, nearby_km};
+
+const NEARBY_CHURCH_LIMIT: usize = 20;
 
 impl Db {
     pub async fn churches_for_lookup(&self) -> anyhow::Result<Vec<Church>> {
@@ -34,25 +36,29 @@ impl Db {
         }
     }
 
-    pub async fn nearest_church(
+    pub async fn churches_near(
         &self,
         latitude: f64,
         longitude: f64,
         except_id: Option<&str>,
-    ) -> anyhow::Result<Option<Church>> {
-        let distance = haversine_km_sql("?", "?", "latitude", "longitude");
-        let sql = format!("SELECT * FROM churches WHERE id != ? ORDER BY {distance} LIMIT 1");
-        Ok(self
-            .fetch_optional::<ChurchRow>(
-                &sql,
-                &[
-                    Bind::Text(except_id.unwrap_or("")),
-                    Bind::F64(latitude),
-                    Bind::F64(longitude),
-                ],
-            )
-            .await?
-            .map(Church::from))
+    ) -> anyhow::Result<Vec<Church>> {
+        if !latitude.is_finite() || !longitude.is_finite() {
+            anyhow::bail!("coordinates are not finite");
+        }
+        let distance = haversine_km_sql(
+            &sql_number(latitude),
+            &sql_number(longitude),
+            "latitude",
+            "longitude",
+        );
+        let sql = format!(
+            "SELECT * FROM churches WHERE id != ? AND {distance} <= {cutoff} ORDER BY {distance}, name, id LIMIT {NEARBY_CHURCH_LIMIT}",
+            cutoff = nearby_km(),
+        );
+        Ok(map_all(
+            self.fetch_all::<ChurchRow>(&sql, &[Bind::Text(except_id.unwrap_or(""))])
+                .await?,
+        ))
     }
 
     pub async fn church(&self, id: &str) -> anyhow::Result<Option<Church>> {
@@ -177,4 +183,8 @@ impl Db {
             .map(|(_, members, needs)| (members, needs))
             .unwrap_or((0, 0)))
     }
+}
+
+fn sql_number(value: f64) -> String {
+    format!("{value:.6}")
 }

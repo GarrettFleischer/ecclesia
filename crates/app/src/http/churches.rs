@@ -4,7 +4,7 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::views;
 use ecclesia_sdk::limit::{RateDecision, RateKind};
-use ecclesia_sdk::prelude::{Viewer, VoiceKind};
+use ecclesia_sdk::prelude::{Place, Viewer, VoiceKind};
 use ecclesia_sdk::story;
 
 use super::context::{
@@ -334,33 +334,31 @@ pub async fn join_page(
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let church_name = viewer.church.as_ref().map(|church| church.name.as_str());
     let mut flash = views::flash_for(query.ok.clone(), query.err.clone(), church_name);
-    let suggestion = match read_coords(&query.lat, &query.lng) {
+    let place = match read_coords(&query.lat, &query.lng) {
         Err(()) => {
             if flash.is_none() {
                 flash = views::flash_from(None, Some("missing".to_string()));
             }
             None
         }
-        Ok(pair) => {
-            let (lat, lng) = match pair {
-                Some((lat, lng)) => (Some(lat), Some(lng)),
-                None => (None, None),
-            };
-            match story::join_suggestion(&state.sdk, &viewer.user, lat, lng).await? {
-                Ok(church) => church,
-                Err(_) => {
-                    if flash.is_none() {
-                        flash = views::flash_from(None, Some("missing".to_string()));
-                    }
-                    None
-                }
-            }
-        }
+        Ok(Some((latitude, longitude))) => Some(Place { latitude, longitude }),
+        Ok(None) => None,
     };
-    let hits = if query.q.trim().is_empty() {
-        Vec::new()
-    } else {
-        story::search_churches(&state.sdk, &query.q, 8).await?
+    let hits = match story::join_finder(
+        &state.sdk,
+        viewer.user.church_id.as_deref(),
+        place,
+        &query.q,
+    )
+    .await?
+    {
+        Ok(hits) => hits,
+        Err(_) => {
+            if flash.is_none() {
+                flash = views::flash_from(None, Some("missing".to_string()));
+            }
+            Vec::new()
+        }
     };
     Ok(with_cookie(
         signed.jar,
@@ -369,7 +367,6 @@ pub async fn join_page(
             flash,
             count,
             &signed.session.csrf,
-            suggestion.as_ref(),
             &hits,
             &query.q,
             query.lat.trim(),

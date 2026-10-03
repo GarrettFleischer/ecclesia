@@ -427,22 +427,32 @@ pub async fn update_profile(
     .await
 }
 
-pub async fn join_suggestion(
+pub async fn join_finder(
     sdk: &Sdk,
-    user: &User,
-    latitude: Option<f64>,
-    longitude: Option<f64>,
-) -> anyhow::Result<Result<Option<Church>, DomainError>> {
-    let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
-        return Ok(Ok(None));
+    except_church_id: Option<&str>,
+    place: Option<Place>,
+    query: &str,
+) -> anyhow::Result<Result<Vec<ChurchSearchHit>, DomainError>> {
+    let query = query.trim();
+    let place = match place {
+        Some(place) => match coordinates(place.latitude, place.longitude) {
+            Ok((latitude, longitude)) => Some((latitude, longitude)),
+            Err(error) if query.is_empty() => return Ok(Err(error)),
+            Err(_) => None,
+        },
+        None => None,
     };
-    if coordinates(latitude, longitude).is_err() {
-        return Ok(Err(DomainError::InvalidInput));
+    if !query.is_empty() {
+        return Ok(Ok(search_churches(sdk, query, 8).await?));
     }
-    Ok(Ok(sdk
+    let Some((latitude, longitude)) = place else {
+        return Ok(Ok(Vec::new()));
+    };
+    let churches = sdk
         .db
-        .nearest_church(latitude, longitude, user.church_id.as_deref())
-        .await?))
+        .churches_near(latitude, longitude, except_church_id)
+        .await?;
+    Ok(Ok(churches.iter().map(search_hit).collect()))
 }
 
 pub async fn add_gift(
@@ -601,12 +611,16 @@ pub async fn search_churches(
     let churches = sdk.db.churches_for_lookup().await?;
     Ok(rank_churches(query, &churches, limit)
         .into_iter()
-        .map(|church| ChurchSearchHit {
-            id: church.id.clone(),
-            name: church.name.clone(),
-            address: church.address.clone(),
-        })
+        .map(search_hit)
         .collect())
+}
+
+fn search_hit(church: &Church) -> ChurchSearchHit {
+    ChurchSearchHit {
+        id: church.id.clone(),
+        name: church.name.clone(),
+        address: church.address.clone(),
+    }
 }
 
 pub async fn church_show(

@@ -401,7 +401,10 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("seed_grace"));
     assert!(page.contains("data-scan-code"));
     assert!(page.contains("Scan church code"));
+    assert!(page.contains("data-join-query"));
+    assert!(!page.contains("Search churches"));
     assert!(!page.contains("Have a code"));
+    assert!(!page.contains("Invite code"));
     assert!(!page.contains("class=\"dock\""));
     assert!(page.contains("Sign out"));
 
@@ -442,6 +445,44 @@ async fn us_auth_01_join_search_finds_grace() {
     .await;
     assert!(church.contains("Your request to join Grace Fellowship has been sent."));
     assert!(church.contains("class=\"dock\""));
+}
+
+#[tokio::test]
+async fn us_auth_01_join_lists_churches_near_you() {
+    let world = app().await;
+    let planter = register(&world, "Ada Pastor", "ada-plant@grace.test").await;
+    let (planter, _) = plant_at(&world, &planter, "River Church", "42.4928", "-92.3426").await;
+    let (_planter, _) = plant_at(&world, &planter, "Far Chapel", "30.2672", "-97.7431").await;
+    let seeker = register(&world, "No Church", "seeker-near@grace.test").await;
+
+    let near = get(
+        &world,
+        &seeker,
+        "/churches/join?lat=42.5349&lng=-92.4453",
+    )
+    .await;
+    let grace = near.find("<h3>Grace Fellowship</h3>").expect("grace");
+    let river = near.find("<h3>River Church</h3>").expect("river");
+    assert!(grace < river, "nearest church should come first");
+    assert!(near.contains("<h2>Nearby</h2>"));
+    assert!(near.contains("Ask to join"));
+    assert!(!near.contains("<h3>Far Chapel</h3>"));
+    assert!(!near.contains("Search churches"));
+    assert!(!near.contains("Closest church"));
+
+    let far = get(
+        &world,
+        &seeker,
+        "/churches/join?lat=30.2672&lng=-97.7431",
+    )
+    .await;
+    assert!(far.contains("<h3>Far Chapel</h3>"));
+    assert!(!far.contains("<h3>Grace Fellowship</h3>"));
+    assert!(!far.contains("<h3>River Church</h3>"));
+
+    let named = get(&world, &seeker, "/churches/join?q=River").await;
+    assert!(named.contains("River Church"));
+    assert!(!named.contains("<h2>Nearby</h2>"));
 }
 
 #[tokio::test]
@@ -582,6 +623,9 @@ async fn us_auth_01_churchless_pages_stay_on_the_church_step() {
     let (join, _, _) = get_page(world.app.clone(), Some(&cookie), "/churches/join").await;
     assert!(join.contains("Search by name"));
     assert!(join.contains("Scan church code"));
+    assert!(join.contains("data-join-query"));
+    assert!(!join.contains("Search churches"));
+    assert!(!join.contains("Invite code"));
     assert!(!join.contains("class=\"dock\""));
 }
 

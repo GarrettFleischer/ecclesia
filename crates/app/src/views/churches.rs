@@ -42,13 +42,6 @@ pub fn churches_index(
                     "Add your church"
                 }
             }
-            form class="row-form invite-form" method="post" action="/invites/redeem" {
-                (csrf_input(csrf))
-                label { "Invite code"
-                    input name="code" placeholder="a1b2c3d4" autocomplete="off" autocapitalize="none" spellcheck="false";
-                }
-                button class="btn btn-quiet" type="submit" { "Join" }
-            }
             (church_list(churches))
             (super::more_churches("/churches", next_cursor))
         },
@@ -370,7 +363,6 @@ pub fn join_church_page(
     flash: Option<Flash>,
     unread: i64,
     csrf: &str,
-    suggestion: Option<&Church>,
     hits: &[ChurchSearchHit],
     query: &str,
     lat: &str,
@@ -393,35 +385,28 @@ pub fn join_church_page(
             }
             (page_lead("Find your church"))
             a class="btn btn-quiet" href="/churches/new" { "Add your church" }
-            form class="row-form invite-form" method="post" action="/invites/redeem" {
-                (csrf_input(csrf))
-                label { "Invite code"
-                    input name="code" placeholder="a1b2c3d4" autocomplete="off" autocapitalize="none" spellcheck="false";
-                }
-                button class="btn btn-quiet" type="submit" { "Join" }
-            }
-            (suggestion_block(suggestion, csrf))
             section {
                 h2 { "Search by name" }
-                form class="stack" method="get" action="/churches/join" {
+                form class="stack" method="get" action="/churches/join" data-join-finder {
                     input type="hidden" name="lat" value=(lat);
                     input type="hidden" name="lng" value=(lng);
                     div class="search-line" {
                         label { "Church name"
-                            input name="q" value=(query) maxlength="120" placeholder="Grace Fellowship";
+                            input type="search" name="q" value=(query) maxlength="120" placeholder="Grace Fellowship" autocomplete="off" data-join-query;
                         }
                         button class="btn btn-quiet scan-btn" type="button" data-scan-code aria-label="Scan church code" {
                             span class="btn-icon" aria-hidden="true" { (icon(Icon::Qr)) }
                         }
                     }
-                    button class="btn" type="submit" { "Search churches" }
                 }
                 p class="scan-note" data-scan-status role="status" {}
                 div class="scan-sheet" data-scan-sheet hidden {
                     video data-scan-video autoplay playsinline muted {}
                     button class="btn" type="button" data-scan-close { "Close" }
                 }
-                (search_hits(hits, csrf))
+                div class="join-results" data-join-results aria-live="polite" {
+                    (join_results(hits, query, lat, lng, csrf))
+                }
             }
             @if viewer.user.church_id.is_none() {
                 form class="account-end" method="post" action="/session/logout" {
@@ -429,47 +414,50 @@ pub fn join_church_page(
                     button class="btn btn-quiet" type="submit" { "Sign out" }
                 }
             }
-            script src="/static/join.js?v=3" defer {}
+            script src="/static/join.js?v=4" defer {}
         },
     )
 }
 
-fn suggestion_block(suggestion: Option<&Church>, csrf: &str) -> Markup {
-    let Some(church) = suggestion else {
+fn join_results(
+    hits: &[ChurchSearchHit],
+    query: &str,
+    lat: &str,
+    lng: &str,
+    csrf: &str,
+) -> Markup {
+    let named = !query.trim().is_empty();
+    let located = !lat.trim().is_empty() && !lng.trim().is_empty();
+    if hits.is_empty() {
+        if named {
+            return html! { p class="muted" { "No churches with that name." } };
+        }
+        if located {
+            return html! { p class="muted" { "No churches nearby." } };
+        }
         return html! {};
-    };
+    }
     html! {
-        section {
-            h2 { "Closest church" }
-            article class="card" {
-                h3 { (church.name) }
-                p class="muted" { (church.address) }
-                form method="post" action="/churches/join" {
-                    (csrf_input(csrf))
-                    input type="hidden" name="church_id" value=(church.id);
-                    button class="btn" type="submit" { "Ask to join" }
-                }
+        @if !named && located {
+            h2 { "Nearby" }
+        }
+        div class="stack" {
+            @for hit in hits {
+                (join_hit(hit, csrf))
             }
         }
     }
 }
 
-fn search_hits(hits: &[ChurchSearchHit], csrf: &str) -> Markup {
-    if hits.is_empty() {
-        return html! {};
-    }
+fn join_hit(hit: &ChurchSearchHit, csrf: &str) -> Markup {
     html! {
-        div class="stack" {
-            @for hit in hits {
-                article class="card" {
-                    h3 { (hit.name) }
-                    p class="muted" { (hit.address) }
-                    form method="post" action="/churches/join" {
-                        (csrf_input(csrf))
-                        input type="hidden" name="church_id" value=(hit.id);
-                        button class="btn" type="submit" { "Ask to join" }
-                    }
-                }
+        article class="card" {
+            h3 { (hit.name) }
+            p class="muted" { (hit.address) }
+            form method="post" action="/churches/join" {
+                (csrf_input(csrf))
+                input type="hidden" name="church_id" value=(hit.id);
+                button class="btn" type="submit" { "Ask to join" }
             }
         }
     }

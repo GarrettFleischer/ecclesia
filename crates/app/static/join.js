@@ -13,12 +13,117 @@ function inviteCode(raw) {
 }
 
 (function () {
-  var params = new URLSearchParams(window.location.search);
-  if (!params.has("lat") && navigator.geolocation) {
+  var form = document.querySelector("[data-join-finder]");
+  var box = document.querySelector("[data-join-query]");
+  var pause = null;
+  var flight = null;
+  var generation = 0;
+  var pauseMs = 300;
+
+  function fieldValue(name) {
+    if (!form) {
+      return "";
+    }
+    var field = form.querySelector("[name='" + name + "']");
+    return field ? field.value.trim() : "";
+  }
+
+  function finderUrl() {
+    var params = new URLSearchParams();
+    var lat = fieldValue("lat");
+    var lng = fieldValue("lng");
+    var q = box ? box.value.trim() : "";
+    if (lat && lng) {
+      params.set("lat", lat);
+      params.set("lng", lng);
+    }
+    if (q) {
+      params.set("q", q);
+    }
+    var query = params.toString();
+    return query ? "/churches/join?" + query : "/churches/join";
+  }
+
+  function paintFailure() {
+    var current = document.querySelector("[data-join-results]");
+    if (current) {
+      current.textContent = "The list didn't load. Try again.";
+    }
+  }
+
+  function run() {
+    generation += 1;
+    var ticket = generation;
+    if (flight) {
+      flight.abort();
+    }
+    flight = new AbortController();
+    var url = finderUrl();
+    fetch(url, { signal: flight.signal, headers: { Accept: "text/html" } })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("list");
+        }
+        return response.text();
+      })
+      .then(function (html) {
+        if (ticket !== generation) {
+          return;
+        }
+        var doc = new DOMParser().parseFromString(html, "text/html");
+        var next = doc.querySelector("[data-join-results]");
+        var current = document.querySelector("[data-join-results]");
+        if (!next || !current) {
+          return;
+        }
+        current.replaceWith(next);
+        if (window.location.pathname + window.location.search !== url) {
+          history.replaceState(null, "", url);
+        }
+      })
+      .catch(function (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+        if (ticket !== generation) {
+          return;
+        }
+        paintFailure();
+      });
+  }
+
+  function schedule(immediate) {
+    window.clearTimeout(pause);
+    pause = window.setTimeout(run, immediate ? 0 : pauseMs);
+  }
+
+  if ((!fieldValue("lat") || !fieldValue("lng")) && navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function (pos) {
-      params.set("lat", String(pos.coords.latitude));
-      params.set("lng", String(pos.coords.longitude));
-      window.location.search = params.toString();
+      var latField = form && form.querySelector("[name='lat']");
+      var lngField = form && form.querySelector("[name='lng']");
+      if (latField) {
+        latField.value = String(pos.coords.latitude);
+      }
+      if (lngField) {
+        lngField.value = String(pos.coords.longitude);
+      }
+      window.location.assign(finderUrl());
+    });
+  }
+
+  if (form) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      schedule(true);
+    });
+  }
+
+  if (box) {
+    box.addEventListener("input", function () {
+      schedule(false);
+    });
+    box.addEventListener("search", function () {
+      schedule(true);
     });
   }
 

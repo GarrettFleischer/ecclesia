@@ -895,7 +895,6 @@ form.stack {
 
 .panel,
 .card,
-.invite-form,
 .people {
   background: var(--surface);
   box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line), inset 0 1px 0 var(--edge);
@@ -1192,12 +1191,6 @@ main > .card-top {
   overflow-wrap: anywhere;
 }
 
-.invite-form {
-  margin: 0 0 1.5rem;
-  padding: 1rem 1.1rem 1.1rem;
-  border-radius: var(--r-lg);
-}
-
 .account-end {
   margin: 0.65rem 0 0;
 }
@@ -1356,6 +1349,19 @@ form.stack > .btn {
   width: 1.35rem;
   height: 1.35rem;
   margin: 0;
+}
+
+.join-results {
+  margin-top: 1.5rem;
+}
+
+.join-results:empty {
+  display: none;
+  margin: 0;
+}
+
+.join-results > h2:first-child {
+  margin-top: 0.4rem;
 }
 
 .scan-note:empty {

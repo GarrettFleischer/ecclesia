@@ -305,7 +305,7 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=16";
+                link rel="stylesheet" href="/static/app.css?v=17";
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
