@@ -383,8 +383,13 @@ main.sheet-landing {
 .page-rise > :nth-child(5) { animation-delay: 200ms; }
 .page-rise > :nth-child(n + 6) { animation-delay: 250ms; }
 
-.page-rise > :is(h1.title-morph, :has(h1.title-morph)) {
+.page-rise > :is(h1, :has(h1)) {
   animation: none;
+}
+
+.page-rise:not(.sheet-landing) h1:not(.title-morph) {
+  transform-origin: 0 50%;
+  animation: title-settle 720ms var(--ease-out) both;
 }
 
 h1,
@@ -2695,6 +2700,36 @@ input.is-invalid:focus {
   }
 }
 
+@keyframes title-settle {
+  0% {
+    opacity: 0;
+    scale: 1.58;
+    animation-timing-function: linear;
+  }
+
+  20% {
+    opacity: 1;
+    scale: 1.46;
+    animation-timing-function: var(--ease-out);
+  }
+}
+
+@media (max-width: 36rem) {
+  @keyframes title-settle {
+    0% {
+      opacity: 0;
+      scale: 1.28;
+      animation-timing-function: linear;
+    }
+
+    20% {
+      opacity: 1;
+      scale: 1.16;
+      animation-timing-function: var(--ease-out);
+    }
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -2980,6 +3015,7 @@ input.is-invalid:focus {
   }
 
   .page-rise > *,
+  main h1,
   .glow,
   .hero-scene,
   .hero-rays,

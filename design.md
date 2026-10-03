@@ -51,9 +51,9 @@ Cards are translucent over the pre-blurred wallpaper and carry no `backdrop-filt
 
 ## Motion
 
-`.page-rise` staggers the page in once. The h1 stays put because it is the shared element.
+`.page-rise` staggers the page in once. A tab heading starts large and shrinks to its size. The same motion runs on every tab. A detail heading stays put because it is the shared element.
 
-Cross-document view transitions (`@view-transition`). The page title morphs between pages. The dock pill glides to the new tab on `--spring`. Opening a card moves the `page-title` name onto that card's h3 (`hookTitleMorph` in `app.js`), so the card title becomes the next page's h1.
+Cross-document view transitions (`@view-transition`). Opening a card moves the `page-title` name onto that card's h3 (`hookTitleMorph` in `app.js`), so the card title becomes the next page's h1. The dock pill glides to the new tab on `--spring`.
 
 Scroll-driven, inside `@supports (animation-timeline: view())`: cards and people rows reveal as they enter, the top bar frosts after the first 4rem, and the hero drifts and fades. Browsers without it get the settled state.
 
