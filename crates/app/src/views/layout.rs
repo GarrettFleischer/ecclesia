@@ -39,7 +39,6 @@ impl DockState {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
-    Home,
     Church,
     Pin,
     Inbox,
@@ -185,9 +184,6 @@ pub fn icon(glyph: Icon) -> Markup {
 
 fn icon_paths(glyph: Icon) -> Markup {
     match glyph {
-        Icon::Home => html! {
-            path d="M4 10.2 12 4l8 6.2V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" {}
-        },
         Icon::Church => html! {
             path d="M12 2.75v3.5M10.4 4.25h3.2" {}
             path d="M5 20.25V11.5L12 7l7 4.5v8.75" {}
@@ -228,8 +224,9 @@ fn icon_paths(glyph: Icon) -> Markup {
             path d="M6.6 6.6h1.3v1.3H6.6zM16.1 6.6h1.3v1.3h-1.3zM6.6 16.1h1.3v1.3H6.6z" fill="currentColor" stroke="none" {}
             path d="M14 14h2.2v2.2H14zM18.3 14H19.5v2.2h-1.2zM14 18.3h2.2V19.5H14zM16.8 16.2h2.7V19.5h-2.7z" {}
         },
+        // Mingcute pray-line, Apache-2.0.
         Icon::Pray => html! {
-            path d="M12 3.2s4.2 4.4 4.2 7.6a4.2 4.2 0 0 1-8.4 0C7.8 7.6 12 3.2 12 3.2z" {}
+            path d="M7 14.5L8 19m9-4.5L16 19m4-4l-2.158-.54a3 3 0 0 1-2.214-2.322L14.176 4.88a1.093 1.093 0 0 0-2.166.215v9.89a4 4 0 0 0 2.9 3.846l3.047.872a1 1 0 0 0 1.256-.766zm-15.537-.116l1.695-.424a3 3 0 0 0 2.214-2.322l1.451-7.255A1.099 1.099 0 0 1 12 5.1v9.884a4 4 0 0 1-2.901 3.846l-3.056.873a1 1 0 0 1-1.256-.765l-.694-3.47a.5.5 0 0 1 .37-.583" {}
         },
         Icon::Print => html! {
             path d="M7 8.25V4.5h10v3.75" {}
@@ -494,7 +491,7 @@ fn topbar(nav: Nav, user: Option<&User>) -> Markup {
 fn dock(nav: Nav, unread: i64) -> Markup {
     html! {
         nav class="dock" aria-label="Primary" {
-            (dock_link("/home", "Home", Icon::Home, DockState::for_nav(nav, Nav::Home), None))
+            (dock_link("/home", "Home", Icon::Church, DockState::for_nav(nav, Nav::Home), None))
             (dock_link("/pray", "Pray", Icon::Pray, DockState::for_nav(nav, Nav::Pray), None))
             (dock_link("/nearby", "Nearby", Icon::Pin, DockState::for_nav(nav, Nav::Body), None))
             (dock_link("/inbox", "Inbox", Icon::Inbox, DockState::for_nav(nav, Nav::Inbox), unread_badge(unread)))
