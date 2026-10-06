@@ -29,8 +29,8 @@ Upstash Redis protocol. Explicit key delete on commit. In process fallback only 
 | `InsertUser` | none (no public fragment) |
 | `UpdateUser` | none |
 | `InsertChurch` | `directory`, `church:{id}` |
-| `InsertMembership` | `church:{church_id}`, `directory` |
-| `SetMembershipStatus` | `church:{church_id}`, `directory` |
+| `UpsertMembership` | `directory`, `church:{church_id}` |
+| `DeleteMembership` | `directory`, `church:{church_id}` |
 | `InsertNeed` | `church:{church_id}`, `directory` |
 | `SetNeedStatus` | `church:{church_id}`, `directory` |
 | `InsertApplication` | none |
@@ -40,7 +40,7 @@ Upstash Redis protocol. Explicit key delete on commit. In process fallback only 
 | `UpsertMemberGift` | none (catalog is the gift list, not member gifts) |
 | `RemoveMemberGift` | none |
 
-`SetMembershipStatus` and `SetNeedStatus` carry only `{id, status}` in Domain. SDK commit, in the same transaction, reads `church_id` from `memberships` or `needs` by that id before it deletes keys. Do not add fields to Domain `Write` in this spec.
+`UpsertMembership` and `DeleteMembership` carry `church_id`. `SetNeedStatus` carries only `{id, status}`. SDK commit reads `church_id` from `needs` by that id before it deletes keys.
 
 `catalog` deletes when a later story mutates the `gifts` table. Seed stays a boot path, not a `Write`.
 

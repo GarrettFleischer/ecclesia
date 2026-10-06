@@ -14,10 +14,10 @@ _These are recommendations to keep your build orderly, not requirements._
 | 1 | Scale persistence foundation | Foundation | done |
 | 2 | Identity and sessions | Foundation | done |
 | 3 | Hybrid access and refresh tokens | Slice 1 | done |
-| 4 | Create account without a church | Slice 2 | in-progress |
-| 5 | Join a church | Slice 2 | planned |
+| 4 | Create account without a church | Slice 2 | done |
+| 5 | Join a church | Slice 2 | done |
 | 6 | Start a church | Slice 2 | planned |
-| 7 | Prayer deck and public needs | Slice 3 | in-progress |
+| 7 | Prayer deck and public needs | Slice 3 | done |
 
 ## Foundations
 
@@ -71,24 +71,26 @@ code in crates/sdk, crates/app
 
 ## Slice 2
 
-### 4. Create account without a church · in-progress
-Create account asks for first name, last name, email, and password. Onboarding is You, then the church, unless an invite link already chose the church. The church building stores an address and coordinates. Until they have a church, Find your church is the only app page. They join the closest church if they allow location, or search by name or scan a QR code.
-**Done when:** creating an account no longer asks for a church, a signed in person can join or switch church from profile, they have at most one church, and a granted device location suggests the nearest church.
+### 4. Create account without a church · done
+Create account asks for first name, last name, email, and password. Onboarding is You, then the church, unless an invite link already chose the church. The church building stores an address and coordinates. Until they have a church, Find your church is the only app page. They can belong to more than one church. They join the closest church if they allow location, or search by name or scan a QR code.
+**Done when:** creating an account no longer asks for a church, a signed in person with no church stays on Find your church, profile lists every church they belong to, and a granted device location suggests the nearest church.
 - [x] Design it (spec): `/jsm-architect create account without a church`
 - [x] Engineer it: `/jsm-engineer create account without a church`
 - [x] Build it: `/jsm-develop create account without a church`
    - [x] Person name columns and register without a church (AC-1, AC-2, AC-3, AC-4, AC-7)
-   - [x] Home, profile, and `/api/me` without a person place; profile can open join for the one church (AC-5, AC-6, AC-10)
+   - [x] Home, profile, and `/api/me` without a person place; profile lists every church and can add another (AC-5, AC-6, AC-10)
    - [x] Church address and coordinates, and closest suggestion on `/churches/join` (AC-8, AC-9)
 - [x] Verify it: `/jsm-check verify create account without a church`
 - [x] Test it: `/jsm-test create account without a church`
+- [x] Document it: membership is a join table, and a person may belong to more than one church
 spec [0004](../specs/0004-account-without-church/index.md)
 code in crates/domain, crates/sdk, crates/app
 
-### 5. Join a church · planned · needs a decision
-After the account exists, `/churches/join` suggests the closest church when location is allowed (spec 0004). A church code makes them a member right away. A name search waits until a pastor accepts.
-**Done when:** a signed in person can join from a church code immediately, or request to join from a name search sorted by device location, and only an accepted request makes them a member.
-- [ ] Design it (spec): `/jsm-architect join a church`
+### 5. Join a church · done · from spec 0004
+After the account exists, `/churches/join` suggests the closest church when location is allowed. A church code makes them a member right away and keeps any other churches. A name search waits until a pastor accepts. Nearby matches come first when the device shares a point.
+**Done when:** a signed in person can join from a church code immediately, or request to join from a name search, and only an accepted request makes them a member.
+- [x] Design it (spec): shipped with [0004](../specs/0004-account-without-church/index.md)
+- [x] Build it: code join, pending name search, pastor approve or decline (`US-MEM-01`, `US-MEM-04`)
 
 ### 6. Start a church · planned · needs a decision · GA
 A signed in person can start a church in a short wizard. They give the United States employer identification number, the state charity or corporation number, and the facts that show they are the pastor. A reviewer checks that claim. Other people cannot find or join the church until the check passes.
@@ -97,11 +99,11 @@ A signed in person can start a church in a short wizard. They give the United St
 
 ## Slice 3
 
-### 7. Prayer deck and public needs · in-progress
-Home stays the needs you can see from membership. Pray shows one open prayer at a time: your church first, then prayers within 40 km of a point the phone shares, each once per UTC day. Nearby lists open needs and open prayers in that same radius, including a church-scoped need when you are standing near that church. A prayer can carry your name or no name. An answered prayer leaves the deck and shows its praise report on the church page. A need is a public thread. Anyone who can see it can reply, and each name links to a profile.
+### 7. Prayer deck and public needs · done
+Home stays the needs you can see from membership. Pray shows one open prayer at a time: a church you are active in first, then prayers from churches within 40 km of any of those churches, each once per UTC day. Nearby lists open needs and open prayers within 40 km of a shared point, including a church-scoped need when you are standing near that church. A prayer can carry your name or no name. An answered prayer leaves the deck and shows its praise report on the church page. A need is a public thread. Anyone who can see it can reply, and each name links to a profile.
 **Done when:** the dock is Home, Pray, Nearby, Inbox, and You; Nearby is empty until a point is shared; a church-scoped need opens for a traveler within 40 km and stays hidden farther away; a marked prayer stays off the deck until the next UTC day; an unnamed prayer stores no author; and a reply is public on the need.
 - [x] Title motion: dock and list headings rise, and a card title still morphs into its detail heading
-- [x] Nearby feed from the shared point, with church pages and Your church left in place
+- [x] Nearby feed from the shared point, with church pages and Your churches left in place
 - [x] Prayers, daily marks, unnamed manage token, praise report on the church page
 - [x] Public need replies, with existing offer messages copied once
 Stories are in [SPEC.md](../SPEC.md). This slice is separate from spec 0004.

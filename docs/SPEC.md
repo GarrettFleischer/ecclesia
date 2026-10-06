@@ -6,7 +6,7 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 
 | ID | Story | Domain / SDK | Tests |
 | --- | --- | --- | --- |
-| US-AUTH-01 | I can create an account with name, email, city, region, how I serve, and a password. A used email or weak password is refused. | `register`, SDK hash | `us_auth_01_*` |
+| US-AUTH-01 | I can create an account with first name, last name, email, and a password. A used email or weak password is refused. The account starts with no church. | `register`, SDK hash | `us_auth_01_*` |
 | US-AUTH-02 | I can sign in with email and password. The cookie is `v2` and points at a session row both App processes load. | SDK `sign_in`, `resolve_session` | `us_auth_02_*` |
 | US-AUTH-03 | I can change my password, sign out everywhere, or revoke one device. Those actions delete session rows. | SDK identity stories | `us_auth_03_*` |
 | US-AUTH-04 | Unknown email, wrong password, and bad tokens miss quietly so an inbox cannot be probed. | SDK sign in / mail | `us_auth_04_*` |
@@ -16,20 +16,20 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 
 | ID | Story | Domain | Tests |
 | --- | --- | --- | --- |
-| US-MEM-01 | I can ask to join a church. Pastors and stewards are notified. I cannot ask twice. | `request_join` | `us_mem_01_*` |
+| US-MEM-01 | I can ask to join a church. Pastors and stewards are notified. I cannot ask twice for the same church. Other churches stay. | `request_join` | `us_mem_01_*` |
 | US-MEM-02 | A pastor or steward can invite someone already in Ecclesia by email. A member cannot. | `invite_member` | `us_mem_02_*` |
 | US-MEM-03 | I can redeem an invite code. The pastor already chose; I still confirm. | `redeem_invite` | Domain |
 | US-MEM-04 | A pastor or steward can approve or decline a pending request. A member cannot. The person is notified. | `decide_membership` | `us_mem_04_*`, HTTP |
 | US-MEM-05 | Only the invited person can accept an invite. | `accept_invite` | `us_mem_05_*` |
-| US-CH-01 | I can plant a church and become its owner. | `plant_church` | `us_ch_01_*` |
+| US-CH-01 | I can plant a church and become its owner. Churches I already belong to stay. | `plant_church` | `us_ch_01_*` |
 
 ## Needs
 
 | ID | Story | Domain | Tests |
 | --- | --- | --- | --- |
-| US-NEED-01 | An approved member can post a need for their church, scoped to the church, churches nearby, or everyone. | `post_need` | `us_need_01_*` |
+| US-NEED-01 | An approved member can post a need for a church they are active in, scoped to the church, churches nearby, or everyone. | `post_need` | `us_need_01_*` |
 | US-NEED-02 | I can reply on a need I am allowed to see, including my own. The author is notified when someone else replies. The name on a reply links to that profile. | `reply_to_need` | `us_need_02_*`, HTTP |
-| US-NEED-03 | The author or a governor can close a need. | `close_need` | Domain |
+| US-NEED-03 | The author marks a need met with a praise report, and can reopen it until it is archived. | `close_need`, `reopen_need` | Domain |
 | US-NEED-04 | A traveler can reply on a church-scoped need when that church is within 40 km of the point they share. A farther point is refused. | `can_reply`, `NeedApproach::Near` | `us_need_07_*`, HTTP |
 | US-NEED-05 | Church / neighboring / body visibility. Pending members are not yet in the body. | `can_view_need`, `visible_need_cards`, `require_need_view` | `us_need_05_*`, HTTP |
 | US-NEED-06 | Replies are public to anyone who can see the need. | `need_replies` | `us_need_02_public_reply` |
@@ -40,7 +40,7 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 | ID | Story | Domain | Tests |
 | --- | --- | --- | --- |
 | US-PRAY-01 | I can ask for prayer with my name or with no name. An unnamed prayer stores no author. The posting browser keeps a manage token. | `post_prayer` | `us_pray_01_*`, Domain |
-| US-PRAY-02 | The deck shows open prayers from my church first, then open prayers within 40 km of a shared point. My own signed prayers are skipped. With no point, the deck stops after my church. | `pick_daily_prayer` | `us_pray_02_*`, Domain |
+| US-PRAY-02 | The deck shows open prayers from any church I am active in first, then open prayers from churches within 40 km of those churches. My own signed prayers are skipped. Prayers from where I am are on Nearby. | `pick_daily_prayer` | `us_pray_02_*`, Domain |
 | US-PRAY-03 | Pray and Next each hide that prayer until the next UTC day. A prayed mark stays prayed. | `mark_prayer` | Domain, HTTP |
 | US-PRAY-04 | The author, or the browser that holds the manage token, can mark a prayer answered and write a praise report. It leaves the deck and shows on the church page. | `answer_prayer` | Domain |
 
@@ -56,7 +56,7 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 
 | ID | Story | Domain | Tests |
 | --- | --- | --- | --- |
-| US-BODY-01 | Churches in the same city or region are neighbors. | `churches_are_neighbors` | `us_body_01_*` |
+| US-BODY-01 | Churches within 40 km are neighbors. | `churches_are_neighbors` | `us_body_01_*` |
 
 ## App shell
 

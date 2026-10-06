@@ -13,7 +13,7 @@ The public host uses Neon Postgres through a pooled URL. `cargo run` on a laptop
 **Acceptance criteria**:
 - **AC-P1**: On a public host (`FLY_APP_NAME` set or `ECCLESIA_PUBLIC=1`) boot requires `DATABASE_URL` with a `postgres` or `postgresql` scheme and refuses a missing URL. Otherwise `sqlite` (or the current default `sqlite://ecclesia.db`) opens SQLite WAL as today.
 - **AC-P2**: Public App and worker use the Neon pooler URL. sqlx stays on runtime queries, not `query!`. (basis: [Neon pooling](https://neon.com/docs/connect/connection-pooling))
-- **AC-P3**: Schema gains the indexes listed below. Existing uniques stay (`users.email`, `churches.invite_code`, `memberships(church_id, user_id)`, `applications(need_id, user_id)`).
+- **AC-P3**: Schema gains the indexes listed below. Existing uniques stay (`users.email`, `churches.invite_code`, `memberships` primary key `(user_id, church_id)`, `applications(need_id, user_id)`). A person may have a row in many churches.
 - **AC-P4**: Shared query strings use `?`. The SDK rewrites placeholders to `$1`…`$n` when the driver is Postgres. No `sqlx::Any`.
 - **AC-P5**: Domain tests and MemoryWorld tests do not start Postgres. HTTP flow tests may keep SQLite.
 - **AC-P6**: Neon is configured for point in time recovery and a daily snapshot (operator checklist, not application code).

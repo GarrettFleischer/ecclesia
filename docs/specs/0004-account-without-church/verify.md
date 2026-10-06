@@ -1,7 +1,7 @@
-# Verify: create account without a church · spec 0004 · updated 2026-10-02
+# Verify: create account without a church · spec 0004 · updated 2026-10-06
 _Steps derived from spec 0004 acceptance criteria. `/jsm-check verify` runs these; `/jsm-test` locks the durable ones._
 
-**Result (2026-10-02): pass.** Onboarding is You, then the church. An invite link shows that church on You and joins it when the account is created. A signed in person who opens the link joins immediately. With no church, Find your church is the only app page. Asking to join opens that church without a refresh. Checked in the browser against a throwaway database. The original `ecclesia.db` was not started.
+**Result (2026-10-06): pass.** Onboarding is You, then the church. An invite link shows that church on You and joins it when the account is created. A signed in person who opens the link joins immediately. With no church, Find your church is the only app page. Asking to join opens that church and keeps any church they already have. Leaving one church while another remains stays on `/me`. Leaving or closing the last church returns to Find your church. `GET /api/me` returns `memberships`.
 
 ## UI / manual
 
@@ -17,18 +17,18 @@ _Steps derived from spec 0004 acceptance criteria. `/jsm-check verify` runs thes
 - [x] Ask to join a church, then open `/home`. The Waiting section names that church. → AC-5
 - [x] On `/me`, edit first name, last name, and about you. There is no city, region, or address field. Save lands on `/me` with the saved flash. → AC-6
 - [x] On `/me` with no church, the browser returns to `/churches/join`. → AC-5, AC-6
-- [x] On `/me` while a join is waiting, the church name shows with Waiting, and Find your church still goes to `/churches/join`. → AC-6, AC-10
+- [x] On `/me` while a join is waiting, that church name shows with Waiting. Find another church goes to `/churches/join`. Other churches stay listed. → AC-6, AC-10
 - [x] On `/churches/new`, enter an address and coordinates. The form has no city or region. After save, the church page shows the address. → AC-8
 - [x] Open `/churches/join` with location allowed. One closest church is suggested, with its address. Deny location and the suggestion is absent. Name search remains, with a QR icon beside the search box. → AC-9
-- [x] From `/churches/join`, ask to join by name. The browser opens that church and the page says the request has been sent. The link is pending and any previous church is gone. Join with a code. The browser opens that church, the new church is active, and the previous church is gone. → AC-5, AC-10
+- [x] From `/churches/join`, ask to join by name. The browser opens that church and the page says the request has been sent. The link is pending and any previous church stays. Join with a code. The browser opens that church, the new church is active, and the previous church stays. → AC-5, AC-10
 
 ## Commands
 
 - [x] `cargo test -p ecclesia --test flows us_auth_01_weak_password_stays_on_register` → the weak password form keeps first name, last name, and email → AC-3, AC-7
 - [x] `cargo test -p ecclesia --test flows us_auth_01_join_search_finds_grace` → a signed in name search on `/churches/join` finds Grace Fellowship → AC-2, AC-9
-- [x] `cargo test -p ecclesia --test flows us_api_01_json_sign_in_refresh_and_me` → `GET /api/me` returns first name, last name, email, and a null church id → AC-6
+- [x] `cargo test -p ecclesia --test flows us_api_01_json_sign_in_refresh_and_me` → `GET /api/me` returns first name, last name, email, and an empty `memberships` array → AC-6
 - [x] `cargo test -p ecclesia --test flows us_mem_04_pastor_can_approve_a_join_request` → one pending join can be approved from the church page → AC-5, AC-10
-- [x] `cargo test -p ecclesia-domain --lib` → register stores no church, and a second join replaces the first → AC-1, AC-4, AC-8, AC-10
+- [x] `cargo test -p ecclesia-domain --lib` → register stores no church, and a second join keeps the first → AC-1, AC-4, AC-8, AC-10
 
 ## Value sourcing
 
@@ -38,17 +38,17 @@ _Steps derived from spec 0004 acceptance criteria. `/jsm-check verify` runs thes
 - [x] After register, the user id and created at are set by the server, not the form. → Register id and created at
 - [x] After register, the password column is a hash, not the typed password. → Register password hash
 - [x] After register, the session cookie is present and `/churches/join` loads for that person. → Register session
-- [x] After register, church id, church status, and church role are empty. → Register membership
+- [x] After register, `memberships` is empty. → Register membership
 - [x] `/home` does not print a city or a region. → Home place line
 - [x] Open `/churches/join?lat=42.5349&lng=-92.4453`. The suggestion is the nearest church. Open the same page with no coordinates and there is no suggestion. The coordinates are not saved on the user. → Closest church
 - [x] The suggestion card prints `churches.address`. → Church building place
 - [x] Search `/churches/join?q=Grace` with no lat or lng. The QR icon is beside the search box, and there is no invite code field. → Name search and QR
 - [x] A person with no church sees Find your church, and Home sends them there. → Home no church line
-- [x] A pending link shows that church name and Waiting. An active link shows the church name without Waiting. → Profile church line
-- [x] The Find your church link on `/me` goes to `/churches/join`. → Profile change church
-- [x] Joining a second church leaves one church id on the user. A code sets it active. A name sets it pending. → Join
+- [x] A pending link shows that church name and Waiting. An active link shows the church name without Waiting. Both can appear together. → Profile church line
+- [x] Find another church on `/me` goes to `/churches/join`. → Profile add a church
+- [x] Joining a second church keeps the first. A code sets the new row active. A name sets the new row pending. → Join
 - [x] Saving `/me` updates first name, last name, and bio, and does not change the church link. → Profile save
-- [x] `GET /api/me` returns first name, last name, email, and bio from the user row, and church id from that same row. It does not return city or region. → `/api/me`
+- [x] `GET /api/me` returns first name, last name, email, and bio from the user row, and `memberships` from the live join. It does not return city, region, or a single church id. → `/api/me`
 
 ## Acceptance-criteria coverage
 
@@ -61,4 +61,4 @@ _Steps derived from spec 0004 acceptance criteria. `/jsm-check verify` runs thes
 - AC-7 covered by the form maxlength and the weak password redisplay
 - AC-8 covered by the church form address and coordinates
 - AC-9 covered by the join page with and without coordinates
-- AC-10 covered by a second join leaving one church, pending for a name and active for a code
+- AC-10 covered by a second join keeping the first church, pending for a name and active for a code

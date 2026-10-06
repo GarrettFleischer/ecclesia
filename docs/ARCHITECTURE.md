@@ -63,8 +63,8 @@ fails the build if a domain file grows I/O.
 | `domain/directory.rs` | church counts and place grouping |
 | `domain/flags.rs` | named states that used to be booleans |
 | `domain/notice.rs` | notice drafts, including governor fan-out |
-| `domain/household.rs` | church and membership records |
-| `domain/person.rs` | people, gifts, endorsements, `Viewer` |
+| `domain/household.rs` | church records |
+| `domain/person.rs` | people, memberships, gifts, endorsements, `Viewer` |
 | `domain/need.rs` | needs, applications, borrowed `NeedSight` |
 | `domain/effect.rs` | `Write`, `Effect`, `DomainError` |
 | `domain/model.rs` | re-exports the record modules |

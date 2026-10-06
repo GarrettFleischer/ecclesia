@@ -4,7 +4,7 @@
 
 Create account requires a church id. The SDK copies that church's city and region onto the user and files a join in the same transaction. The engineer wants the church step after the account exists.
 
-An address belongs on the church building, not on the person. The building stores a multiline postal address and WGS84 latitude and longitude so the app can suggest the closest church. There are no live users or churches to preserve, so person city and region, and church city and region, are dropped. After register, `/churches/join` suggests that closest church only when the browser sends a granted device location. Otherwise the person searches by name or scans a QR code. The profile is the person's name, what they write about themselves, and the church they have joined or are waiting on.
+An address belongs on the church building, not on the person. The building stores a multiline postal address and WGS84 latitude and longitude so the app can suggest the closest church. There are no live users or churches to preserve, so person city and region, and church city and region, are dropped. After register, `/churches/join` suggests that closest church only when the browser sends a granted device location. Otherwise the person searches by name or scans a QR code. The profile is the person's name, what they write about themselves, and each church they have joined or are waiting on.
 
 The engineer also asked for one validation definition on the browser and the server, and asked whether Zod fits. This crate is Rust on the server and Maud HTML in the browser. Zod does not run in Rust, and there is no binding that keeps one Zod schema as the domain check.
 
