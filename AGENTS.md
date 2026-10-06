@@ -17,6 +17,7 @@ Tracer Bullet (thin end to end slices through Domain, SDK, and App).
 ## Git
 
 - integration: off
+- Production deploy: push to `main` only. [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs tests then Fly deploy. Agents do not run manual `fly deploy` unless the user explicitly asks.
 
 ## Commands
 

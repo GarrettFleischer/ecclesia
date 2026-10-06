@@ -1,0 +1,27 @@
+---
+description: Production deploys and remote database migration go through GitHub Actions only
+alwaysApply: true
+---
+
+Production ships through GitHub Actions, not from a laptop.
+
+## Deploy path
+
+- Pushes to `main` run [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): `cargo test --workspace`, then `flyctl deploy --remote-only --now`.
+- Do **not** run `fly deploy`, `flyctl deploy`, or other manual Fly deploys to production unless the user explicitly asks for an exception.
+- To ship: fix failing CI, commit, push to `main`, then watch the **Deploy** workflow. Use `workflow_dispatch` on that workflow only when the user asks to redeploy without a new commit.
+
+## Remote database
+
+- Schema changes live in `crates/sdk/src/db/schema.rs` and run in `Db::migrate()` on app and worker boot.
+- After a successful deploy, new Fly machines migrate Neon on startup. Do not run ad hoc SQL on production to replace that.
+- Local `ECCLESIA_ALLOW_REMOTE_DATABASE=1` against Neon is for debugging only, not the production migrate path.
+
+## When CI fails
+
+- Read the failed job log (`gh run view --log-failed`). Fix the test or workflow, push to `main`, and let Actions redeploy.
+- Do not bypass a red **Deploy** workflow with a manual Fly deploy.
+
+## Cache-bust strings
+
+When you change `app.js?v=` in `crates/app/src/views/layout.rs`, update matching assertions in `crates/app/tests/flows.rs` in the same change.
