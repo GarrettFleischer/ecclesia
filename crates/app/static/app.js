@@ -629,7 +629,7 @@ function hookReview(csrf) {
       return;
     }
     const submitter = event.submitter;
-    const fields = reviewFields(form, submitter);
+    const fields = reviewFields(form);
     if (!fields.length) {
       return;
     }
@@ -652,8 +652,9 @@ function hookReview(csrf) {
   });
 }
 
-function reviewFields(form, submitter) {
-  const marking = submitter instanceof HTMLButtonElement && submitter.hasAttribute("data-mark-met");
+function reviewFields(form) {
+  const mark = form.querySelector("[data-mark-met]");
+  const marking = mark instanceof HTMLInputElement && mark.checked;
   return [...form.querySelectorAll("[data-rewrite]")]
     .map((btn) => ({
       field: rewriteField(btn),
@@ -2140,15 +2141,16 @@ function clearChurchSuggestions(root) {
 
 function hookMarkMet() {
   document.querySelectorAll("[data-reply-form]").forEach((form) => {
-    const box = form.querySelector("textarea");
     const mark = form.querySelector("[data-mark-met]");
-    if (!box || !mark) {
+    const rewrite = form.querySelector("[data-rewrite]");
+    if (!(mark instanceof HTMLInputElement) || !rewrite) {
       return;
     }
+    const openKind = rewrite.getAttribute("data-kind") || "reply";
     const sync = () => {
-      mark.disabled = box.value.trim() === "";
+      rewrite.setAttribute("data-kind", mark.checked ? "praise" : openKind);
     };
-    box.addEventListener("input", sync);
+    mark.addEventListener("change", sync);
     sync();
   });
 }

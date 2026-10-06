@@ -193,11 +193,7 @@ fn reply_form(
     draft: &OfferDraft<'_>,
     place: Option<(&str, &str)>,
 ) -> Markup {
-    let close_path = format!("/needs/{}/close", need.id);
-    let action = match actions {
-        ReplyActions::Met => close_path.clone(),
-        ReplyActions::Reply | ReplyActions::ReplyAndMet => format!("/needs/{}/replies", need.id),
-    };
+    let action = format!("/needs/{}/replies", need.id);
     let (heading, placeholder) = match actions {
         ReplyActions::Met => ("Praise report", "The dinners are covered."),
         ReplyActions::Reply | ReplyActions::ReplyAndMet => {
@@ -217,14 +213,13 @@ fn reply_form(
                     (rewrite_row(box_voice(actions)))
                 }
                 div class="reply-actions" {
-                    @if matches!(actions, ReplyActions::Reply | ReplyActions::ReplyAndMet) {
-                        button class="btn" type="submit" { (reply_button_label(draft)) }
-                    }
                     @if matches!(actions, ReplyActions::Met | ReplyActions::ReplyAndMet) {
-                        button class="btn btn-quiet" type="submit" formaction=(close_path) data-mark-met disabled[draft.message.trim().is_empty()] {
-                            (met_button_label(draft))
+                        label class="met-check" {
+                            input type="checkbox" name="met" value="1" data-mark-met checked[draft.intent == ReplyIntent::Met] required[matches!(actions, ReplyActions::Met)];
+                            span { "This need has been met" }
                         }
                     }
+                    button class="btn" type="submit" { (draft.kind.submit_label("Reply")) }
                 }
             }
         }
@@ -354,20 +349,6 @@ fn author_actions(can_reply: Result<(), DomainError>) -> ReplyActions {
     match can_reply {
         Ok(()) => ReplyActions::ReplyAndMet,
         Err(_) => ReplyActions::Met,
-    }
-}
-
-fn reply_button_label(draft: &OfferDraft<'_>) -> &'static str {
-    match draft.intent {
-        ReplyIntent::Reply => draft.kind.submit_label("Reply"),
-        ReplyIntent::Met => "Reply",
-    }
-}
-
-fn met_button_label(draft: &OfferDraft<'_>) -> &'static str {
-    match draft.intent {
-        ReplyIntent::Met => draft.kind.submit_label("Mark met"),
-        ReplyIntent::Reply => "Mark met",
     }
 }
 

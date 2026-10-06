@@ -348,14 +348,21 @@ async fn us_chaos_03_author_can_reply_on_their_need() {
         "Five dinners this week.",
     )
     .await;
-    let (_page, cookie, csrf) = get_ok(
+    let (page, cookie, csrf) = get_ok(
         world.app.clone(),
         Some(&cookie),
         &format!("/needs/{need_id}"),
     )
     .await;
+    let actions = page.split("reply-actions").nth(1).expect("reply actions");
+    let check = actions
+        .find("This need has been met")
+        .expect("met checkbox");
+    let reply = actions.find(">Reply</button>").expect("reply button");
+    assert!(check < reply, "the reply button sits to the right of the checkbox");
+    assert!(!page.contains("Mark met"));
     let location = post_location(
-        world.app,
+        world.app.clone(),
         &cookie,
         &csrf,
         &format!("/needs/{need_id}/replies"),
@@ -364,6 +371,18 @@ async fn us_chaos_03_author_can_reply_on_their_need() {
     .await;
     assert!(location.contains("ok=replied"), "got {location}");
     assert!(!location.contains("err=own_need"), "got {location}");
+
+    let closed = post_location(
+        world.app.clone(),
+        &cookie,
+        &csrf,
+        &format!("/needs/{need_id}/replies"),
+        "body=The+dinners+are+covered&met=1&pass=publish",
+    )
+    .await;
+    assert!(closed.contains("ok=need_closed"), "got {closed}");
+    let (met_page, _, _) = get_ok(world.app.clone(), Some(&cookie), &closed).await;
+    assert!(met_page.contains("The dinners are covered"));
 }
 
 #[tokio::test]

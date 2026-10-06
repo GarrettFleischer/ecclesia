@@ -754,7 +754,7 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
     assert!(page.contains("/static/join.js?v=6"));
-    assert!(page.contains("/static/app.js?v=31"));
+    assert!(page.contains("/static/app.js?v=32"));
     let shell = get_public(&world, "/static/app.js").await;
     assert!(shell.contains("ecclesia-place"));
     assert!(shell.contains("print-code.css"));
@@ -1367,6 +1367,7 @@ async fn us_need_02_public_reply() {
         .expect("textarea must be closed");
     assert!(!inside.contains("Reply"));
     assert!(rest.contains(r#"<button class="btn" type="submit">Reply</button>"#));
+    assert!(!page.contains("This need has been met"));
 
     let sent = post_form(
         world.app.clone(),

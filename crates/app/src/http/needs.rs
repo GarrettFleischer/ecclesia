@@ -161,6 +161,9 @@ pub async fn reply_need(
     Path(id): Path<String>,
     Form(form): Form<ReplyForm>,
 ) -> Result<Response, AppError> {
+    if form.met == "1" {
+        return close_need_http(State(state), jar, Path(id), Form(form)).await;
+    }
     let dest = format!("/needs/{id}");
     let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
         Ok(signed) => signed,

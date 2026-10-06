@@ -270,6 +270,8 @@ pub struct ReplyForm {
     pub lat: String,
     #[serde(default)]
     pub lng: String,
+    #[serde(default)]
+    pub met: String,
 }
 
 #[derive(Deserialize)]
