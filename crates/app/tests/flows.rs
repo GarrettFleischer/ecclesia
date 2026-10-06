@@ -36,7 +36,8 @@ async fn app_with(
         refine,
         ecclesia_sdk::push::PushHub::silent(),
         ecclesia_sdk::Cache::memory(),
-    );
+    )
+    .with_fixture_places();
     sdk.db.seed_grace_church().await.expect("seed church");
     World {
         app: router(AppState {
@@ -181,17 +182,56 @@ async fn plant_at(
     latitude: &str,
     longitude: &str,
 ) -> (String, String) {
-    let (_page, cookie, csrf) = get_page(world.app.clone(), Some(cookie), "/churches/new").await;
+    let (page, cookie, csrf) = get_page(world.app.clone(), Some(cookie), "/churches/new").await;
+    assert!(page.contains("Register a new church"));
+    assert!(page.contains(">Line 1"));
+    assert!(page.contains(">Line 2"));
+    assert!(page.contains("autocomplete=\"address-line1\""));
+    assert!(page.contains("autocomplete=\"address-level2\""));
+    assert!(page.contains("autocomplete=\"postal-code\""));
+    assert!(page.contains("type=\"time\""));
+    assert!(page.contains("Add a service"));
+    assert!(!page.contains("name=\"latitude\""));
     let csrf = csrf.expect("church csrf");
     let body = format!(
-        "csrf={csrf}&name={}&address=100+Main+Street&latitude={latitude}&longitude={longitude}&gathering=Sunday+at+10.&description=A+church+on+Main+Street.&pass=publish",
-        enc(name)
+        "csrf={csrf}&name={}&{}&ein=12-3456789&registry_state=IA&registry_number=123456&service_day_0=Sunday&service_time_0=10:00&description=A+church+on+Main+Street.&pass=publish",
+        enc(name),
+        address_fields(latitude, longitude)
     );
     let response = post_form(world.app.clone(), Some(&cookie), "/churches", body).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER, "plant {name}");
     let location = location_of(&response);
     let church_id = id_from_location(&location, "/churches/");
+    let church = world
+        .sdk
+        .db
+        .church(&church_id)
+        .await
+        .expect("church")
+        .expect("row");
+    let expect_lat: f64 = latitude.parse().expect("latitude");
+    let expect_lng: f64 = longitude.parse().expect("longitude");
+    assert_eq!(church.gathering, "Sunday at 10 a.m.");
+    assert_eq!(church.ein, "12-3456789");
+    assert_eq!(church.registry_state, "IA");
+    assert_eq!(church.registry_number, "123456");
+    assert!((church.latitude - expect_lat).abs() < 0.0001);
+    assert!((church.longitude - expect_lng).abs() < 0.0001);
     (try_cookie_from(&response).unwrap_or(cookie), church_id)
+}
+
+fn address_fields(latitude: &str, longitude: &str) -> &'static str {
+    match (latitude, longitude) {
+        ("30.2672", "-97.7431") => {
+            "address-line1=100+Congress+Avenue&address-level2=Austin&address-level1=TX&postal-code=78701"
+        }
+        ("42.4928", "-92.3426") => {
+            "address-line1=200+Commercial+Street&address-level2=Waterloo&address-level1=IA&postal-code=50701"
+        }
+        _ => {
+            "address-line1=100+Main+Street&address-level2=Cedar+Falls&address-level1=IA&postal-code=50613"
+        }
+    }
 }
 
 fn location_of(response: &axum::http::Response<Body>) -> String {
@@ -400,17 +440,17 @@ async fn us_church_04_leave_returns_to_the_join_step() {
     let peter = register(&world, "Peter Lane", "peter-leave@grace.test").await;
     let peter = join(&world, &peter, &grace).await;
     let (me, peter, csrf) = get_page(world.app.clone(), Some(&peter), "/me").await;
-    assert!(me.contains("Leave your church"));
+    assert!(me.contains("Leave Grace Covenant"));
     assert!(me.contains("Grace Covenant"));
     assert!(me.contains("Waiting"));
     assert!(!me.contains("Find your church"));
-    assert!(!me.contains("Add your church"));
+    assert!(!me.contains("Register a new church"));
     let location = post_location(
         &world,
         &peter,
         &csrf.expect("me csrf"),
         "/me/church/leave",
-        "",
+        &format!("church_id={grace}"),
     )
     .await;
     assert!(
@@ -423,7 +463,7 @@ async fn us_church_04_leave_returns_to_the_join_step() {
     assert!(join.contains("Left."));
     assert!(join.contains("Sign out"));
     assert!(!join.contains("class=\"dock\""));
-    assert!(!join.contains("Leave your church"));
+    assert!(!join.contains("Leave Grace Covenant"));
     let user = world
         .sdk
         .db
@@ -431,7 +471,7 @@ async fn us_church_04_leave_returns_to_the_join_step() {
         .await
         .unwrap()
         .unwrap();
-    assert!(user.church_id.is_none());
+    assert!(user.memberships.is_empty());
 
     for path in ["/home", "/me", "/pray", "/inbox"] {
         let response = world
@@ -451,6 +491,262 @@ async fn us_church_04_leave_returns_to_the_join_step() {
 }
 
 #[tokio::test]
+async fn us_church_05_pastor_closes_or_names_the_next_pastor() {
+    let world = app().await;
+    let ada = register(&world, "Ada Pastor", "ada-hold@grace.test").await;
+    let (ada, grace) = plant(&world, &ada, "Grace Covenant").await;
+    let (me, ada, csrf) = get_page(world.app.clone(), Some(&ada), "/me").await;
+    assert!(me.contains("Close Grace Covenant"));
+    assert!(me.contains("Transfer Grace Covenant"));
+    assert!(me.contains("Next pastor"));
+    assert!(!me.contains("Leave Grace Covenant"));
+    let csrf = csrf.expect("me csrf");
+    let denied = post_location(
+        &world,
+        &ada,
+        &csrf,
+        "/me/church/leave",
+        &format!("church_id={grace}"),
+    )
+    .await;
+    assert!(
+        denied.contains("err=pastor"),
+        "a pastor stays with the church, got {denied}"
+    );
+
+    let peter = register(&world, "Peter Lane", "peter-hold@grace.test").await;
+    let location = post_location(
+        &world,
+        &ada,
+        &csrf,
+        "/me/church/transfer",
+        &format!("church_id={grace}&email=peter-hold%40grace.test"),
+    )
+    .await;
+    assert!(
+        location.starts_with("/me?ok=transferred"),
+        "transfer should stay on the profile, got {location}"
+    );
+    let me = get(&world, &ada, &location).await;
+    assert!(me.contains("Transferred."));
+    assert!(me.contains("Leave Grace Covenant"));
+    assert!(!me.contains("Close Grace Covenant"));
+
+    let (peter_page, peter, peter_csrf) = get_page(world.app.clone(), Some(&peter), "/me").await;
+    assert!(peter_page.contains("Close Grace Covenant"));
+    assert!(peter_page.contains("Pastor"));
+    let church = world.sdk.db.church(&grace).await.unwrap().unwrap();
+    let peter_user = world
+        .sdk
+        .db
+        .user_by_email("peter-hold@grace.test")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(church.owner_id, peter_user.id);
+    let invite = church.invite_code.clone();
+
+    let location = post_location(
+        &world,
+        &peter,
+        &peter_csrf.expect("peter csrf"),
+        "/me/church/close",
+        &format!("church_id={grace}"),
+    )
+    .await;
+    assert!(
+        location.starts_with("/churches/join?ok=closed"),
+        "close should open the join step, got {location}"
+    );
+    let join = get(&world, &peter, &location).await;
+    assert!(join.contains("Closed."));
+    assert!(world.sdk.db.church(&grace).await.unwrap().is_none());
+    assert!(
+        world
+            .sdk
+            .db
+            .church_by_invite(&invite)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (kept, deleted_at) = world.sdk.db.stored_church(&grace).await.unwrap().unwrap();
+    assert_eq!(kept.id, grace);
+    assert!(deleted_at.is_some());
+    let ada_user = world
+        .sdk
+        .db
+        .user_by_email("ada-hold@grace.test")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(ada_user.memberships.is_empty());
+    let peter_user = world
+        .sdk
+        .db
+        .user_by_email("peter-hold@grace.test")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(peter_user.memberships.is_empty());
+}
+
+#[tokio::test]
+async fn us_church_06_closed_church_needs_can_move() {
+    let world = app().await;
+    let ada = register(&world, "Ada Pastor", "ada-move@grace.test").await;
+    let (ada, grace) = plant(&world, &ada, "Grace Covenant").await;
+    let (ada, need_id) = post_need(
+        &world,
+        &ada,
+        &grace,
+        "Dinners for the Cole family",
+        "Tuesday and Thursday.",
+        "church",
+    )
+    .await;
+    let peter = register(&world, "Peter Lane", "peter-move@grace.test").await;
+    let peter = join(&world, &peter, &grace).await;
+
+    let (me, ada, csrf) = get_page(world.app.clone(), Some(&ada), "/me").await;
+    assert!(me.contains("Close Grace Covenant"));
+    let location = post_location(
+        &world,
+        &ada,
+        &csrf.expect("me csrf"),
+        "/me/church/close",
+        &format!("church_id={grace}"),
+    )
+    .await;
+    assert!(
+        location.starts_with("/churches/join?ok=closed"),
+        "a pastor with no other church picks another, got {location}"
+    );
+    let join = get(&world, &ada, &location).await;
+    assert!(join.contains("Find your church"));
+    assert!(join.contains("Open needs from Grace Covenant"));
+    assert!(join.contains("Dinners for the Cole family"));
+    assert!(!join.contains("Move open needs"));
+    assert!(world.sdk.db.need(&need_id).await.unwrap().is_none());
+
+    let response = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/home")
+                .header(header::COOKIE, &peter)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location_of(&response), "/churches/join");
+    let peter_join = get(&world, &peter, "/churches/join").await;
+    assert!(!peter_join.contains("Dinners for the Cole family"));
+
+    let (ada, hope) = plant(&world, &ada, "Hope Chapel").await;
+    let home = get(&world, &ada, "/home").await;
+    assert!(home.contains("Open needs from Grace Covenant"));
+    assert!(home.contains("Dinners for the Cole family"));
+    assert!(home.contains("Move open needs to Hope Chapel"));
+    let (home, ada, csrf) = get_page(world.app.clone(), Some(&ada), "/home").await;
+    assert!(home.contains("Move open needs to Hope Chapel"));
+    let location = post_location(
+        &world,
+        &ada,
+        &csrf.expect("home csrf"),
+        "/needs/import",
+        &format!("source_church_id={grace}&church_id={hope}"),
+    )
+    .await;
+    assert!(
+        location.starts_with("/home?ok=moved"),
+        "moved needs stay on home, got {location}"
+    );
+    let home = get(&world, &ada, &location).await;
+    assert!(home.contains("Moved."));
+    assert!(home.contains("Dinners for the Cole family"));
+    assert!(!home.contains("Open needs from Grace Covenant"));
+    let moved = world.sdk.db.need(&need_id).await.unwrap().unwrap();
+    assert_eq!(moved.church_id, hope);
+    let church = get(&world, &ada, &format!("/churches/{hope}")).await;
+    assert!(church.contains("Dinners for the Cole family"));
+}
+
+#[tokio::test]
+async fn us_church_07_a_second_church_keeps_the_member_and_the_needs() {
+    let world = app().await;
+    let ada = register(&world, "Ada Pastor", "ada-stay@grace.test").await;
+    let (ada, grace) = plant(&world, &ada, "Grace Covenant").await;
+    let (ada, need_id) = post_need(
+        &world,
+        &ada,
+        &grace,
+        "Rides on Sunday",
+        "Two seats after the service.",
+        "church",
+    )
+    .await;
+    let (ada, hope) = plant(&world, &ada, "Hope Chapel").await;
+    let peter = register(&world, "Peter Lane", "peter-stay@grace.test").await;
+    let peter = join(&world, &peter, &grace).await;
+
+    let (me, ada, csrf) = get_page(world.app.clone(), Some(&ada), "/me").await;
+    assert!(me.contains("Close Grace Covenant"));
+    let location = post_location(
+        &world,
+        &ada,
+        &csrf.expect("me csrf"),
+        "/me/church/close",
+        &format!("church_id={grace}"),
+    )
+    .await;
+    assert!(
+        location.starts_with("/home?ok=closed"),
+        "a pastor who still has a church stays, got {location}"
+    );
+    let home = get(&world, &ada, &location).await;
+    assert!(home.contains("Closed."));
+    assert!(home.contains("Open needs from Grace Covenant"));
+    assert!(home.contains("Rides on Sunday"));
+    assert!(home.contains("Move open needs to Hope Chapel"));
+    let you = get(&world, &ada, "/me").await;
+    assert!(you.contains("Open needs from Grace Covenant"));
+    assert!(you.contains("Move open needs to Hope Chapel"));
+
+    let response = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/home")
+                .header(header::COOKIE, &peter)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location_of(&response), "/churches/join");
+
+    let (home, ada, csrf) = get_page(world.app.clone(), Some(&ada), "/home").await;
+    assert!(home.contains("Move open needs to Hope Chapel"));
+    let location = post_location(
+        &world,
+        &ada,
+        &csrf.expect("home csrf"),
+        "/needs/import",
+        &format!("source_church_id={grace}&church_id={hope}"),
+    )
+    .await;
+    assert!(location.starts_with("/home?ok=moved"), "{location}");
+    let moved = world.sdk.db.need(&need_id).await.unwrap().unwrap();
+    assert_eq!(moved.church_id, hope);
+    let you = get(&world, &ada, "/me").await;
+    assert!(!you.contains("Open needs from Grace Covenant"));
+}
+
+#[tokio::test]
 async fn us_auth_01_join_search_finds_grace() {
     let world = app().await;
     let cookie = register(&world, "Miriam Cole", "miriam-search@grace.test").await;
@@ -458,9 +754,10 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
     assert!(page.contains("/static/join.js?v=6"));
-    assert!(page.contains("/static/app.js?v=17"));
+    assert!(page.contains("/static/app.js?v=29"));
     let shell = get_public(&world, "/static/app.js").await;
     assert!(shell.contains("ecclesia-place"));
+    assert!(shell.contains("print-code.css"));
     assert!(shell.contains("placeSettled"));
     assert!(shell.contains("Notification.requestPermission"));
     let finder = get_public(&world, "/static/join.js").await;
@@ -530,12 +827,7 @@ async fn us_auth_01_join_lists_churches_near_you() {
     let (_planter, _) = plant_at(&world, &planter, "Far Chapel", "30.2672", "-97.7431").await;
     let seeker = register(&world, "No Church", "seeker-near@grace.test").await;
 
-    let near = get(
-        &world,
-        &seeker,
-        "/churches/join?lat=42.5349&lng=-92.4453",
-    )
-    .await;
+    let near = get(&world, &seeker, "/churches/join?lat=42.5349&lng=-92.4453").await;
     let grace = near.find("<h3>Grace Fellowship</h3>").expect("grace");
     let river = near.find("<h3>River Church</h3>").expect("river");
     assert!(grace < river, "nearest church should come first");
@@ -545,12 +837,7 @@ async fn us_auth_01_join_lists_churches_near_you() {
     assert!(!near.contains("Search churches"));
     assert!(!near.contains("Closest church"));
 
-    let far = get(
-        &world,
-        &seeker,
-        "/churches/join?lat=30.2672&lng=-97.7431",
-    )
-    .await;
+    let far = get(&world, &seeker, "/churches/join?lat=30.2672&lng=-97.7431").await;
     assert!(far.contains("<h3>Far Chapel</h3>"));
     assert!(!far.contains("<h3>Grace Fellowship</h3>"));
     assert!(!far.contains("<h3>River Church</h3>"));
@@ -649,8 +936,7 @@ async fn us_auth_01_churchless_unknown_code_creates_no_account() {
 #[tokio::test]
 async fn us_auth_01_churchless_weak_password_keeps_the_invited_church() {
     let world = app().await;
-    let (_page, cookie, csrf) =
-        get_page(world.app.clone(), None, "/register?code=GRACESEED").await;
+    let (_page, cookie, csrf) = get_page(world.app.clone(), None, "/register?code=GRACESEED").await;
     let csrf = csrf.expect("register csrf");
     let (status, page) = post_page(
         &world,
@@ -710,11 +996,7 @@ async fn us_auth_01_churchless_lowercase_invite_opens_that_church() {
     let response = world
         .app
         .clone()
-        .oneshot(
-            Request::get("/join/graceseed")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::get("/join/graceseed").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
@@ -768,7 +1050,7 @@ async fn us_auth_01_churchless_register_hides_the_password() {
         .await
         .unwrap()
         .expect("user");
-    assert!(user.church_id.is_none());
+    assert!(user.memberships.is_empty());
     let hash = world
         .sdk
         .db
@@ -786,11 +1068,7 @@ async fn us_auth_01_invite_link_joins_during_signup() {
     let response = world
         .app
         .clone()
-        .oneshot(
-            Request::get("/join/GRACESEED")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::get("/join/GRACESEED").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
@@ -1436,11 +1714,59 @@ async fn us_app_01_you_page_offers_alerts_and_share() {
     assert!(me.contains("Turn on alerts"));
 
     let church = get(&world, &cookie, &format!("/churches/{church_id}")).await;
-    assert!(church.contains("data-share"));
-    assert!(church.contains("Share code"));
+    let row = world
+        .sdk
+        .db
+        .church(&church_id)
+        .await
+        .expect("church")
+        .expect("row");
+    let join = format!("http://127.0.0.1:43781/join/{}", row.invite_code);
+    assert!(church.contains("data-print-qr"));
+    assert!(church.contains("Print code"));
+    assert!(church.contains("data-invite-email"));
+    assert!(church.contains("data-invite-drop"));
+    assert!(church.contains("Open file"));
+    assert!(church.contains("invite-qr"));
+    assert!(church.contains(&format!("data-join=\"{join}\"")));
+    assert!(church.contains("Send invite"));
+    assert!(!church.contains("Show code"));
+    assert!(!church.contains("class=\"code\""));
+    assert!(!church.contains("data-share"));
 
     let need = get(&world, &cookie, &format!("/needs/{need_id}")).await;
+    let share = world
+        .sdk
+        .db
+        .share_for_target(ecclesia_sdk::prelude::ShareKind::Need, &need_id)
+        .await
+        .expect("share")
+        .expect("code");
+    assert!(need.contains(&format!("data-share-url=\"/s/{}\"", share.code)));
     assert!(need.contains("data-share"));
+
+    let response = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get(format!("/s/{}", share.code))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location_of(&response), format!("/needs/{need_id}"));
+
+    let missing = world
+        .app
+        .clone()
+        .oneshot(Request::get("/s/nope").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), StatusCode::OK);
+    let missing_html = body_string(missing).await;
+    assert!(missing_html.contains("We couldn't find that link."));
 }
 
 #[tokio::test]
@@ -1604,7 +1930,7 @@ async fn us_sec_03_forged_flash_stays_generic() {
     )
     .await;
     assert!(html.contains("That didn't work."));
-    assert!(!html.contains("<script>"));
+    assert!(!html.contains("<script>alert(1)</script>"));
     assert!(!html.contains("alert(1)"));
 }
 
@@ -1908,7 +2234,7 @@ async fn us_api_01_json_sign_in_refresh_and_me() {
     assert_eq!(profile["email"].as_str(), Some(email.as_str()));
     assert_eq!(profile["first_name"].as_str(), Some("Api"));
     assert_eq!(profile["last_name"].as_str(), Some("Member"));
-    assert!(profile["church_id"].is_null());
+    assert_eq!(profile["memberships"].as_array().map(Vec::len), Some(0));
     assert!(profile["id"].as_str().is_some());
 
     let rotated = post_json_api(
@@ -2073,28 +2399,31 @@ async fn us_pray_02_church_prayers_come_before_the_shared_point() {
     let ada = register(&world, "Ada Lovelace", "ada@austin.test").await;
     let (ada, austin) = plant_at(&world, &ada, "Austin Chapel", "30.2672", "-97.7431").await;
 
-    let (_miriam, church_prayer) = post_prayer(
-        &world,
-        &miriam,
-        &grace,
-        "Surgery on Thursday.",
-        "signed",
-    )
-    .await;
-    post_prayer(&world, &james, &mercy, "Mercy roof prayer.", "signed").await;
-    post_prayer(&world, &ada, &austin, "Austin far prayer.", "signed").await;
+    let (_miriam, church_prayer) =
+        post_prayer(&world, &miriam, &grace, "Surgery on Thursday.", "signed").await;
+    let (_james, mercy_prayer) =
+        post_prayer(&world, &james, &mercy, "Mercy roof prayer.", "signed").await;
+    let (_ada, austin_prayer) =
+        post_prayer(&world, &ada, &austin, "Austin far prayer.", "signed").await;
 
     let deck = get(&world, &elena, "/pray").await;
     assert!(deck.contains("Surgery on Thursday."));
     assert!(deck.contains("Your church"));
+    assert!(deck.contains("Pray for churches where you are."));
+    assert!(deck.contains("href=\"/nearby\""));
+    assert!(deck.contains("Not now"));
+    assert!(deck.contains("data-pray-toast"));
+    assert!(!deck.contains("Pray where you are"));
+    assert!(!deck.contains("Share where you are"));
     assert!(!deck.contains("Mercy roof prayer."));
     assert!(!deck.contains("Austin far prayer."));
 
     let (_page, cookie, csrf) = get_page(world.app.clone(), Some(&elena), "/pray").await;
+    let csrf = csrf.expect("pray csrf");
     let status = post(
         &world,
         &cookie,
-        &csrf.expect("pray csrf"),
+        &csrf,
         &format!("/prayers/{church_prayer}/next"),
         "pass=publish",
     )
@@ -2102,20 +2431,69 @@ async fn us_pray_02_church_prayers_come_before_the_shared_point() {
     assert_eq!(status, StatusCode::SEE_OTHER);
 
     let after = get(&world, &elena, "/pray").await;
+    assert!(after.contains("Mercy roof prayer."));
+    assert!(after.contains("Surrounding church"));
+    assert!(after.contains("Pray for churches where you are."));
     assert!(!after.contains("Surgery on Thursday."));
-    assert!(after.contains("Share where you are"));
-    assert!(!after.contains("Mercy roof prayer."));
+    assert!(!after.contains("Austin far prayer."));
+    assert!(!after.contains("Share where you are"));
 
-    let travel = get(&world, &elena, "/pray?lat=42.5349&lng=-92.4453").await;
-    assert!(travel.contains("Mercy roof prayer."));
-    assert!(travel.contains("Nearby"));
-    assert!(!travel.contains("Surgery on Thursday."));
-    assert!(!travel.contains("Austin far prayer."));
+    let ignored = get(&world, &elena, "/pray?lat=30.2672&lng=-97.7431").await;
+    assert!(ignored.contains("Mercy roof prayer."));
+    assert!(ignored.contains("Surrounding church"));
+    assert!(!ignored.contains("Austin far prayer."));
 
     let nearby = get(&world, &elena, "/nearby?lat=42.5349&lng=-92.4453").await;
     assert!(nearby.contains("Mercy roof prayer."));
     assert!(!nearby.contains("Surgery on Thursday."));
     assert!(!nearby.contains("Austin far prayer."));
+
+    let empty_nearby = get(&world, &elena, "/nearby").await;
+    assert!(empty_nearby.contains("Share where you are"));
+    assert!(empty_nearby.contains("Share location"));
+    assert!(!empty_nearby.contains("Austin far prayer."));
+
+    let away = get(&world, &elena, "/nearby?lat=30.2672&lng=-97.7431").await;
+    assert!(away.contains("Austin far prayer."));
+    assert!(!away.contains("Share location"));
+    assert!(!away.contains("Mercy roof prayer."));
+
+    let marked = post_location(
+        &world,
+        &cookie,
+        &csrf,
+        &format!("/prayers/{mercy_prayer}/next"),
+        "pass=publish",
+    )
+    .await;
+    assert_eq!(marked, "/pray?ok=next");
+
+    let done = get(&world, &elena, "/pray").await;
+    assert!(done.contains("You've prayed through today's requests."));
+    assert!(done.contains("Pray for churches where you are."));
+    assert!(!done.contains("Mercy roof prayer."));
+    assert!(!done.contains("Austin far prayer."));
+
+    let refused = post_location(
+        &world,
+        &cookie,
+        &csrf,
+        &format!("/prayers/{austin_prayer}/next"),
+        "pass=publish",
+    )
+    .await;
+    assert!(refused.contains("err=scope"), "got {refused}");
+
+    let moved = post_location(
+        &world,
+        &cookie,
+        &csrf,
+        &format!("/prayers/{austin_prayer}/next"),
+        "lat=30.2672&lng=-97.7431&pass=publish",
+    )
+    .await;
+    assert!(moved.contains("lat=30.2672"), "got {moved}");
+    assert!(moved.contains("ok=next"), "got {moved}");
 }
 
 #[tokio::test]
@@ -2142,14 +2520,8 @@ async fn us_pray_01_an_unnamed_prayer_shows_no_author() {
     )
     .await;
 
-    let (_miriam, prayer_id) = post_prayer(
-        &world,
-        &miriam,
-        &grace,
-        "Surgery on Thursday.",
-        "unnamed",
-    )
-    .await;
+    let (_miriam, prayer_id) =
+        post_prayer(&world, &miriam, &grace, "Surgery on Thursday.", "unnamed").await;
     let card = get(&world, &elena, &format!("/prayers/{prayer_id}")).await;
     assert!(card.contains("Surgery on Thursday."));
     assert!(!card.contains("Miriam Cole"));

@@ -4,9 +4,7 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 
 use crate::views;
 use ecclesia_sdk::password::hash_token;
-use ecclesia_sdk::prelude::{
-    Place, PrayerMarkKind, PrayerProof, Viewer, VoiceKind, coordinates,
-};
+use ecclesia_sdk::prelude::{Place, PrayerMarkKind, PrayerProof, Viewer, VoiceKind, coordinates};
 use ecclesia_sdk::story::{self, PrayerDeck, PrayerName};
 
 use super::context::{
@@ -64,9 +62,7 @@ pub async fn pray(
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
-    let place = shared_place(flash.lat.as_deref(), flash.lng.as_deref());
-    let deck = story::prayer_deck(&state.sdk, &viewer, place).await?;
-    let fields = text_place(place, flash.lat.as_deref(), flash.lng.as_deref());
+    let deck = story::prayer_deck(&state.sdk, &viewer).await?;
     let (card, source, empty, controls) = match deck {
         PrayerDeck::Card { card, source } => {
             let controls = controls_for(&state, &signed.jar, &viewer, &card).await?;
@@ -77,18 +73,7 @@ pub async fn pray(
                 controls,
             )
         }
-        PrayerDeck::SharePlace => (
-            None,
-            None,
-            views::PrayEmpty::SharePlace,
-            views::PrayerControls::Quiet,
-        ),
-        PrayerDeck::Finished => (
-            None,
-            None,
-            empty_for(&viewer),
-            views::PrayerControls::Quiet,
-        ),
+        PrayerDeck::Finished => (None, None, empty_for(&viewer), views::PrayerControls::Quiet),
     };
     Ok(with_cookie(
         signed.jar,
@@ -101,7 +86,6 @@ pub async fn pray(
             controls,
             count,
             &signed.session.csrf,
-            fields,
         )),
     ))
 }
@@ -116,7 +100,11 @@ pub async fn prayer_new(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
-    let Some(church_id) = viewer.user.church_id.clone() else {
+    let Some(church_id) = viewer
+        .active_churches()
+        .next()
+        .map(|church| church.id.clone())
+    else {
         return Ok(with_cookie(signed.jar, Redirect::to("/churches/join")));
     };
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
@@ -380,7 +368,11 @@ async fn proof_for(
     Ok(None)
 }
 
-async fn token_matches(state: &AppState, jar: &CookieJar, prayer_id: &str) -> Result<bool, AppError> {
+async fn token_matches(
+    state: &AppState,
+    jar: &CookieJar,
+    prayer_id: &str,
+) -> Result<bool, AppError> {
     let Some(token) = prayer_token(jar, prayer_id) else {
         return Ok(false);
     };

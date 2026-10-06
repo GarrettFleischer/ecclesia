@@ -1,11 +1,11 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::response::Response;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::CookieJar;
 
 use crate::views;
 use ecclesia_sdk::prelude::{
-    NeedApproach, Place, Viewer, VoiceKind, can_reply, can_view_need_near, coordinates,
-    require_need_view,
+    NeedApproach, Place, Share, ShareKind, Viewer, VoiceKind, can_reply, can_view_need_near,
+    coordinates, require_need_view,
 };
 use ecclesia_sdk::story;
 
@@ -13,7 +13,9 @@ use super::context::{
     html, leaf_err, optional_gift_id, redirect_err, redirect_ok, signed_form, signed_in,
     story_redirect, unread, viewer_for, with_cookie,
 };
-use super::forms::{CsrfForm, FlashQuery, NeedForm, NeedQuery, ReplyForm};
+use super::forms::{
+    CsrfForm, FlashQuery, ImportNeedsForm, NeedForm, NeedQuery, ReplyForm, ShareMintForm,
+};
 use super::{AppError, AppState};
 
 pub async fn need_new(
@@ -40,6 +42,29 @@ pub async fn need_new(
             &views::NeedDraft::blank(query.church_id.as_deref().unwrap_or("")),
         )),
     ))
+}
+
+pub async fn import_needs_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<ImportNeedsForm>,
+) -> Result<Response, AppError> {
+    let signed = match signed_form(&state, jar, &form.csrf, "/home").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    story_redirect(
+        signed.jar,
+        "/home",
+        story::import_open_needs(
+            &state.sdk,
+            &signed.user,
+            &form.source_church_id,
+            &form.church_id,
+        )
+        .await?,
+        "moved",
+    )
 }
 
 pub async fn create_need(
@@ -113,12 +138,14 @@ pub async fn need_show(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    let mark = need_mark(flash.ok.as_deref());
     paint_need(
         &state,
         signed.jar,
         viewer,
         &id,
         views::flash_from(flash.ok, flash.err),
+        mark,
         &signed.session.csrf,
         &views::OfferDraft::blank(),
         shared_place(flash.lat.as_deref(), flash.lng.as_deref()),
@@ -148,10 +175,12 @@ pub async fn reply_need(
             viewer,
             &id,
             None,
+            views::NeedMark::None,
             &signed.session.csrf,
             &views::OfferDraft {
                 message: &message,
                 kind: views::DraftKind::Review,
+                intent: views::ReplyIntent::Reply,
             },
             shared_place(Some(&form.lat), Some(&form.lng)),
             Some(&form.lat),
@@ -179,6 +208,47 @@ pub async fn close_need_http(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
+    Form(form): Form<ReplyForm>,
+) -> Result<Response, AppError> {
+    let dest = format!("/needs/{id}");
+    let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    if state.awaiting_review(&form.pass, &[&form.body]) {
+        let message = state.polish(VoiceKind::Praise, &form.body).await;
+        return paint_need(
+            &state,
+            signed.jar,
+            viewer,
+            &id,
+            None,
+            views::NeedMark::None,
+            &signed.session.csrf,
+            &views::OfferDraft {
+                message: &message,
+                kind: views::DraftKind::Review,
+                intent: views::ReplyIntent::Met,
+            },
+            shared_place(Some(&form.lat), Some(&form.lng)),
+            Some(&form.lat),
+            Some(&form.lng),
+        )
+        .await;
+    }
+    story_redirect(
+        signed.jar,
+        &dest,
+        story::close_need(&state.sdk, &viewer, &id, &form.body).await?,
+        "need_closed",
+    )
+}
+
+pub async fn reopen_need_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
     Form(form): Form<CsrfForm>,
 ) -> Result<Response, AppError> {
     let dest = format!("/needs/{id}");
@@ -190,9 +260,17 @@ pub async fn close_need_http(
     story_redirect(
         signed.jar,
         &dest,
-        story::close_need(&state.sdk, &viewer, &id).await?,
-        "need_closed",
+        story::reopen_need(&state.sdk, &viewer, &id).await?,
+        "need_reopened",
     )
+}
+
+fn need_mark(ok: Option<&str>) -> views::NeedMark {
+    match ok {
+        Some("need_closed") => views::NeedMark::JustMet,
+        Some("need_reopened") => views::NeedMark::Reopened,
+        _ => views::NeedMark::None,
+    }
 }
 
 fn shared_place(lat: Option<&str>, lng: Option<&str>) -> Option<Place> {
@@ -219,6 +297,7 @@ async fn paint_need(
     viewer: Viewer,
     id: &str,
     flash: Option<views::Flash>,
+    mark: views::NeedMark,
     csrf: &str,
     draft: &views::OfferDraft<'_>,
     place: Option<Place>,
@@ -282,10 +361,81 @@ async fn paint_need(
         (Some(_), Some(lat), Some(lng)) => Some((lat, lng)),
         _ => None,
     };
+    let (share_url, share_mint) = share_link(&state.sdk.db, &card.id).await?;
     Ok(with_cookie(
         jar,
         html(views::need_show(
-            &viewer, &card, &church, &replies, help, count, flash, csrf, draft, fields,
+            &viewer,
+            &card,
+            &church,
+            &replies,
+            help,
+            count,
+            flash,
+            csrf,
+            draft,
+            fields,
+            &share_url,
+            &share_mint,
+            mark,
         )),
     ))
+}
+
+pub async fn share_need_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Form(form): Form<ShareMintForm>,
+) -> Result<Response, AppError> {
+    let dest = format!("/needs/{id}");
+    let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    match story::share_need(
+        &state.sdk,
+        &viewer,
+        &id,
+        shared_place(Some(&form.lat), Some(&form.lng)),
+    )
+    .await?
+    {
+        Ok(path) => Ok(with_cookie(signed.jar, path)),
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err(&dest, error))),
+    }
+}
+
+pub async fn open_share(
+    State(state): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<Response, AppError> {
+    let Some(share) = state.sdk.db.share_by_code(&code).await? else {
+        return Ok(missing_link());
+    };
+    let Some(path) = share_location(&share) else {
+        return Ok(missing_link());
+    };
+    Ok(Redirect::to(&path).into_response())
+}
+
+async fn share_link(
+    db: &ecclesia_sdk::db::Db,
+    need_id: &str,
+) -> Result<(String, String), AppError> {
+    let Some(share) = db.share_for_target(ShareKind::Need, need_id).await? else {
+        return Ok((String::new(), format!("/needs/{need_id}/share")));
+    };
+    Ok((format!("/s/{}", share.code), String::new()))
+}
+
+fn share_location(share: &Share) -> Option<String> {
+    match ShareKind::parse(&share.kind)? {
+        ShareKind::Need => Some(format!("/needs/{}", share.target_id)),
+    }
+}
+
+fn missing_link() -> Response {
+    html(views::error_page("We couldn't find that link.")).into_response()
 }

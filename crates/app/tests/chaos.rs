@@ -37,7 +37,8 @@ async fn app() -> World {
         ecclesia_sdk::refine::RefineHub::silent(),
         ecclesia_sdk::push::PushHub::silent(),
         ecclesia_sdk::Cache::memory(),
-    );
+    )
+    .with_fixture_places();
     sdk.db.seed_grace_church().await.expect("seed church");
     World {
         app: router(AppState {
@@ -153,7 +154,7 @@ async fn plant(world: &World, cookie: &str, name: &str) -> (String, String) {
         Some(&cookie),
         "/churches",
         format!(
-            "csrf={csrf}&name={}&address=100+Main+Street&latitude=42.5349&longitude=-92.4453&gathering=Sunday+at+10.&description=A+church+on+Main+Street.",
+            "csrf={csrf}&name={}&address-line1=100+Main+Street&address-level2=Cedar+Falls&address-level1=IA&postal-code=50613&ein=12-3456789&registry_state=IA&registry_number=123456&gathering=Sunday+at+10.&description=A+church+on+Main+Street.",
             enc(name)
         ),
     )
@@ -299,7 +300,7 @@ async fn us_chaos_02_bang_church_name_is_refused() {
         &cookie,
         &csrf,
         "/churches",
-        "name=!!!&address=100+Main+Street&latitude=42.4928&longitude=-92.3426&description=A+gathering+in+the+north+end.&gathering=",
+        "name=!!!&address-line1=100+Main+Street&address-level2=Cedar+Falls&address-level1=IA&postal-code=50613&ein=12-3456789&registry_state=IA&registry_number=123456&description=A+gathering+in+the+north+end.&gathering=",
     )
     .await;
     assert!(location.contains("err=missing"), "got {location}");
@@ -404,7 +405,7 @@ async fn us_chaos_03_neighbor_cannot_close_a_need() {
         "",
     )
     .await;
-    assert!(location.contains("err=steward"), "got {location}");
+    assert!(location.contains("err=not_yours"), "got {location}");
 }
 
 #[tokio::test]

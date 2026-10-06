@@ -2,9 +2,11 @@
 
 use maud::{Markup, html};
 
+use ecclesia_sdk::db::ClosedNeedGroup;
 use ecclesia_sdk::prelude::{
     Church, ChurchCard, ChurchLinkStatus, ChurchMember, EndorsementCard, Gift, MemberGift,
-    MembershipRole, NeedCard, NeedScope, Notification, PlaceGroup, Viewer, display_name,
+    MembershipRole, NeedCard, NeedScope, NeedStatus, Notification, PlaceGroup, Viewer,
+    display_name,
 };
 
 use super::layout::{Icon, Monogram, csrf_input, icon, monogram};
@@ -18,7 +20,7 @@ pub enum NeedCardPlace {
 
 pub fn need_card(need: &NeedCard, viewer: &Viewer, place: NeedCardPlace) -> Markup {
     html! {
-        a class="card card-link need-card" href={ "/needs/" (need.id) } {
+        a id={ "need-" (need.id) } class="card card-link need-card" href={ "/needs/" (need.id) } data-need=(need.id) {
             div class="card-top" {
                 (scope_mark(&need.scope))
                 p class="eyebrow" { (need_card_eyebrow(need, place)) }
@@ -33,6 +35,9 @@ pub fn need_card(need: &NeedCard, viewer: &Viewer, place: NeedCardPlace) -> Mark
                 @if let Some(gift) = &need.gift_name { span class="chip" { (gift) } }
                 @if let Some(gift_id) = &need.gift_id {
                     @if viewer.has_gift(gift_id) { span class="chip chip-accent" { "Your gift" } }
+                }
+                @if need.status() == Some(NeedStatus::Closed) {
+                    span class="chip chip-closed" { "Closed" }
                 }
             }
         }
@@ -109,6 +114,7 @@ pub fn waiting_church_card(
             @if !asked {
                 form method="post" action="/churches/join/accept" {
                     (csrf_input(csrf))
+                    input type="hidden" name="church_id" value=(church.id);
                     button class="btn" type="submit" { "Accept invite" }
                 }
             }
@@ -230,6 +236,55 @@ pub fn church_options<'a>(
     }
 }
 
+pub fn movable_needs_section(groups: &[ClosedNeedGroup], viewer: &Viewer, csrf: &str) -> Markup {
+    if groups.is_empty() {
+        return html! {};
+    }
+    let churches: Vec<&Church> = viewer.active_churches().collect();
+    html! {
+        @for group in groups {
+            (movable_need_group(group, &churches, csrf))
+        }
+    }
+}
+
+fn movable_need_group(group: &ClosedNeedGroup, churches: &[&Church], csrf: &str) -> Markup {
+    html! {
+        section {
+            h2 { "Open needs from " (group.church_name) }
+            ul {
+                @for title in &group.titles {
+                    li { (title) }
+                }
+            }
+            (move_needs_form(group, churches, csrf))
+        }
+    }
+}
+
+fn move_needs_form(group: &ClosedNeedGroup, churches: &[&Church], csrf: &str) -> Markup {
+    let Some(first) = churches.first() else {
+        return html! {};
+    };
+    html! {
+        form method="post" action="/needs/import" {
+            (csrf_input(csrf))
+            input type="hidden" name="source_church_id" value=(group.church_id);
+            @if churches.len() == 1 {
+                input type="hidden" name="church_id" value=(first.id);
+                button class="btn" type="submit" { "Move open needs to " (first.name) }
+            } @else {
+                label { "Church"
+                    select name="church_id" required {
+                        (church_options(churches.iter().copied(), None))
+                    }
+                }
+                button class="btn" type="submit" { "Move open needs" }
+            }
+        }
+    }
+}
+
 pub fn gift_options(gifts: &[Gift], selected: &str) -> Markup {
     gift_option_groups(gifts.iter(), selected)
 }
@@ -249,12 +304,6 @@ pub fn unused_gift_options(catalog: &[Gift], held: &[MemberGift], selected: &str
             .filter(|gift| !held.iter().any(|owned| owned.gift_id == gift.id)),
         selected,
     )
-}
-
-#[derive(Clone, Copy)]
-pub enum StewardView {
-    Steward,
-    Guest,
 }
 
 pub fn church_link_item(

@@ -1,15 +1,15 @@
 use maud::{Markup, html};
 
-use ecclesia_sdk::db::SessionRow;
+use ecclesia_sdk::db::{ClosedNeedGroup, SessionRow};
 use ecclesia_sdk::prelude::{
-    Church, EndorsementCard, Gift, MemberGift, Notification, User, Viewer, VoiceKind,
-    declined_visible_to,
+    Church, EndorsementCard, Gift, MemberGift, MembershipRole, Notification, User, Viewer,
+    VoiceKind, declined_visible_to,
 };
 
 use super::cards::{
     DeclineAction, accepted_endorsement_cards, catalog_name_options, church_link_item,
-    declined_endorsement_cards, member_gift_cards, my_gift_cards, notice_cards,
-    pending_endorsement_cards, unused_gift_options,
+    declined_endorsement_cards, member_gift_cards, movable_needs_section, my_gift_cards,
+    notice_cards, pending_endorsement_cards, unused_gift_options,
 };
 use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
@@ -20,7 +20,7 @@ use super::layout::{
 pub fn member_show(
     viewer: &Viewer,
     person: &User,
-    church: Option<&Church>,
+    churches: &[Church],
     gifts: &[MemberGift],
     endorsements: &[EndorsementCard],
     declined: &[EndorsementCard],
@@ -43,8 +43,8 @@ pub fn member_show(
             (profile_head(person))
             (bio_lede(person))
             section {
-                h2 { "Church" }
-                (households(person, church))
+                h2 { "Churches" }
+                (households(person, churches))
             }
             section {
                 h2 { "Gifts" }
@@ -92,13 +92,17 @@ fn bio_lede(person: &User) -> Markup {
     html! { p class="lede" { (person.bio) } }
 }
 
-fn households(person: &User, church: Option<&Church>) -> Markup {
-    let Some(church) = church else {
+fn households(person: &User, churches: &[Church]) -> Markup {
+    if person.memberships.is_empty() {
         return html! { p class="muted" { "None yet." } };
-    };
+    }
     html! {
         ul class="people" {
-            (church_link_item(church, person.link_status(), person.link_role()))
+            @for church in churches {
+                @if let Some(link) = person.membership_in(&church.id) {
+                    (church_link_item(church, link.status(), link.role()))
+                }
+            }
         }
     }
 }
@@ -296,6 +300,7 @@ pub fn me(
     csrf: &str,
     profile: &ProfileDraft<'_>,
     gift: &GiftDraft<'_>,
+    movable: &[ClosedNeedGroup],
 ) -> Markup {
     page(
         "You",
@@ -340,12 +345,13 @@ pub fn me(
                     button class="btn btn-quiet" type="submit" { (gift.kind.submit_label("Add")) }
                 }
             }
-            @if viewer.user.church_id.is_some() {
+            @if viewer.user.has_church() {
                 section {
-                    h2 { "Your church" }
+                    h2 { "Your churches" }
                     (my_church(viewer, csrf))
                 }
             }
+            (movable_needs_section(movable, viewer, csrf))
             section class="panel" {
                 h2 { "Alerts" }
                 p class="muted" { "Banners for endorsements, and for needs that match your gifts." }
@@ -425,15 +431,41 @@ fn my_gifts_block(gifts: &[MemberGift], csrf: &str) -> Markup {
 fn my_church(viewer: &Viewer, csrf: &str) -> Markup {
     html! {
         div class="stack" {
-            @if let Some(church) = viewer.church.as_ref() {
-                ul class="people" {
-                    (church_link_item(church, viewer.user.link_status(), viewer.user.link_role()))
+            ul class="people" {
+                @for church in &viewer.churches {
+                    @if let Some(link) = viewer.user.membership_in(&church.id) {
+                        (church_link_item(church, link.status(), link.role()))
+                        @if link.role() == Some(MembershipRole::Owner) {
+                            (pastor_church(csrf, church))
+                        } @else {
+                            form method="post" action="/me/church/leave" {
+                                (csrf_input(csrf))
+                                input type="hidden" name="church_id" value=(church.id);
+                                button class="btn btn-quiet" type="submit" { "Leave " (church.name) }
+                            }
+                        }
+                    }
                 }
             }
-            form method="post" action="/me/church/leave" {
-                (csrf_input(csrf))
-                button class="btn btn-quiet" type="submit" { "Leave your church" }
+            a class="btn btn-quiet" href="/churches/join" { "Find another church" }
+        }
+    }
+}
+
+fn pastor_church(csrf: &str, church: &Church) -> Markup {
+    html! {
+        form class="stack" method="post" action="/me/church/transfer" {
+            (csrf_input(csrf))
+            input type="hidden" name="church_id" value=(church.id);
+            label { "Next pastor"
+                input type="email" name="email" required autocomplete="email" placeholder="ada@grace.org";
             }
+            button class="btn" type="submit" { "Transfer " (church.name) }
+        }
+        form method="post" action="/me/church/close" {
+            (csrf_input(csrf))
+            input type="hidden" name="church_id" value=(church.id);
+            button class="btn btn-quiet" type="submit" { "Close " (church.name) }
         }
     }
 }

@@ -529,6 +529,11 @@ async fn member_home(
     let viewer = viewer_for(&state.sdk.db, user).await?;
     let page = story::home_needs(&state.sdk, &viewer, flash.after.as_deref()).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
+    let movable = state
+        .sdk
+        .db
+        .open_needs_from_closed_churches(&viewer.user.id)
+        .await?;
     Ok(with_cookie(
         jar,
         html(views::home(
@@ -536,6 +541,7 @@ async fn member_home(
             views::flash_from(flash.ok, flash.err),
             &page.cards,
             &page.churches,
+            &movable,
             page.next_cursor.as_deref(),
             count,
             &session.csrf,

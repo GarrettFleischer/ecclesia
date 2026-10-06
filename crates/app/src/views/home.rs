@@ -1,8 +1,9 @@
 use maud::{Markup, html};
 
+use ecclesia_sdk::db::ClosedNeedGroup;
 use ecclesia_sdk::prelude::{Church, NeedCard, Viewer, visible_need_cards};
 
-use super::cards::{NeedCardPlace, need_card_stack, waiting_church_card};
+use super::cards::{NeedCardPlace, need_card_stack, movable_needs_section, waiting_church_card};
 use super::flash::Flash;
 use super::layout::{Icon, Nav, icon, page, page_lead};
 
@@ -11,6 +12,7 @@ pub fn home(
     flash: Option<Flash>,
     needs: &[NeedCard],
     churches: &[Church],
+    movable: &[ClosedNeedGroup],
     next_cursor: Option<&str>,
     unread: i64,
     csrf: &str,
@@ -31,6 +33,7 @@ pub fn home(
             }
             (no_church_yet(viewer))
             (pending_section(viewer, csrf))
+            (movable_needs_section(movable, viewer, csrf))
             section {
                 (needs_or_empty(needs, churches, viewer, next_cursor))
             }
@@ -51,14 +54,21 @@ fn no_church_yet(viewer: &Viewer) -> Markup {
 }
 
 fn pending_section(viewer: &Viewer, csrf: &str) -> Markup {
-    let Some(church) = viewer.waiting_church() else {
+    let waiting: Vec<_> = viewer.waiting_churches().collect();
+    if waiting.is_empty() {
         return html! {};
-    };
+    }
     html! {
         section {
             h2 { "Waiting" }
             div class="stack" {
-                (waiting_church_card(church, viewer.user.link_status(), csrf))
+                @for church in waiting {
+                    (waiting_church_card(
+                        church,
+                        viewer.user.membership_in(&church.id).and_then(|link| link.status()),
+                        csrf,
+                    ))
+                }
             }
         }
     }

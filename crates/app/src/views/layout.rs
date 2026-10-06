@@ -51,6 +51,8 @@ pub enum Icon {
     Alert,
     Qr,
     Pray,
+    Print,
+    Mail,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -126,9 +128,9 @@ pub fn detail_lead(title: &str) -> Markup {
     html! { h1 class="title-morph" { (title) } }
 }
 
-pub fn share_button(label: &str, title: &str, text: &str, url: &str) -> Markup {
+pub fn share_button(label: &str, title: &str, text: &str, url: &str, mint: &str) -> Markup {
     html! {
-        button type="button" class="btn btn-quiet" data-share data-share-title=(title) data-share-text=(text) data-share-url=(url) {
+        button type="button" class="btn btn-quiet" data-share data-share-title=(title) data-share-text=(text) data-share-url=(url) data-share-mint=(mint) {
             (label)
         }
     }
@@ -229,6 +231,15 @@ fn icon_paths(glyph: Icon) -> Markup {
         Icon::Pray => html! {
             path d="M12 3.2s4.2 4.4 4.2 7.6a4.2 4.2 0 0 1-8.4 0C7.8 7.6 12 3.2 12 3.2z" {}
         },
+        Icon::Print => html! {
+            path d="M7 8.25V4.5h10v3.75" {}
+            rect x="4.5" y="8.25" width="15" height="7" rx="1.5" {}
+            path d="M7.5 13.25h9V19.5h-9z" {}
+        },
+        Icon::Mail => html! {
+            rect x="3.5" y="6" width="17" height="12" rx="1.5" {}
+            path d="m4 7.5 8 6 8-6" {}
+        },
     }
 }
 
@@ -305,7 +316,8 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=19";
+                link rel="stylesheet" href="/static/app.css?v=29";
+                script { (maud::PreEscaped(NEED_RETURN_HOLD)) }
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
             }
@@ -328,7 +340,7 @@ pub fn page(
                 @if show_dock(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=17" defer {}
+                script src="/static/app.js?v=31" defer {}
             }
         }
     }
@@ -649,3 +661,15 @@ fn sorry_body(message: &str, href: &str, action: &str) -> Markup {
         a class="btn" href=(href) { (action) }
     }
 }
+
+const NEED_RETURN_HOLD: &str = r#"(function () {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get("return") !== "1") return;
+  document.documentElement.classList.add("need-return");
+  if (window.history && "scrollRestoration" in window.history) {
+    window.history.scrollRestoration = "manual";
+  }
+  window.setTimeout(function () {
+    document.documentElement.classList.remove("need-return");
+  }, 800);
+})();"#;

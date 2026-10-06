@@ -4,15 +4,17 @@ use axum_extra::extract::cookie::CookieJar;
 
 use crate::views;
 use ecclesia_sdk::limit::{RateDecision, RateKind};
-use ecclesia_sdk::prelude::{Place, Viewer, VoiceKind};
+use ecclesia_sdk::prelude::{
+    Place, Viewer, VoiceKind, VoicePass, postal_address, service_schedule,
+};
 use ecclesia_sdk::story;
 
 use super::context::{
-    ClientKey, html, leaf_err, redirect_err, redirect_ok, signed_form, signed_in, story_redirect,
-    unread, viewer_for, with_cookie,
+    ClientKey, SignedIn, html, leaf_err, redirect_err, redirect_ok, signed_form, signed_in,
+    story_redirect, unread, viewer_for, with_cookie,
 };
 use super::forms::{
-    ChurchForm, CsrfForm, FlashQuery, InviteForm, JoinChurchForm, JoinQuery, RedeemForm,
+    ChurchForm, ChurchPost, CsrfForm, FlashQuery, JoinChurchForm, JoinQuery, RedeemForm,
 };
 use super::{AppError, AppState};
 
@@ -48,53 +50,88 @@ pub async fn create_church(
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
+    let gathering = match service_schedule(&service_days(&form), &service_times(&form)) {
+        Ok(gathering) => gathering,
+        Err(error) => {
+            let draft = church_draft(&form, &form.description, submitted_kind(&form.pass));
+            return render_church_form(
+                &state,
+                signed,
+                views::flash_from(None, Some(error.flash_code().to_string())),
+                &draft,
+            )
+            .await;
+        }
+    };
     if state.awaiting_review(
         &form.pass,
         &[
             &form.name,
-            &form.address,
-            &form.gathering,
+            &form.address_line1,
+            &form.city,
+            &gathering,
             &form.description,
         ],
     ) {
         let description = state.polish(VoiceKind::Church, &form.description).await;
-        let count = unread(&state.sdk.db, &signed.user.id).await?;
-        return Ok(with_cookie(
-            signed.jar,
-            html(views::church_new(
-                &viewer_for(&state.sdk.db, signed.user).await?,
-                count,
-                None,
-                &signed.session.csrf,
-                &views::ChurchDraft {
-                    name: &form.name,
-                    address: &form.address,
-                    latitude: &form.latitude,
-                    longitude: &form.longitude,
-                    gathering: &form.gathering,
-                    description: &description,
-                    kind: views::DraftKind::Review,
-                },
-            )),
-        ));
+        let draft = church_draft(&form, &description, views::DraftKind::Review);
+        return render_church_form(&state, signed, None, &draft).await;
     }
-    let (Some(latitude), Some(longitude)) =
-        (parse_coord(&form.latitude), parse_coord(&form.longitude))
-    else {
-        return Ok(with_cookie(
-            signed.jar,
-            redirect_err("/churches/new", "missing"),
-        ));
+    let address = match postal_address(
+        &form.address_line1,
+        &form.address_line2,
+        &form.city,
+        &form.address_state,
+        &form.postal_code,
+    ) {
+        Ok(address) => address,
+        Err(error) => {
+            let draft = church_draft(&form, &form.description, submitted_kind(&form.pass));
+            return render_church_form(
+                &state,
+                signed,
+                views::flash_from(None, Some(error.flash_code().to_string())),
+                &draft,
+            )
+            .await;
+        }
+    };
+    let place = match state.sdk.locate_address(&address).await {
+        Ok(Some(place)) => place,
+        Ok(None) => {
+            let draft = church_draft(&form, &form.description, submitted_kind(&form.pass));
+            return render_church_form(
+                &state,
+                signed,
+                views::flash_from(None, Some("address".into())),
+                &draft,
+            )
+            .await;
+        }
+        Err(error) => {
+            tracing::warn!("address lookup failed: {error:#}");
+            let draft = church_draft(&form, &form.description, submitted_kind(&form.pass));
+            return render_church_form(
+                &state,
+                signed,
+                views::flash_from(None, Some("address".into())),
+                &draft,
+            )
+            .await;
+        }
     };
     let ok = match story::plant_church(
         &state.sdk,
         &signed.user,
         &form.name,
-        &form.address,
-        latitude,
-        longitude,
+        &address,
+        place.latitude,
+        place.longitude,
         &form.description,
-        &form.gathering,
+        &gathering,
+        &form.ein,
+        &form.registry_state,
+        &form.registry_number,
     )
     .await?
     {
@@ -147,6 +184,11 @@ pub async fn church_show(
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
+    let movable = state
+        .sdk
+        .db
+        .open_needs_from_closed_churches(&viewer.user.id)
+        .await?;
     Ok(with_cookie(
         signed.jar,
         html(views::church_show(
@@ -157,9 +199,11 @@ pub async fn church_show(
             &page.answered,
             page.next_need_cursor.as_deref(),
             page.next_member_cursor.as_deref(),
+            &movable,
             views::flash_for(flash.ok, flash.err, Some(page.church.name.as_str())),
             count,
             &signed.session.csrf,
+            &state.origin,
         )),
     ))
 }
@@ -187,8 +231,9 @@ pub async fn invite(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
-    Form(form): Form<InviteForm>,
+    body: String,
 ) -> Result<Response, AppError> {
+    let form = super::forms::invite_form(&body);
     let dest = format!("/churches/{id}");
     let signed = match signed_form(&state, jar, &form.csrf, &dest).await {
         Ok(signed) => signed,
@@ -198,7 +243,7 @@ pub async fn invite(
     story_redirect(
         signed.jar,
         &dest,
-        story::invite_member(
+        story::invite_members(
             &state.sdk,
             &viewer,
             &id,
@@ -250,7 +295,7 @@ pub async fn approve_membership_http(
     story_redirect(
         loaded.jar,
         &loaded.dest,
-        story::approve_membership(&state.sdk, &loaded.viewer, &user_id).await?,
+        story::approve_membership(&state.sdk, &loaded.viewer, &church_id, &user_id).await?,
         "approved",
     )
 }
@@ -268,7 +313,7 @@ pub async fn decline_membership_http(
     story_redirect(
         loaded.jar,
         &loaded.dest,
-        story::decline_membership(&state.sdk, &loaded.viewer, &user_id).await?,
+        story::decline_membership(&state.sdk, &loaded.viewer, &church_id, &user_id).await?,
         "declined",
     )
 }
@@ -303,13 +348,13 @@ async fn load_membership_decision(
 pub async fn accept_invite_http(
     State(state): State<AppState>,
     jar: CookieJar,
-    Form(form): Form<CsrfForm>,
+    Form(form): Form<ChurchPost>,
 ) -> Result<Response, AppError> {
     let signed = match signed_form(&state, jar, &form.csrf, "/home").await {
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    match story::accept_invite(&state.sdk, &signed.user).await? {
+    match story::accept_invite(&state.sdk, &signed.user, &form.church_id).await? {
         Ok(ok) => {
             let dest = format!("/churches/{}", ok.church_id.as_deref().unwrap_or_default());
             Ok(with_cookie(
@@ -332,7 +377,7 @@ pub async fn join_page(
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
-    let church_name = viewer.church.as_ref().map(|church| church.name.as_str());
+    let church_name = viewer.churches.first().map(|church| church.name.as_str());
     let mut flash = views::flash_for(query.ok.clone(), query.err.clone(), church_name);
     let place = match read_coords(&query.lat, &query.lng) {
         Err(()) => {
@@ -341,12 +386,20 @@ pub async fn join_page(
             }
             None
         }
-        Ok(Some((latitude, longitude))) => Some(Place { latitude, longitude }),
+        Ok(Some((latitude, longitude))) => Some(Place {
+            latitude,
+            longitude,
+        }),
         Ok(None) => None,
     };
     let hits = match story::join_finder(
         &state.sdk,
-        viewer.user.church_id.as_deref(),
+        &viewer
+            .user
+            .memberships
+            .iter()
+            .map(|link| link.church_id.as_str())
+            .collect::<Vec<_>>(),
         place,
         &query.q,
     )
@@ -360,6 +413,11 @@ pub async fn join_page(
             Vec::new()
         }
     };
+    let movable = state
+        .sdk
+        .db
+        .open_needs_from_closed_churches(&viewer.user.id)
+        .await?;
     Ok(with_cookie(
         signed.jar,
         html(views::join_church_page(
@@ -371,6 +429,7 @@ pub async fn join_page(
             &query.q,
             query.lat.trim(),
             query.lng.trim(),
+            &movable,
         )),
     ))
 }
@@ -436,9 +495,74 @@ pub async fn join_by_code(
     }
 }
 
-fn parse_coord(raw: &str) -> Option<f64> {
-    let value = raw.trim().parse::<f64>().ok()?;
-    value.is_finite().then_some(value)
+fn church_draft<'a>(
+    form: &'a ChurchForm,
+    description: &'a str,
+    kind: views::DraftKind,
+) -> views::ChurchDraft<'a> {
+    views::ChurchDraft {
+        name: &form.name,
+        address_line1: &form.address_line1,
+        address_line2: &form.address_line2,
+        city: &form.city,
+        address_state: &form.address_state,
+        postal_code: &form.postal_code,
+        ein: &form.ein,
+        registry_state: &form.registry_state,
+        registry_number: &form.registry_number,
+        service_days: service_days(form),
+        service_times: service_times(form),
+        description,
+        kind,
+    }
+}
+
+fn service_days(form: &ChurchForm) -> [&str; 8] {
+    [
+        form.service_day_0.as_str(),
+        form.service_day_1.as_str(),
+        form.service_day_2.as_str(),
+        form.service_day_3.as_str(),
+        form.service_day_4.as_str(),
+        form.service_day_5.as_str(),
+        form.service_day_6.as_str(),
+        form.service_day_7.as_str(),
+    ]
+}
+
+fn service_times(form: &ChurchForm) -> [&str; 8] {
+    [
+        form.service_time_0.as_str(),
+        form.service_time_1.as_str(),
+        form.service_time_2.as_str(),
+        form.service_time_3.as_str(),
+        form.service_time_4.as_str(),
+        form.service_time_5.as_str(),
+        form.service_time_6.as_str(),
+        form.service_time_7.as_str(),
+    ]
+}
+
+fn submitted_kind(pass: &str) -> views::DraftKind {
+    match VoicePass::parse(pass) {
+        VoicePass::Publish => views::DraftKind::Review,
+        VoicePass::Review => views::DraftKind::Blank,
+    }
+}
+
+async fn render_church_form(
+    state: &AppState,
+    signed: SignedIn,
+    flash: Option<views::Flash>,
+    draft: &views::ChurchDraft<'_>,
+) -> Result<Response, AppError> {
+    let csrf = signed.session.csrf.clone();
+    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    let count = unread(&state.sdk.db, &viewer.user.id).await?;
+    Ok(with_cookie(
+        signed.jar,
+        html(views::church_new(&viewer, count, flash, &csrf, draft)),
+    ))
 }
 
 fn read_coords(lat: &str, lng: &str) -> Result<Option<(f64, f64)>, ()> {

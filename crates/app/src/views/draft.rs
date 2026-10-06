@@ -59,10 +59,16 @@ impl RegisterDraft<'static> {
 
 pub struct ChurchDraft<'a> {
     pub name: &'a str,
-    pub address: &'a str,
-    pub latitude: &'a str,
-    pub longitude: &'a str,
-    pub gathering: &'a str,
+    pub address_line1: &'a str,
+    pub address_line2: &'a str,
+    pub city: &'a str,
+    pub address_state: &'a str,
+    pub postal_code: &'a str,
+    pub ein: &'a str,
+    pub registry_state: &'a str,
+    pub registry_number: &'a str,
+    pub service_days: [&'a str; 8],
+    pub service_times: [&'a str; 8],
     pub description: &'a str,
     pub kind: DraftKind,
 }
@@ -71,10 +77,16 @@ impl ChurchDraft<'static> {
     pub fn blank() -> Self {
         Self {
             name: "",
-            address: "",
-            latitude: "",
-            longitude: "",
-            gathering: "",
+            address_line1: "",
+            address_line2: "",
+            city: "",
+            address_state: "",
+            postal_code: "",
+            ein: "",
+            registry_state: "",
+            registry_number: "",
+            service_days: [""; 8],
+            service_times: [""; 8],
             description: "",
             kind: DraftKind::Blank,
         }
@@ -121,9 +133,16 @@ impl PrayerDraft<'static> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ReplyIntent {
+    Reply,
+    Met,
+}
+
 pub struct OfferDraft<'a> {
     pub message: &'a str,
     pub kind: DraftKind,
+    pub intent: ReplyIntent,
 }
 
 impl OfferDraft<'static> {
@@ -131,6 +150,7 @@ impl OfferDraft<'static> {
         Self {
             message: "",
             kind: DraftKind::Blank,
+            intent: ReplyIntent::Reply,
         }
     }
 }

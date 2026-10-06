@@ -5,13 +5,13 @@ use ecclesia::views::flash_from;
 use ecclesia_sdk::judge::word_gate;
 use ecclesia_sdk::prelude::{
     Application, ApplicationStatus, CatalogPresence, Church, DomainError, EmailAvailability,
-    Endorsement, EndorsementQueue, Gift, GiftOnProfile, Need, NeedScope, NeedStatus, Posture,
-    PriorOffer, SkillSource, Strength, User, Viewer, Write, accept_application, accept_endorsement,
-    accept_invite, add_gift, apply_to_need, approve_membership, can_apply, can_view_need,
-    close_need, decline_application, decline_endorsement, decline_membership, declined_visible_to,
-    endorse, https_endpoint, invite_code_for, invite_member, normalize_email, plant_church,
-    post_need, register, remove_gift, replace_with_code, replace_with_pending, require_text,
-    update_profile, visible_need_cards,
+    Endorsement, EndorsementQueue, Gift, GiftOnProfile, Need, NeedScope, NeedShelf, NeedStatus,
+    Posture, PriorOffer, SkillSource, Strength, User, Viewer, Write, accept_application,
+    accept_endorsement, accept_invite, add_gift, apply_to_need, approve_membership, can_apply,
+    can_view_need, close_need, decline_application, decline_endorsement, decline_membership,
+    declined_visible_to, endorse, https_endpoint, invite_code_for, invite_member, normalize_email,
+    plant_church, post_need, register, remove_gift, replace_with_code, replace_with_pending,
+    require_text, update_profile, visible_need_cards,
 };
 use ecclesia_sdk::session::Session;
 use proptest::prelude::*;
@@ -53,9 +53,7 @@ fn blank_user(id: &str, first: &str, last: &str) -> User {
         email: format!("{id}@ecclesia.test"),
         bio: String::new(),
         created_at: "t0".into(),
-        church_id: None,
-        church_status: None,
-        church_role: None,
+        memberships: Vec::new(),
     }
 }
 
@@ -73,6 +71,9 @@ fn church_here(id: &str, latitude: f64, longitude: f64) -> Church {
         country: "US".into(),
         description: String::new(),
         gathering: String::new(),
+        ein: "12-3456789".into(),
+        registry_state: "IA".into(),
+        registry_number: "123456".into(),
         owner_id: "owner".into(),
         invite_code: "code".into(),
         created_at: "t0".into(),
@@ -88,16 +89,18 @@ fn waterloo(id: &str) -> Church {
 }
 
 fn in_church(mut user: User, church_id: &str, role: &str, status: &str) -> User {
-    user.church_id = Some(church_id.into());
-    user.church_status = Some(status.into());
-    user.church_role = Some(role.into());
+    user.memberships.push(ecclesia_sdk::prelude::Membership {
+        church_id: church_id.into(),
+        status: status.into(),
+        role: role.into(),
+    });
     user
 }
 
 fn viewer_of(user: User, church: Option<Church>) -> Viewer {
     Viewer {
         user,
-        church,
+        churches: church.into_iter().collect(),
         gift_ids: vec![],
     }
 }
@@ -113,6 +116,9 @@ fn need_of(scope: NeedScope, status: NeedStatus, church_id: &str, author_id: &st
         scope: scope.as_str().into(),
         status: status.as_str().into(),
         created_at: "t0".into(),
+        praise: None,
+        closed_at: None,
+        shelf: NeedShelf::Listed,
     }
 }
 
@@ -152,7 +158,7 @@ proptest! {
                 assert!(user.first_name.chars().count() <= 80);
                 assert!(user.last_name.chars().count() <= 80);
                 assert!(user.bio.is_empty());
-                assert!(user.church_id.is_none());
+                assert!(user.memberships.is_empty());
             }
             (Posture::Lifts, EmailAvailability::Free, Err(DomainError::InvalidInput | DomainError::InvalidEmail)) => {}
             other => panic!("unexpected register outcome: {other:?}"),
@@ -199,8 +205,20 @@ proptest! {
         let owner = blank_user("owner", "Owner", "Lane");
         let posture = if tears { Posture::TearsDown } else { Posture::Lifts };
         let result = plant_church(
-            &owner, &name, &address, 42.5349, -92.4453, &description, &gathering, posture,
-            "c1".into(), &nonce, "t1".into(),
+            &owner,
+            &name,
+            &address,
+            42.5349,
+            -92.4453,
+            &description,
+            &gathering,
+            "12-3456789",
+            "IA",
+            "123456",
+            posture,
+            "c1".into(),
+            &nonce,
+            "t1".into(),
         );
         match (posture, result) {
             (Posture::TearsDown, Err(DomainError::TearsDown)) => {}
@@ -209,8 +227,13 @@ proptest! {
                 let Write::InsertChurch(church) = &effect.writes[0] else {
                     panic!("expected church");
                 };
-                assert!(church.invite_code.contains('-'));
-                assert!(!church.invite_code.contains(' '));
+                assert_eq!(church.invite_code.chars().count(), 6);
+                assert!(
+                    church
+                        .invite_code
+                        .chars()
+                        .all(|ch| "23456789abcdefghjkmnpqrstuvwxyz".contains(ch))
+                );
                 assert!(church.name.chars().any(|c| c.is_ascii_alphanumeric()));
             }
             (Posture::Lifts, Err(DomainError::InvalidInput)) => {}
@@ -314,11 +337,17 @@ proptest! {
         );
         let status = if open { NeedStatus::Open } else { NeedStatus::Closed };
         let need = need_of(NeedScope::Church, status, "grace", "miriam");
-        let close = close_need(&viewer, &need);
-        match (steward || actor_id == "miriam", open, close) {
+        let close = close_need(
+            &viewer,
+            &need,
+            "The dinners came through.",
+            Posture::Lifts,
+            "t".into(),
+        );
+        match (actor_id == "miriam", open, close) {
             (true, true, Ok(_)) => {}
             (true, false, Err(DomainError::NeedClosed)) => {}
-            (false, _, Err(DomainError::NotSteward)) => {}
+            (false, _, Err(DomainError::NotAuthor)) => {}
             other => panic!("unexpected close: {other:?}"),
         }
         let application = Application {
@@ -546,11 +575,14 @@ proptest! {
             (true, true, Ok(_)) => {}
             other => panic!("unexpected decline: {other:?}"),
         }
-        assert_eq!(accept_invite(&viewer.user), Err(DomainError::NothingPending));
+        assert_eq!(
+            accept_invite(&viewer.user, "grace"),
+            Err(DomainError::NothingPending)
+        );
         let peter = blank_user("peter", "Peter", "Lane");
-        assert_eq!(accept_invite(&peter), Err(DomainError::NothingPending));
+        assert_eq!(accept_invite(&peter, "grace"), Err(DomainError::NothingPending));
         let invited = in_church(peter, "grace", "member", "invited");
-        assert!(accept_invite(&invited).is_ok());
+        assert!(accept_invite(&invited, "grace").is_ok());
     }
 
     #[test]
@@ -577,6 +609,8 @@ proptest! {
             scope: scope.as_str().into(),
             status: "open".into(),
             created_at: "t0".into(),
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let churches = [grace.clone()];
         let cards = [open];
@@ -587,24 +621,30 @@ proptest! {
     }
 
     #[test]
-    fn us_prop_11_a_second_church_replaces_the_first(same in any::<bool>()) {
+    fn us_prop_11_a_second_church_keeps_the_first(same in any::<bool>()) {
         let actor = in_church(blank_user("miriam", "Miriam", "Lane"), "grace", "member", "active");
         let next = if same { cedar("grace") } else { cedar("luke") };
         let result = replace_with_pending(&actor, &next, &[]);
         if same {
             assert_eq!(result, Err(DomainError::AlreadyMember));
         } else {
-            let effect = result.expect("a different church replaces the link");
+            let effect = result.expect("a second church is added");
             let links: Vec<_> = effect
                 .writes
                 .iter()
-                .filter(|write| matches!(write, Write::SetChurchLink { .. }))
+                .filter(|write| matches!(write, Write::UpsertMembership { .. }))
                 .collect();
             assert_eq!(links.len(), 1);
-            let Write::SetChurchLink { church_id, .. } = links[0] else {
+            assert!(
+                effect
+                    .writes
+                    .iter()
+                    .all(|write| !matches!(write, Write::DeleteMembership { .. }))
+            );
+            let Write::UpsertMembership { church_id, .. } = links[0] else {
                 unreachable!();
             };
-            assert_eq!(church_id.as_deref(), Some("luke"));
+            assert_eq!(church_id, "luke");
         }
     }
 
@@ -661,8 +701,10 @@ proptest! {
                     "joined_request" | "invited" | "redeemed" | "approved" | "declined"
                         | "need_posted" | "prayer_posted" | "prayed" | "next" | "answered"
                         | "replied" | "applied" | "application_accepted" | "need_closed"
+                        | "need_reopened"
                         | "endorsed" | "endorsement_accepted" | "endorsement_declined"
                         | "gift_added" | "gift_removed" | "church_planted" | "invite_accepted"
+                        | "left" | "closed" | "transferred"
                 ) {
                     assert_eq!(ok.text(), "Done.");
                 }
@@ -676,7 +718,10 @@ proptest! {
                     code.as_str(),
                     "email" | "auth" | "not_found" | "forbidden" | "steward" | "not_yours"
                         | "self" | "already" | "not_member" | "scope" | "own_need" | "closed"
+                        | "open" | "archived"
                         | "prayer_answered"
+                        | "ein" | "registry" | "address" | "postal" | "service"
+                        | "pastor" | "already_pastor"
                         | "invite" | "pending" | "bad_email" | "tone" | "rate" | "miss"
                         | "mail" | "password"
                 ) {

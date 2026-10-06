@@ -1,12 +1,11 @@
 use maud::{Markup, html};
 
 use ecclesia_sdk::prelude::{
-    Church, DomainError, Gift, NeedCard, NeedReplyCard, NeedStatus, Viewer, VoiceKind,
-    is_need_steward,
+    Church, DomainError, Gift, NeedCard, NeedReplyCard, NeedShelf, NeedStatus, Viewer, VoiceKind,
 };
 
-use super::cards::{StewardView, church_options, gift_options, scope_label, scope_mark};
-use super::draft::{NeedDraft, OfferDraft, review_banner, voice_pass_input};
+use super::cards::{church_options, gift_options, scope_label, scope_mark};
+use super::draft::{NeedDraft, OfferDraft, ReplyIntent, review_banner, voice_pass_input};
 use super::flash::Flash;
 use super::layout::{
     Monogram, Nav, csrf_input, detail_lead, monogram, page, page_lead, rewrite_row, share_button,
@@ -40,14 +39,15 @@ fn need_form_or_empty(
     csrf: &str,
     draft: &NeedDraft<'_>,
 ) -> Markup {
-    let Some(church) = viewer.active_church() else {
+    let churches: Vec<_> = viewer.active_churches().collect();
+    if churches.is_empty() {
         return html! {
             div class="empty" {
                 p { "Join a church first, then post from there." }
                 a class="btn" href="/churches/join" { "Find your church" }
             }
         };
-    };
+    }
     html! {
         form class="stack" method="post" action="/needs" {
             (csrf_input(csrf))
@@ -55,7 +55,7 @@ fn need_form_or_empty(
             (review_banner(draft.kind))
             label { "Church"
                 select name="church_id" required {
-                    (church_options(std::iter::once(church), Some(draft.church_id).filter(|id| !id.is_empty())))
+                    (church_options(churches, Some(draft.church_id).filter(|id| !id.is_empty())))
                 }
             }
             label { "Title"
@@ -103,8 +103,11 @@ pub fn need_show(
     csrf: &str,
     draft: &OfferDraft<'_>,
     place: Option<(&str, &str)>,
+    share_url: &str,
+    share_mint: &str,
+    mark: NeedMark,
 ) -> Markup {
-    let steward = steward_of(viewer, need);
+    let actions = reply_actions(viewer, need, can_reply);
     page(
         &need.title,
         Some(&viewer.user),
@@ -113,6 +116,7 @@ pub fn need_show(
         flash,
         csrf,
         html! {
+            (back_to_needs(church, need, mark))
             div class="card-top" {
                 (scope_mark(&need.scope))
                 p class="eyebrow" {
@@ -129,13 +133,15 @@ pub fn need_show(
                 }
                 @if let Some(gift) = &need.gift_name { span class="chip" { (gift) } }
                 (closed_chip(need))
+                (reopen_form(viewer, need, csrf))
             }
+            (praise_report(need))
             (matching_gift_pill(viewer, need))
             div class="page-actions" {
-                (share_button("Share", &need.title, &need.body, ""))
-                (close_form(need, steward, csrf))
+                (share_button("Share", &need.title, &need.body, share_url, share_mint))
             }
-            (reply_panel(need, can_reply, csrf, draft, place))
+            (reply_panel(need, actions, csrf, draft, place))
+            (need_return_script())
             section {
                 h2 { "Replies" }
                 (reply_list(replies))
@@ -152,14 +158,6 @@ fn closed_chip(need: &NeedCard) -> Markup {
     }
 }
 
-fn steward_of(viewer: &Viewer, need: &NeedCard) -> StewardView {
-    if is_need_steward(viewer, need.sight()) {
-        StewardView::Steward
-    } else {
-        StewardView::Guest
-    }
-}
-
 fn matching_gift_pill(viewer: &Viewer, need: &NeedCard) -> Markup {
     let Some(gift_id) = &need.gift_id else {
         return html! {};
@@ -172,34 +170,71 @@ fn matching_gift_pill(viewer: &Viewer, need: &NeedCard) -> Markup {
 
 fn reply_panel(
     need: &NeedCard,
-    can_reply: Result<(), DomainError>,
+    actions: Result<ReplyActions, DomainError>,
     csrf: &str,
     draft: &OfferDraft<'_>,
     place: Option<(&str, &str)>,
 ) -> Markup {
-    if !need.is_open() {
+    if !need.is_open() || need.shelf == NeedShelf::Archived {
         return html! {};
     }
-    match can_reply {
-        Ok(()) => html! {
-            section class="panel" {
-                h2 { "Reply" }
-                form class="stack" method="post" action={ "/needs/" (need.id) "/replies" } {
-                    (csrf_input(csrf))
-                    (place_fields(place))
-                    (voice_pass_input(draft.kind))
-                    (review_banner(draft.kind))
-                    label { "Reply"
-                        textarea name="body" rows="3" required maxlength="600" placeholder="I can bring dinner Thursday." { (draft.message) }
-                        (rewrite_row(VoiceKind::Reply))
-                    }
-                    button class="btn" type="submit" { (draft.kind.submit_label("Reply")) }
-                }
-            }
-        },
+    match actions {
+        Ok(actions) => reply_form(need, actions, csrf, draft, place),
         Err(reason) => html! {
             p class="muted" { (reason) }
         },
+    }
+}
+
+fn reply_form(
+    need: &NeedCard,
+    actions: ReplyActions,
+    csrf: &str,
+    draft: &OfferDraft<'_>,
+    place: Option<(&str, &str)>,
+) -> Markup {
+    let close_path = format!("/needs/{}/close", need.id);
+    let action = match actions {
+        ReplyActions::Met => close_path.clone(),
+        ReplyActions::Reply | ReplyActions::ReplyAndMet => format!("/needs/{}/replies", need.id),
+    };
+    let (heading, placeholder) = match actions {
+        ReplyActions::Met => ("Praise report", "The dinners are covered."),
+        ReplyActions::Reply | ReplyActions::ReplyAndMet => {
+            ("Reply", "I can bring dinner Thursday.")
+        }
+    };
+    html! {
+        section class="panel" {
+            h2 { (heading) }
+            form class="stack" method="post" action=(action) data-reply-form {
+                (csrf_input(csrf))
+                (place_fields(place))
+                (voice_pass_input(draft.kind))
+                (review_banner(draft.kind))
+                label { (heading)
+                    textarea name="body" rows="3" required maxlength="600" placeholder=(placeholder) { (draft.message) }
+                    (rewrite_row(box_voice(actions)))
+                }
+                div class="reply-actions" {
+                    @if matches!(actions, ReplyActions::Reply | ReplyActions::ReplyAndMet) {
+                        button class="btn" type="submit" { (reply_button_label(draft)) }
+                    }
+                    @if matches!(actions, ReplyActions::Met | ReplyActions::ReplyAndMet) {
+                        button class="btn btn-quiet" type="submit" formaction=(close_path) data-mark-met disabled[draft.message.trim().is_empty()] {
+                            (met_button_label(draft))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn box_voice(actions: ReplyActions) -> VoiceKind {
+    match actions {
+        ReplyActions::Met => VoiceKind::Praise,
+        ReplyActions::Reply | ReplyActions::ReplyAndMet => VoiceKind::Reply,
     }
 }
 
@@ -233,15 +268,111 @@ fn reply_list(replies: &[NeedReplyCard]) -> Markup {
     }
 }
 
-fn close_form(need: &NeedCard, steward: StewardView, csrf: &str) -> Markup {
-    if !need.is_open() || !matches!(steward, StewardView::Steward) {
+fn praise_report(need: &NeedCard) -> Markup {
+    let Some(praise) = need.praise.as_deref().filter(|text| !text.is_empty()) else {
         return html! {};
-    }
+    };
     html! {
-        form method="post" action={ "/needs/" (need.id) "/close" } {
-            (csrf_input(csrf))
-            button class="btn-text" type="submit" { "Close need" }
+        section class="panel" {
+            h2 { "Praise report" }
+            p { (praise) }
         }
     }
 }
 
+fn reopen_form(viewer: &Viewer, need: &NeedCard, csrf: &str) -> Markup {
+    if viewer.user.id != need.author_id
+        || need.status() != Some(NeedStatus::Closed)
+        || need.shelf != NeedShelf::Listed
+    {
+        return html! {};
+    }
+    html! {
+        form class="reopen-form" method="post" action={ "/needs/" (need.id) "/reopen" } {
+            (csrf_input(csrf))
+            button class="btn btn-quiet" type="submit" { "Reopen need" }
+        }
+    }
+}
+
+fn back_to_needs(church: &Church, need: &NeedCard, mark: NeedMark) -> Markup {
+    html! {
+        a class="back-link" href={ "/churches/" (church.id) "?return=1" } data-need-back data-church=(church.id) data-need=(need.id) data-just-met[matches!(mark, NeedMark::JustMet)] data-reopened[matches!(mark, NeedMark::Reopened)] { "All needs" }
+    }
+}
+
+fn need_return_script() -> Markup {
+    html! { script { (maud::PreEscaped(NEED_RETURN_SCRIPT)) } }
+}
+
+const NEED_RETURN_SCRIPT: &str = r#"(function () {
+  var link = document.querySelector("[data-need-back]");
+  if (!link) return;
+  var marking = link.hasAttribute("data-just-met");
+  var reopened = link.hasAttribute("data-reopened");
+  if (!marking && !reopened) return;
+  var churchId = link.getAttribute("data-church") || "";
+  var needId = link.getAttribute("data-need") || "";
+  var key = "ecclesia.needReturn";
+  var saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(key) || "null"); } catch (error) { saved = null; }
+  if (marking) {
+    if (!saved || saved.churchId !== churchId) {
+      saved = { churchId: churchId, scrollY: null, needId: needId, flash: true };
+    } else {
+      saved.needId = needId;
+      saved.flash = true;
+    }
+    try { sessionStorage.setItem(key, JSON.stringify(saved)); } catch (error) {}
+    return;
+  }
+  if (saved && saved.churchId === churchId) {
+    saved.flash = false;
+    try { sessionStorage.setItem(key, JSON.stringify(saved)); } catch (error) {}
+  }
+})();"#;
+
+#[derive(Clone, Copy)]
+enum ReplyActions {
+    Reply,
+    ReplyAndMet,
+    Met,
+}
+
+fn reply_actions(
+    viewer: &Viewer,
+    need: &NeedCard,
+    can_reply: Result<(), DomainError>,
+) -> Result<ReplyActions, DomainError> {
+    if viewer.user.id == need.author_id {
+        return Ok(author_actions(can_reply));
+    }
+    can_reply.map(|()| ReplyActions::Reply)
+}
+
+fn author_actions(can_reply: Result<(), DomainError>) -> ReplyActions {
+    match can_reply {
+        Ok(()) => ReplyActions::ReplyAndMet,
+        Err(_) => ReplyActions::Met,
+    }
+}
+
+fn reply_button_label(draft: &OfferDraft<'_>) -> &'static str {
+    match draft.intent {
+        ReplyIntent::Reply => draft.kind.submit_label("Reply"),
+        ReplyIntent::Met => "Reply",
+    }
+}
+
+fn met_button_label(draft: &OfferDraft<'_>) -> &'static str {
+    match draft.intent {
+        ReplyIntent::Met => draft.kind.submit_label("Mark met"),
+        ReplyIntent::Reply => "Mark met",
+    }
+}
+
+pub enum NeedMark {
+    None,
+    JustMet,
+    Reopened,
+}

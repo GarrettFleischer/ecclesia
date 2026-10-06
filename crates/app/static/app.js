@@ -1,4 +1,5 @@
 (() => {
+  let pickerBus = null;
   const csrf = meta("csrf");
   const unread = Number(meta("unread") || "0");
   const native = capacitorPlugins();
@@ -12,16 +13,22 @@
   paintBadge(unread);
   paintTimes();
   hookInstall(native);
-  hookShare(native);
+  hookShare(csrf, native);
+  hookPrintQr();
+  hookInviteMail();
   hookRewrite(csrf);
   hookReview(csrf);
   hookBusySubmit();
   hookTitleMorph();
   hookPlaceShare();
+  hookPrayToast();
   hookPickers();
+  hookServiceTimes();
   hookChurchSearch();
   hookPasswordToggle();
   hookAuthForms();
+  hookMarkMet();
+  hookNeedReturn();
   hookHaptics(native);
   hookAlerts(csrf, native);
   hookJoinAlerts(csrf, native);
@@ -202,7 +209,283 @@ function notificationState() {
   return window.Notification ? Notification.permission : "unsupported";
 }
 
-function hookShare(native) {
+function hookPrintQr() {
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-print-qr]");
+    if (!button) {
+      return;
+    }
+    const sheet = button.closest("[data-invite-sheet]");
+    const svg = sheet && sheet.querySelector(".invite-qr");
+    if (!sheet || !svg) {
+      return;
+    }
+    printInvite(
+      sheet.getAttribute("data-church-name") || "Join code",
+      sheet.getAttribute("data-join") || "",
+      svg
+    );
+  });
+}
+
+function printInvite(name, url, svg) {
+  const frame = document.createElement("iframe");
+  frame.className = "print-frame";
+  frame.setAttribute("aria-hidden", "true");
+  document.body.append(frame);
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  if (!doc || !win) {
+    frame.remove();
+    return;
+  }
+  doc.open();
+  doc.write("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Join code</title><link rel=\"stylesheet\" href=\"/static/print-code.css?v=1\"></head><body><h1></h1><div class=\"mark\"></div><p></p></body></html>");
+  doc.close();
+  doc.title = name;
+  doc.querySelector("h1").textContent = name;
+  doc.querySelector(".mark").append(svg.cloneNode(true));
+  doc.querySelector("p").textContent = url;
+  const finish = () => frame.remove();
+  win.addEventListener("afterprint", finish);
+  const link = doc.querySelector("link");
+  const start = () => {
+    win.focus();
+    win.print();
+  };
+  if (link.sheet) {
+    start();
+    return;
+  }
+  link.addEventListener("load", start, { once: true });
+  link.addEventListener("error", start, { once: true });
+}
+
+function hookInviteMail() {
+  document.addEventListener("click", (event) => {
+    const opener = event.target.closest("[data-invite-email]");
+    if (opener) {
+      const dialog = document.querySelector("[data-invite-mail]");
+      if (dialog && typeof dialog.showModal === "function") {
+        dialog.showModal();
+        const field = dialog.querySelector("[data-invite-rows] input");
+        if (field) field.focus();
+      }
+      return;
+    }
+    const fileButton = event.target.closest("[data-invite-file]");
+    if (fileButton) {
+      const dialog = fileButton.closest("[data-invite-mail]");
+      const input = dialog && dialog.querySelector("[data-invite-csv]");
+      if (input) input.click();
+      return;
+    }
+    const close = event.target.closest("[data-invite-close]");
+    if (close) {
+      const dialog = close.closest("dialog");
+      if (dialog) dialog.close();
+    }
+  });
+  document.addEventListener("input", (event) => {
+    const field = event.target.closest("[data-invite-rows] input");
+    if (!field) return;
+    const dialog = field.closest("[data-invite-mail]");
+    clearInviteFileNote(dialog);
+    settleInviteRows(field.closest("[data-invite-rows]"));
+  });
+  document.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-invite-csv]");
+    if (!input || !input.files || !input.files[0]) return;
+    readInviteFile(input.files[0], input.closest("[data-invite-mail]"));
+    input.value = "";
+  });
+  document.addEventListener("dragover", (event) => {
+    const dialog = openInviteDialog(event);
+    if (!dialog) return;
+    event.preventDefault();
+    const zone = dialog.querySelector("[data-invite-drop]");
+    if (zone) zone.classList.add("is-dropping");
+  });
+  document.addEventListener("dragleave", (event) => {
+    const dialog = openInviteDialog(event);
+    if (!dialog) return;
+    if (dialog.contains(event.relatedTarget)) return;
+    const zone = dialog.querySelector("[data-invite-drop]");
+    if (zone) zone.classList.remove("is-dropping");
+  });
+  document.addEventListener("drop", (event) => {
+    const dialog = openInviteDialog(event);
+    if (!dialog) return;
+    event.preventDefault();
+    const zone = dialog.querySelector("[data-invite-drop]");
+    if (zone) zone.classList.remove("is-dropping");
+    const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+    if (file) readInviteFile(file, dialog);
+  });
+}
+
+function openInviteDialog(event) {
+  const dialog = event.target.closest && event.target.closest("[data-invite-mail]");
+  if (!dialog || !dialog.open) return null;
+  return dialog;
+}
+
+function clearInviteFileNote(dialog) {
+  const note = dialog && dialog.querySelector("[data-invite-csv-error]");
+  if (!note) return;
+  note.hidden = true;
+  note.textContent = "";
+}
+
+function settleInviteRows(box) {
+  if (!box) return;
+  let fields = inviteFields(box);
+  while (fields.length > 1 && fieldBlank(fields[fields.length - 1]) && fieldBlank(fields[fields.length - 2])) {
+    fields[fields.length - 1].closest("[data-invite-row]").remove();
+    fields = inviteFields(box);
+  }
+  const last = fields[fields.length - 1];
+  if (last && !fieldBlank(last)) {
+    box.append(blankInviteRow(box));
+  }
+}
+
+function inviteFields(box) {
+  return [...box.querySelectorAll("[data-invite-row] input")];
+}
+
+function fieldBlank(field) {
+  return field.value.trim() === "";
+}
+
+function blankInviteRow(box) {
+  const sample = box.querySelector("[data-invite-row]");
+  const row = sample.cloneNode(true);
+  row.querySelector("input").value = "";
+  return row;
+}
+
+function readInviteFile(file, dialog) {
+  if (!dialog) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    applyInviteCsv(dialog, String(reader.result || ""));
+  });
+  reader.addEventListener("error", () => {
+    const note = dialog.querySelector("[data-invite-csv-error]");
+    if (!note) return;
+    note.hidden = false;
+    note.textContent = "That file didn't open. Try again.";
+  });
+  reader.readAsText(file);
+}
+
+function applyInviteCsv(dialog, text) {
+  const parsed = emailsFromCsv(text);
+  const note = dialog.querySelector("[data-invite-csv-error]");
+  const rows = dialog.querySelector("[data-invite-rows]");
+  if (!note || !rows) return;
+  if (parsed.error) {
+    note.hidden = false;
+    note.textContent = parsed.error;
+    return;
+  }
+  const limited = parsed.emails.slice(0, 100);
+  fillInviteRows(rows, limited);
+  if (parsed.emails.length > 100) {
+    note.hidden = false;
+    note.textContent = "First 100 emails.";
+    return;
+  }
+  note.hidden = true;
+  note.textContent = "";
+}
+
+function fillInviteRows(box, emails) {
+  const sample = box.querySelector("[data-invite-row]");
+  if (!sample) return;
+  const template = sample.cloneNode(true);
+  template.querySelector("input").value = "";
+  box.replaceChildren();
+  const seen = new Set();
+  for (const email of emails) {
+    const value = email.trim();
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    const row = template.cloneNode(true);
+    row.querySelector("input").value = value;
+    box.append(row);
+  }
+  box.append(template);
+  const last = box.querySelector("[data-invite-row]:last-child input");
+  if (last) last.focus();
+}
+
+function emailsFromCsv(text) {
+  const table = csvTable(text);
+  if (!table.length) return { error: "That file has no Email column." };
+  const headers = table[0].map((cell) => cell.trim().toLowerCase());
+  const index = headers.findIndex(isEmailHeader);
+  if (index < 0) return { error: "That file has no Email column." };
+  const emails = [];
+  for (const row of table.slice(1)) {
+    emails.push(row[index] || "");
+  }
+  return { emails };
+}
+
+function isEmailHeader(cell) {
+  return cell === "email" || cell === "e-mail" || cell === "email address";
+}
+
+function csvTable(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const source = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (source[i + 1] === '"') {
+          cell += '"';
+          i += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        cell += ch;
+      }
+      continue;
+    }
+    if (ch === '"' && cell === "") {
+      quoted = true;
+      continue;
+    }
+    if (ch === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if (ch === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += ch;
+  }
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows.filter((item) => item.some((value) => value.trim() !== ""));
+}
+
+function hookShare(csrf, native) {
   document.addEventListener("click", async (event) => {
     const btn = event.target.closest("[data-share]");
     if (!btn) {
@@ -210,7 +493,17 @@ function hookShare(native) {
     }
     const title = btn.getAttribute("data-share-title") || "Ecclesia";
     const text = btn.getAttribute("data-share-text") || "";
-    let url = btn.getAttribute("data-share-url") || window.location.href;
+    let url = btn.getAttribute("data-share-url") || "";
+    const mint = btn.getAttribute("data-share-mint") || "";
+    if (!url && mint) {
+      url = await mintedShare(csrf, mint);
+      if (!url) {
+        return;
+      }
+    }
+    if (!url) {
+      url = window.location.href;
+    }
     if (url.startsWith("/")) {
       url = window.location.origin + url;
     }
@@ -231,6 +524,28 @@ function hookShare(native) {
       // The person cancelled the sheet.
     }
   });
+}
+
+async function mintedShare(csrf, mint) {
+  if (!csrf || !mint) {
+    return "";
+  }
+  const params = new URLSearchParams({ csrf });
+  const lat = document.querySelector('input[name="lat"]');
+  const lng = document.querySelector('input[name="lng"]');
+  if (lat && lng && lat.value && lng.value) {
+    params.set("lat", lat.value);
+    params.set("lng", lng.value);
+  }
+  const response = await fetch(mint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "text/plain" },
+    body: params,
+  });
+  if (!response.ok) {
+    return "";
+  }
+  return (await response.text()).trim();
 }
 
 function hookRewrite(csrf) {
@@ -313,7 +628,8 @@ function hookReview(csrf) {
     if (form.dataset.reviewed === "1") {
       return;
     }
-    const fields = reviewFields(form);
+    const submitter = event.submitter;
+    const fields = reviewFields(form, submitter);
     if (!fields.length) {
       return;
     }
@@ -323,26 +639,37 @@ function hookReview(csrf) {
       const live = await fillRefined(csrf, fields);
       if (!live) {
         markReviewed(form);
-        form.submit();
+        submitReviewed(form, submitter);
         return;
       }
-      showReview(form);
+      showReview(form, submitter);
     } catch (_error) {
       markReviewed(form);
-      form.submit();
+      submitReviewed(form, submitter);
     } finally {
       setReviewing(form, false);
     }
   });
 }
 
-function reviewFields(form) {
+function reviewFields(form, submitter) {
+  const marking = submitter instanceof HTMLButtonElement && submitter.hasAttribute("data-mark-met");
   return [...form.querySelectorAll("[data-rewrite]")]
     .map((btn) => ({
       field: rewriteField(btn),
-      kind: btn.getAttribute("data-kind") || "",
+      kind: marking ? "praise" : btn.getAttribute("data-kind") || "",
     }))
     .filter((item) => item.field && item.field.value.trim());
+}
+
+function submitReviewed(form, submitter) {
+  if (submitter instanceof HTMLButtonElement) {
+    const action = submitter.getAttribute("formaction");
+    if (action) {
+      form.setAttribute("action", action);
+    }
+  }
+  form.submit();
 }
 
 async function fillRefined(csrf, fields) {
@@ -384,7 +711,7 @@ function markReviewed(form) {
   }
 }
 
-function showReview(form) {
+function showReview(form, submitter) {
   markReviewed(form);
   if (!form.querySelector(".review-banner")) {
     const banner = document.createElement("p");
@@ -392,7 +719,9 @@ function showReview(form) {
     banner.textContent = "Read this through. Edit anything you want. Then publish.";
     form.prepend(banner);
   }
-  const submit = form.querySelector('button[type="submit"]');
+  const submit = submitter instanceof HTMLButtonElement
+    ? submitter
+    : form.querySelector('button[type="submit"]');
   if (submit) {
     submit.textContent = "Publish";
   }
@@ -679,6 +1008,29 @@ function hookPlaceShare() {
         status.textContent = "Location stayed off.";
       }
     }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 });
+  });
+}
+
+function hookPrayToast() {
+  const toast = document.querySelector("[data-pray-toast]");
+  if (!toast || !window.localStorage) {
+    return;
+  }
+  const key = "ecclesia-pray-toast";
+  const until = Number(localStorage.getItem(key) || "0");
+  if (Date.now() < until) {
+    return;
+  }
+  const week = 7 * 24 * 60 * 60 * 1000;
+  toast.hidden = false;
+  localStorage.setItem(key, String(Date.now() + week));
+  const dismiss = toast.querySelector("[data-pray-toast-dismiss]");
+  if (!dismiss) {
+    return;
+  }
+  dismiss.addEventListener("click", () => {
+    toast.hidden = true;
+    localStorage.setItem(key, String(Date.now() + week * 3));
   });
 }
 
@@ -1267,6 +1619,7 @@ function hookPickers() {
     },
   };
 
+  pickerBus = bus;
   for (const select of document.querySelectorAll("select")) {
     mountPicker(select, bus);
   }
@@ -1451,7 +1804,89 @@ function mountPicker(select, bus) {
     scrollTimer = window.setTimeout(() => menu.classList.remove("is-scrolling"), 700);
   });
 
+  select.addEventListener("change", () => {
+    face.removeAttribute("aria-invalid");
+    paint();
+  });
+
+  select._picker = api;
   paint();
+}
+
+const SERVICE_LIMIT = 8;
+
+function hookServiceTimes() {
+  const root = document.querySelector("[data-service-times]");
+  const template = document.getElementById("service-row");
+  if (!root || !template || !pickerBus) {
+    return;
+  }
+  const add = root.querySelector("[data-service-add]");
+  add.addEventListener("click", () => {
+    if (serviceRows(root).length >= SERVICE_LIMIT) {
+      return;
+    }
+    const row = template.content.firstElementChild.cloneNode(true);
+    root.querySelector("[data-service-list]").append(row);
+    mountPicker(row.querySelector("select"), pickerBus);
+    packServiceNames(root);
+    syncServiceRows(root);
+    row.querySelector("input[type='time']")?.focus();
+  });
+  root.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-service-remove]");
+    if (!button || !root.contains(button)) {
+      return;
+    }
+    const row = button.closest("[data-service-row]");
+    const rows = serviceRows(root);
+    if (rows.length <= 1) {
+      clearServiceRow(row);
+      return;
+    }
+    row.querySelector("select")?._picker?.close(false);
+    row.querySelector("select")?._picker?.menu.remove();
+    row.remove();
+    packServiceNames(root);
+    syncServiceRows(root);
+  });
+}
+
+function packServiceNames(root) {
+  serviceRows(root).forEach((row, index) => {
+    row.querySelector("select").name = `service_day_${index}`;
+    row.querySelector("input[type='time']").name = `service_time_${index}`;
+  });
+}
+
+function serviceRows(root) {
+  return [...root.querySelectorAll("[data-service-list] [data-service-row]")];
+}
+
+function syncServiceRows(root) {
+  const rows = serviceRows(root);
+  const alone = rows.length === 1;
+  for (const row of rows) {
+    const button = row.querySelector("[data-service-remove]");
+    if (alone) {
+      button.setAttribute("hidden", "");
+    } else {
+      button.removeAttribute("hidden");
+    }
+  }
+  root.querySelector("[data-service-add]").disabled = rows.length >= SERVICE_LIMIT;
+}
+
+function clearServiceRow(row) {
+  const select = row.querySelector("select");
+  const time = row.querySelector("input[type='time']");
+  if (select) {
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+  }
+  if (time) {
+    time.value = "";
+  }
 }
 
 function labelText(label) {
@@ -1700,5 +2135,141 @@ function clearChurchSuggestions(root) {
   }
   if (query) {
     query.setAttribute("aria-expanded", "false");
+  }
+}
+
+function hookMarkMet() {
+  document.querySelectorAll("[data-reply-form]").forEach((form) => {
+    const box = form.querySelector("textarea");
+    const mark = form.querySelector("[data-mark-met]");
+    if (!box || !mark) {
+      return;
+    }
+    const sync = () => {
+      mark.disabled = box.value.trim() === "";
+    };
+    box.addEventListener("input", sync);
+    sync();
+  });
+}
+
+function hookNeedReturn() {
+  restoreNeedReturn();
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-need]");
+    if (!link) {
+      return;
+    }
+    const list = link.closest("[data-church-needs]");
+    if (!list) {
+      return;
+    }
+    const saved = {
+      churchId: list.getAttribute("data-church-needs") || "",
+      scrollY: window.scrollY,
+      needId: link.getAttribute("data-need") || "",
+      flash: false,
+    };
+    try {
+      sessionStorage.setItem("ecclesia.needReturn", JSON.stringify(saved));
+    } catch (error) {
+      return;
+    }
+  });
+}
+
+function restoreNeedReturn() {
+  const link = document.querySelector("[data-need-back]");
+  if (link) {
+    rememberNeedMark(link);
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("return") !== "1") {
+    return;
+  }
+  const root = document.querySelector("[data-church-needs]");
+  let raw = null;
+  try {
+    raw = sessionStorage.getItem("ecclesia.needReturn");
+  } catch (error) {
+    raw = null;
+  }
+  let saved = null;
+  if (raw) {
+    try {
+      saved = JSON.parse(raw);
+    } catch (error) {
+      saved = null;
+    }
+  }
+  if (root && saved && saved.churchId === root.getAttribute("data-church-needs")) {
+    const needId = typeof saved.needId === "string" && /^[A-Za-z0-9_-]+$/.test(saved.needId) ? saved.needId : "";
+    const card = needId ? document.getElementById(`need-${needId}`) : null;
+    if (typeof saved.scrollY === "number" && Number.isFinite(saved.scrollY)) {
+      window.scrollTo(0, saved.scrollY);
+    } else if (card && card.scrollIntoView) {
+      card.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+    if (saved.flash && card) {
+      card.classList.add("is-met");
+      window.setTimeout(() => {
+        card.classList.remove("is-met");
+      }, 1600);
+    }
+    try {
+      sessionStorage.removeItem("ecclesia.needReturn");
+    } catch (error) {
+      return;
+    }
+  }
+  document.documentElement.classList.remove("need-return");
+  params.delete("return");
+  let next = window.location.pathname;
+  const query = params.toString();
+  if (query) {
+    next += `?${query}`;
+  }
+  if (window.location.hash) {
+    next += window.location.hash;
+  }
+  window.history.replaceState(window.history.state, "", next);
+}
+
+function rememberNeedMark(link) {
+  const marking = link.hasAttribute("data-just-met");
+  const reopened = link.hasAttribute("data-reopened");
+  if (!marking && !reopened) {
+    return;
+  }
+  const churchId = link.getAttribute("data-church") || "";
+  const needId = link.getAttribute("data-need") || "";
+  const key = "ecclesia.needReturn";
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(key) || "null");
+  } catch (error) {
+    saved = null;
+  }
+  if (marking) {
+    if (!saved || saved.churchId !== churchId) {
+      saved = { churchId, scrollY: null, needId, flash: true };
+    } else {
+      saved.needId = needId;
+      saved.flash = true;
+    }
+    try {
+      sessionStorage.setItem(key, JSON.stringify(saved));
+    } catch (error) {
+      return;
+    }
+    return;
+  }
+  if (saved && saved.churchId === churchId) {
+    saved.flash = false;
+    try {
+      sessionStorage.setItem(key, JSON.stringify(saved));
+    } catch (error) {
+      return;
+    }
   }
 }

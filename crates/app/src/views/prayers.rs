@@ -8,7 +8,6 @@ use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row};
 
 #[derive(Clone, Copy)]
 pub enum PrayEmpty {
-    SharePlace,
     Finished,
     WaitingChurch,
 }
@@ -30,7 +29,6 @@ pub fn pray_page(
     controls: PrayerControls,
     unread: i64,
     csrf: &str,
-    place: Option<(&str, &str)>,
 ) -> Markup {
     page(
         "Pray",
@@ -45,9 +43,12 @@ pub fn pray_page(
                 a class="btn" href="/prayers/new" { "Ask for prayer" }
             }
             @if let Some(card) = card {
-                (prayer_face(card, source, controls, csrf, place))
+                (prayer_face(card, source, controls, csrf, None))
             } @else {
                 (pray_empty(empty))
+            }
+            @if viewer.is_active_anywhere() {
+                (pray_toast())
             }
         },
     )
@@ -95,30 +96,49 @@ pub fn prayer_new(
         csrf,
         html! {
             (page_lead("Ask for prayer"))
-            form class="stack" method="post" action="/prayers" {
-                (csrf_input(csrf))
-                input type="hidden" name="church_id" value=(draft.church_id);
-                (voice_pass_input(draft.kind))
-                (review_banner(draft.kind))
-                label { "Prayer"
-                    textarea name="body" rows="5" required maxlength="2000" placeholder="Surgery on Thursday." { (draft.body) }
-                    (rewrite_row(VoiceKind::Prayer))
-                }
-                fieldset class="stack" {
-                    legend { "Name" }
-                    label {
-                        input type="radio" name="byline" value="signed" checked[draft.byline != "unnamed"];
-                        "With my name"
-                    }
-                    label {
-                        input type="radio" name="byline" value="unnamed" checked[draft.byline == "unnamed"];
-                        "No name"
-                    }
-                }
-                button class="btn" type="submit" { (draft.kind.submit_label("Post prayer")) }
-            }
+            (prayer_form(viewer, csrf, draft))
         },
     )
+}
+
+fn prayer_form(viewer: &Viewer, csrf: &str, draft: &PrayerDraft<'_>) -> Markup {
+    let churches: Vec<_> = viewer.active_churches().collect();
+    if churches.is_empty() {
+        return html! {
+            div class="empty" {
+                p { "Join a church first, then ask from there." }
+                a class="btn" href="/churches/join" { "Find your church" }
+            }
+        };
+    }
+    html! {
+        form class="stack" method="post" action="/prayers" {
+            (csrf_input(csrf))
+            label { "Church"
+                select name="church_id" required {
+                    (super::cards::church_options(churches, Some(draft.church_id).filter(|id| !id.is_empty())))
+                }
+            }
+            (voice_pass_input(draft.kind))
+            (review_banner(draft.kind))
+            label { "Prayer"
+                textarea name="body" rows="5" required maxlength="2000" placeholder="Surgery on Thursday." { (draft.body) }
+                (rewrite_row(VoiceKind::Prayer))
+            }
+            fieldset class="stack" {
+                legend { "Name" }
+                label {
+                    input type="radio" name="byline" value="signed" checked[draft.byline != "unnamed"];
+                    "With my name"
+                }
+                label {
+                    input type="radio" name="byline" value="unnamed" checked[draft.byline == "unnamed"];
+                    "No name"
+                }
+            }
+            button class="btn" type="submit" { (draft.kind.submit_label("Post prayer")) }
+        }
+    }
 }
 
 fn prayer_face(
@@ -171,7 +191,10 @@ fn praise_panel(
     praise: &str,
     kind: super::draft::DraftKind,
 ) -> Markup {
-    if !matches!(controls, PrayerControls::Answer | PrayerControls::MarkAndAnswer) {
+    if !matches!(
+        controls,
+        PrayerControls::Answer | PrayerControls::MarkAndAnswer
+    ) {
         return html! {};
     }
     html! {
@@ -193,14 +216,6 @@ fn praise_panel(
 
 fn pray_empty(empty: PrayEmpty) -> Markup {
     match empty {
-        PrayEmpty::SharePlace => html! {
-            div class="empty" {
-                p { "Share where you are to pray for churches around you." }
-                button type="button" class="btn" data-share-place="pray" { "Share location" }
-                a href="/nearby" { "Nearby" }
-                p class="muted" data-place-status {}
-            }
-        },
         PrayEmpty::WaitingChurch => html! {
             div class="empty" {
                 p { "Once you're in a church, its prayers show up here." }
@@ -215,10 +230,20 @@ fn pray_empty(empty: PrayEmpty) -> Markup {
     }
 }
 
+fn pray_toast() -> Markup {
+    html! {
+        div class="pray-toast" data-pray-toast hidden {
+            p { "Pray for churches where you are." }
+            a class="btn" href="/nearby" { "Nearby" }
+            button class="btn btn-quiet" type="button" data-pray-toast-dismiss { "Not now" }
+        }
+    }
+}
+
 fn source_label(source: PrayerSource) -> &'static str {
     match source {
         PrayerSource::Church => "Your church",
-        PrayerSource::Nearby => "Nearby",
+        PrayerSource::Surrounding => "Surrounding church",
     }
 }
 

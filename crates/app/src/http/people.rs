@@ -8,10 +8,12 @@ use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind};
 use ecclesia_sdk::story;
 
 use super::context::{
-    bind_session, html, leaf_err, linked_church, load_user, redirect_err, redirect_ok, signed_form,
-    signed_in, story_redirect, unread, viewer_for, with_cookie,
+    bind_session, html, leaf_err, load_user, member_churches, redirect_err, redirect_ok,
+    signed_form, signed_in, story_redirect, unread, viewer_for, with_cookie,
 };
-use super::forms::{CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm};
+use super::forms::{
+    ChurchPost, CsrfForm, EndorseForm, FlashQuery, GiftForm, ProfileForm, TransferForm,
+};
 use super::{AppError, AppState};
 
 pub async fn member_show(
@@ -39,7 +41,7 @@ pub async fn member_show(
             )),
         ));
     };
-    let church = linked_church(&state.sdk.db, &person).await?;
+    let churches = member_churches(&state.sdk.db, &person).await?;
     let gifts = state.sdk.db.member_gifts(&person.id).await?;
     let endorsements = state.sdk.db.accepted_endorsements_for(&person.id).await?;
     let declined = state.sdk.db.declined_endorsements_for(&person.id).await?;
@@ -50,7 +52,7 @@ pub async fn member_show(
         html(views::member_show(
             &viewer,
             &person,
-            church.as_ref(),
+            &churches,
             &gifts,
             &endorsements,
             &declined,
@@ -225,6 +227,11 @@ pub async fn me(
     let catalog = story::gift_catalog(&state.sdk).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let devices = state.sdk.db.sessions_for_user(&viewer.user.id).await?;
+    let movable = state
+        .sdk
+        .db
+        .open_needs_from_closed_churches(&viewer.user.id)
+        .await?;
     Ok(with_cookie(
         signed.jar,
         html(views::me(
@@ -243,6 +250,7 @@ pub async fn me(
                 kind: views::DraftKind::Blank,
             },
             &views::GiftDraft::blank(),
+            &movable,
         )),
     ))
 }
@@ -293,17 +301,60 @@ pub async fn update_me(
 pub async fn leave_church_http(
     State(state): State<AppState>,
     jar: CookieJar,
-    Form(form): Form<CsrfForm>,
+    Form(form): Form<ChurchPost>,
 ) -> Result<Response, AppError> {
     let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
         Ok(signed) => signed,
         Err(response) => return Ok(response),
     };
-    match story::leave_church(&state.sdk, &signed.user).await? {
-        Ok(_) => Ok(with_cookie(
-            signed.jar,
-            redirect_ok("/churches/join", "left"),
-        )),
+    let staying = signed
+        .user
+        .memberships
+        .iter()
+        .any(|link| link.church_id != form.church_id);
+    match story::leave_church(&state.sdk, &signed.user, &form.church_id).await? {
+        Ok(_) => {
+            let dest = if staying { "/me" } else { "/churches/join" };
+            Ok(with_cookie(signed.jar, redirect_ok(dest, "left")))
+        }
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err("/me", error))),
+    }
+}
+
+pub async fn close_church_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<ChurchPost>,
+) -> Result<Response, AppError> {
+    let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    let staying = signed
+        .user
+        .memberships
+        .iter()
+        .any(|link| link.church_id != form.church_id);
+    match story::close_church(&state.sdk, &signed.user, &form.church_id).await? {
+        Ok(_) => {
+            let dest = if staying { "/home" } else { "/churches/join" };
+            Ok(with_cookie(signed.jar, redirect_ok(dest, "closed")))
+        }
+        Err(error) => Ok(with_cookie(signed.jar, leaf_err("/me", error))),
+    }
+}
+
+pub async fn transfer_church_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<TransferForm>,
+) -> Result<Response, AppError> {
+    let signed = match signed_form(&state, jar, &form.csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    match story::transfer_church(&state.sdk, &signed.user, &form.church_id, &form.email).await? {
+        Ok(_) => Ok(with_cookie(signed.jar, redirect_ok("/me", "transferred"))),
         Err(error) => Ok(with_cookie(signed.jar, leaf_err("/me", error))),
     }
 }
@@ -414,7 +465,7 @@ async fn paint_member(
     csrf: &str,
     draft: &views::EndorseDraft<'_>,
 ) -> Result<Response, AppError> {
-    let church = linked_church(&state.sdk.db, person).await?;
+    let churches = member_churches(&state.sdk.db, person).await?;
     let gifts = state.sdk.db.member_gifts(&person.id).await?;
     let endorsements = state.sdk.db.accepted_endorsements_for(&person.id).await?;
     let declined = state.sdk.db.declined_endorsements_for(&person.id).await?;
@@ -425,7 +476,7 @@ async fn paint_member(
         html(views::member_show(
             &viewer,
             person,
-            church.as_ref(),
+            &churches,
             &gifts,
             &endorsements,
             &declined,
@@ -451,10 +502,25 @@ async fn paint_me(
     let catalog = story::gift_catalog(&state.sdk).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let devices = state.sdk.db.sessions_for_user(&viewer.user.id).await?;
+    let movable = state
+        .sdk
+        .db
+        .open_needs_from_closed_churches(&viewer.user.id)
+        .await?;
     Ok(with_cookie(
         jar,
         html(views::me(
-            viewer, &gifts, &catalog, &devices, None, count, flash, csrf, profile, gift,
+            viewer,
+            &gifts,
+            &catalog,
+            &devices,
+            None,
+            count,
+            flash,
+            csrf,
+            profile,
+            gift,
+            &movable,
         )),
     ))
 }

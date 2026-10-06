@@ -181,28 +181,26 @@ pub async fn require_user(db: &Db, session: &Session) -> Result<User, Response> 
 }
 
 pub async fn viewer_for(db: &Db, user: User) -> Result<Viewer, AppError> {
-    let church = linked_church(db, &user).await?;
+    let churches = db.churches_for_memberships(&user).await?;
     let gift_ids = db.gift_ids_for(&user.id).await?;
     Ok(Viewer {
         user,
-        church,
+        churches,
         gift_ids,
     })
 }
 
 /// Where a signed-in person lands. No church means the join step only.
 pub fn signed_home(user: &User) -> &'static str {
-    match user.church_id {
-        Some(_) => "/home",
-        None => "/churches/join",
+    if user.has_church() {
+        "/home"
+    } else {
+        "/churches/join"
     }
 }
 
-pub async fn linked_church(db: &Db, user: &User) -> Result<Option<Church>, AppError> {
-    match user.church_id.as_deref() {
-        Some(id) => Ok(db.church(id).await?),
-        None => Ok(None),
-    }
+pub async fn member_churches(db: &Db, user: &User) -> Result<Vec<Church>, AppError> {
+    Ok(db.churches_for_memberships(user).await?)
 }
 
 pub async fn unread(db: &Db, user_id: &str) -> Result<i64, AppError> {
@@ -250,7 +248,7 @@ pub async fn hold_without_church(
         Err(error) => return error.into_response(),
     };
     match user {
-        Some(user) if user.church_id.is_none() => Redirect::to("/churches/join").into_response(),
+        Some(user) if !user.has_church() => Redirect::to("/churches/join").into_response(),
         _ => next.run(request).await,
     }
 }

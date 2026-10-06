@@ -1,0 +1,44 @@
+@page {
+  margin: 0.7in;
+}
+
+html,
+body {
+  margin: 0;
+  background: #fff;
+  color: #102018;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.35rem;
+  text-align: center;
+}
+
+h1 {
+  margin: 0;
+  max-width: 5.5in;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.mark svg {
+  display: block;
+  width: 3.15in;
+  height: auto;
+}
+
+p {
+  margin: 0;
+  max-width: 5.5in;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

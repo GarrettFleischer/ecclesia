@@ -524,8 +524,7 @@ form.stack {
 
 .row,
 .landing-cta,
-.page-actions,
-.share-row {
+.page-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -580,6 +579,67 @@ form.stack {
   gap: 0.75rem;
 }
 
+.address-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(8rem, 0.8fr) minmax(6.5rem, 0.55fr);
+  gap: 0.75rem;
+}
+
+.service-times {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.service-times > legend {
+  margin: 0;
+}
+
+.service-list-fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(8.5rem, 0.7fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.service-times > .btn {
+  justify-self: start;
+}
+
+.service-row .btn {
+  min-height: 3rem;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+.service-when {
+  align-items: flex-start;
+}
+
+.service-when .meta-icon {
+  margin-top: 0.2rem;
+}
+
+.service-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.service-list li + li {
+  margin-top: 0.15rem;
+}
+
 .row-form {
   display: flex;
   flex-wrap: wrap;
@@ -602,6 +662,40 @@ form.stack {
 
 .page-head h1 {
   margin: 0;
+}
+
+.pray-toast {
+  position: fixed;
+  z-index: 40;
+  right: 0;
+  left: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.6rem);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+  width: min(28rem, calc(100% - 1.5rem));
+  margin: 0 auto;
+  padding: 0.55rem 0.55rem 0.55rem 0.9rem;
+  border-radius: 1.2rem;
+  background: var(--toast);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--shadow-2), inset 0 0 0 1px var(--line);
+  animation: toast-in 640ms var(--spring) both;
+}
+
+.pray-toast p {
+  flex: 1 1 12rem;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.pray-toast .btn {
+  min-height: 2.5rem;
+  padding: 0 0.9rem;
+  font-size: 0.875rem;
 }
 
 .profile-head {
@@ -1467,9 +1561,9 @@ form.stack > .btn {
 }
 
 .chip-closed {
-  background: var(--err-soft);
-  color: var(--err);
-  box-shadow: none;
+  background: var(--sunk);
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .pill {
@@ -1509,23 +1603,126 @@ form.stack > .btn {
   color: var(--err);
 }
 
-.share-row {
-  margin: 0.5rem 0 1.1rem;
+.invite-sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0.75rem 0 0.4rem;
 }
 
-.code {
-  display: inline-flex;
-  align-items: center;
+.invite-qr {
+  display: block;
+  width: min(16rem, 100%);
+  height: auto;
+  border-radius: 0.85rem;
+}
+
+.invite-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.invite-tool {
+  width: 3rem;
   min-height: 3rem;
-  margin: 0;
-  padding: 0 1rem;
+  padding: 0;
   border-radius: var(--r-md);
-  background: var(--sunk);
+}
+
+.invite-tool .btn-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+}
+
+.invite-mail {
+  width: min(28rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 1.4rem;
+  background: var(--field-solid);
   color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--line-2);
-  font: 600 1.05rem/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  user-select: all;
+  box-shadow: var(--shadow-2), inset 0 0 0 1px var(--line);
+}
+
+.invite-mail::backdrop {
+  background: rgb(8 14 12 / 0.55);
+}
+
+.invite-mail-sheet {
+  display: grid;
+  gap: 1rem;
+  max-height: calc(100dvh - 2rem);
+  padding: 1.15rem 1.15rem 1.25rem;
+  overflow: auto;
+}
+
+.invite-mail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.invite-mail-head h2 {
+  margin: 0;
+}
+
+.invite-drop {
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.9rem 0.85rem;
+  border: 1px dashed var(--line);
+  border-radius: 0.85rem;
+  text-align: center;
+}
+
+.invite-drop.is-dropping {
+  border-color: var(--ink);
+  background: var(--surface-2);
+}
+
+.invite-drop .meta {
+  margin: 0;
+}
+
+.invite-rows {
+  display: grid;
+  gap: 0.7rem;
+  width: 100%;
+  text-align: left;
+}
+
+.invite-file-error {
+  color: var(--err);
+}
+
+.invite-csv {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.print-frame {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 8.5in;
+  height: 11in;
+  border: 0;
 }
 
 label,
@@ -2630,6 +2827,24 @@ input.is-invalid:focus {
     grid-template-columns: 1fr;
   }
 
+  .address-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .address-grid label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .service-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .service-row .btn,
+  .service-times > .btn {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
   .row-form .btn {
     width: 100%;
   }
@@ -3086,4 +3301,69 @@ input.is-invalid:focus {
   .choice input:checked {
     background: Highlight;
   }
+}
+
+html.need-return {
+  visibility: hidden;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0 1rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+.back-link::before {
+  content: "‹";
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.reply-actions .btn {
+  flex: 1 1 8rem;
+}
+
+.reply-actions [data-mark-met]:disabled {
+  opacity: 0.42;
+  background: var(--sunk);
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.reopen-form {
+  margin: 0 0 0 auto;
+}
+
+.reopen-form .btn {
+  min-height: 2rem;
+  padding: 0 0.7rem;
+  font-size: 0.8125rem;
+}
+
+@keyframes need-met {
+  0% {
+    background: var(--gold-soft);
+    box-shadow: inset 0 0 0 1px var(--gold-line);
+  }
+
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+.need-card.is-met {
+  animation: need-met 1.5s ease;
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px var(--gold-line);
 }
