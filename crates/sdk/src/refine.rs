@@ -8,9 +8,7 @@ use serde_json::json;
 
 use ecclesia_domain::VoiceKind;
 
-use super::chat::{
-    ChatEndpoint, ChatResponse, apply_headers, chat_completions_url,
-};
+use super::chat::{ChatEndpoint, ChatResponse, apply_headers, chat_completions_url};
 use super::prompts;
 
 #[derive(Clone)]

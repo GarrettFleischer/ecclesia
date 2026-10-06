@@ -12,7 +12,7 @@ use ecclesia_sdk::db::{
 use ecclesia_sdk::host::{HostKind, mail_env_from};
 use ecclesia_sdk::judge::word_gate;
 use ecclesia_sdk::password::{hash_token, score};
-use ecclesia_sdk::prelude::{Church, Need, Posture, Strength, User, Write};
+use ecclesia_sdk::prelude::{Church, Need, NeedShelf, Posture, Strength, User, Write};
 use ecclesia_sdk::session::{CookieTransport, Session};
 use ecclesia_sdk::web_push::audience;
 use proptest::collection;
@@ -48,6 +48,9 @@ fn church(id: &str, name: &str, address: &str) -> Church {
         country: "US".into(),
         description: String::new(),
         gathering: String::new(),
+        ein: "12-3456789".into(),
+        registry_state: "IA".into(),
+        registry_number: "123456".into(),
         owner_id: "o".into(),
         invite_code: "code".into(),
         created_at: "t0".into(),
@@ -62,9 +65,7 @@ fn user(id: &str) -> User {
         email: format!("{id}@ecclesia.test"),
         bio: String::new(),
         created_at: "t0".into(),
-        church_id: None,
-        church_status: None,
-        church_role: None,
+        memberships: Vec::new(),
     }
 }
 
@@ -79,6 +80,9 @@ fn need(church_id: &str) -> Need {
         scope: "church".into(),
         status: "open".into(),
         created_at: "t0".into(),
+        closed_at: None,
+        praise: None,
+        shelf: NeedShelf::Listed,
     }
 }
 
@@ -376,7 +380,7 @@ proptest! {
     #[test]
     fn us_prop_cache_01_write_keys_name_the_church(
         church_id in "[a-z0-9]{1,12}",
-        next in proptest::option::of("[a-z0-9]{1,12}"),
+        next in "[a-z0-9]{1,12}",
         previous in proptest::option::of("[a-z0-9]{1,12}"),
     ) {
         let inserted = keys_for_write(&Write::InsertChurch(church(&church_id, &church_id, "100 Main Street")), None);
@@ -384,19 +388,17 @@ proptest! {
         let need_keys = keys_for_write(&Write::InsertNeed(need(&church_id)), None);
         assert_eq!(need_keys, vec![format!("church:{church_id}"), "directory".into()]);
         assert!(keys_for_write(&Write::InsertUser(user("ada")), previous.as_deref()).is_empty());
-        let link = Write::SetChurchLink {
+        let link = Write::UpsertMembership {
             user_id: "ada".into(),
             church_id: next.clone(),
-            church_status: Some("pending".into()),
-            church_role: Some("member".into()),
+            status: "pending".into(),
+            role: "member".into(),
         };
         let keys = keys_for_write(&link, previous.as_deref());
         assert_eq!(keys.first().map(String::as_str), Some("directory"));
-        if let Some(id) = &next {
-            assert!(keys.iter().any(|key| key == &format!("church:{id}")));
-        }
+        assert!(keys.iter().any(|key| key == &format!("church:{next}")));
         if let Some(id) = &previous {
-            if next.as_deref() != Some(id.as_str()) {
+            if id != &next {
                 assert!(keys.iter().any(|key| key == &format!("church:{id}")));
             }
         }
@@ -405,7 +407,12 @@ proptest! {
         sorted.dedup();
         assert_eq!(sorted.len(), keys.len());
         let status_keys = keys_for_write(
-            &Write::SetNeedStatus { id: "n1".into(), status: "closed" },
+            &Write::SetNeedStatus {
+                id: "n1".into(),
+                status: "closed",
+                closed_at: None,
+                praise: None,
+            },
             previous.as_deref(),
         );
         match &previous {

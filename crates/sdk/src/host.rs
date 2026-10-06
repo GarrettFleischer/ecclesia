@@ -20,7 +20,9 @@ pub fn load_mail_env(listen_origin: &str) -> anyhow::Result<MailEnv> {
     };
     mail_env_from(
         kind,
-        std::env::var("RESEND_API_KEY").ok().filter(|v| !v.is_empty()),
+        std::env::var("RESEND_API_KEY")
+            .ok()
+            .filter(|v| !v.is_empty()),
         std::env::var("RESEND_FROM").ok().filter(|v| !v.is_empty()),
         std::env::var("ECCLESIA_PUBLIC_URL")
             .ok()
@@ -39,12 +41,13 @@ pub fn mail_env_from(
 ) -> anyhow::Result<MailEnv> {
     match public {
         HostKind::Public => {
-            let api_key =
-                api_key.ok_or_else(|| anyhow::anyhow!("RESEND_API_KEY is required on a public host"))?;
+            let api_key = api_key
+                .ok_or_else(|| anyhow::anyhow!("RESEND_API_KEY is required on a public host"))?;
             let from =
                 from.ok_or_else(|| anyhow::anyhow!("RESEND_FROM is required on a public host"))?;
-            let origin = public_url
-                .ok_or_else(|| anyhow::anyhow!("ECCLESIA_PUBLIC_URL is required on a public host"))?;
+            let origin = public_url.ok_or_else(|| {
+                anyhow::anyhow!("ECCLESIA_PUBLIC_URL is required on a public host")
+            })?;
             Ok(MailEnv {
                 api_key: Some(api_key),
                 from: Some(from),

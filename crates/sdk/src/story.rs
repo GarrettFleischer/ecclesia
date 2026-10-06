@@ -2,31 +2,33 @@
 
 use ecclesia_domain::{
     CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect, EndorsementQueue, Gift,
-    GiftOnProfile, NeedApproach, NeedCard, Place, PrayerByline, PrayerCard, PrayerMarkKind,
-    PrayerProof, PrayerReach, PrayerSight, PrayerSource, PriorOffer, PriorPrayerMark, SkillSource,
-    User, Viewer, VoiceKind,
+    GiftOnProfile, MET_NEED_DAYS, Need, NeedApproach, NeedCard, Place, PrayerByline, PrayerCard,
+    PrayerMarkKind, PrayerProof, PrayerReach, PrayerSight, PrayerSource, PriorOffer,
+    PriorPrayerMark, Share, ShareKind, SkillSource, User, Viewer, VoiceKind, Write,
     accept_application as domain_accept_application,
     accept_endorsement as domain_accept_endorsement, accept_invite as domain_accept_invite,
-    add_gift as domain_add_gift,     answer_prayer as domain_answer_prayer, apply_to_need as domain_apply_to_need,
-    mark_prayer as domain_mark_prayer,
-    approve_membership as domain_approve_membership, churches_with_counts,
+    add_gift as domain_add_gift, answer_prayer as domain_answer_prayer,
+    apply_to_need as domain_apply_to_need, approve_membership as domain_approve_membership,
+    can_view_need_near, churches_with_counts,     close_church as domain_close_church,
     close_need as domain_close_need, coordinates,
     decline_application as domain_decline_application,
     decline_endorsement as domain_decline_endorsement,
     decline_membership as domain_decline_membership, endorse as domain_endorse,
-    leave_church as domain_leave_church,
+    import_open_needs as domain_import_open_needs, leave_church as domain_leave_church, mark_prayer as domain_mark_prayer, parse_invite_email,
     pick_daily_prayer, plant_church as domain_plant_church, post_need as domain_post_need,
-    post_prayer as domain_post_prayer, remove_gift as domain_remove_gift, replace_with_code,
-    replace_with_pending, reply_to_need as domain_reply_to_need,
-    update_profile as domain_update_profile, visible_need_cards, visible_needs_near,
-    visible_prayers_near,
+    post_prayer as domain_post_prayer, remove_gift as domain_remove_gift,
+    reopen_need as domain_reopen_need, replace_with_code, replace_with_pending,
+    reply_to_need as domain_reply_to_need, require_need_view, share_expires_on,
+    transfer_church as domain_transfer_church, update_profile as domain_update_profile,
+    visible_need_cards, visible_needs_near, visible_prayers_near,
 };
 
 use crate::cache::Cache;
-use crate::clock::{new_id, nonce, now_iso, today_utc};
+use crate::clock::{new_id, nonce, now_iso, shift_days, today_utc};
 use crate::db::{Db, StoryExtras};
 use crate::judge::JudgeHub;
 use crate::limit::RateGate;
+use crate::places::PlaceBook;
 use crate::push::PushHub;
 use crate::refine::RefineHub;
 
@@ -46,6 +48,7 @@ pub struct Sdk {
     pub refine: RefineHub,
     pub push: PushHub,
     pub gate: RateGate,
+    pub places: PlaceBook,
 }
 
 impl Sdk {
@@ -63,7 +66,17 @@ impl Sdk {
             judge,
             refine,
             push,
+            places: PlaceBook::Census,
         }
+    }
+
+    pub fn with_fixture_places(mut self) -> Self {
+        self.places = PlaceBook::Fixture;
+        self
+    }
+
+    pub async fn locate_address(&self, address: &str) -> anyhow::Result<Option<Place>> {
+        self.places.locate(address).await
     }
 
     pub async fn commit(&self, effect: &Effect) -> anyhow::Result<()> {
@@ -81,14 +94,11 @@ impl Sdk {
     }
 
     pub async fn viewer(&self, user: User) -> anyhow::Result<Viewer> {
-        let church = match user.church_id.as_deref() {
-            Some(id) => self.db.church(id).await?,
-            None => None,
-        };
+        let churches = self.db.churches_for_memberships(&user).await?;
         let gift_ids = self.db.gift_ids_for(&user.id).await?;
         Ok(Viewer {
             user,
-            church,
+            churches,
             gift_ids,
         })
     }
@@ -158,6 +168,9 @@ pub async fn plant_church(
     longitude: f64,
     description: &str,
     gathering: &str,
+    ein: &str,
+    registry_state: &str,
+    registry_number: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
     let posture = sdk
         .weigh(VoiceKind::Church, &[name, address, gathering, description])
@@ -172,6 +185,9 @@ pub async fn plant_church(
             longitude,
             description,
             gathering,
+            ein,
+            registry_state,
+            registry_number,
             posture,
             new_id(),
             &nonce(),
@@ -203,6 +219,16 @@ pub async fn invite_member(
     crate::identity::invite_member(sdk, viewer, church_id, email, origin).await
 }
 
+pub async fn invite_members(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    church_id: &str,
+    emails: &[String],
+    origin: &crate::identity::MailOrigin,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    crate::identity::invite_members(sdk, viewer, church_id, emails, origin).await
+}
+
 pub async fn redeem_invite(
     sdk: &Sdk,
     user: &User,
@@ -226,38 +252,105 @@ pub async fn redeem_invite(
 pub async fn approve_membership(
     sdk: &Sdk,
     viewer: &Viewer,
+    church_id: &str,
     user_id: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let Some((target, church)) = load_linked_church(sdk, user_id).await? else {
+    let Some(pair) = load_member_church(sdk, church_id, user_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    finish(sdk, domain_approve_membership(viewer, &target, &church)).await
+    finish(sdk, domain_approve_membership(viewer, &pair.0, &pair.1)).await
 }
 
 pub async fn decline_membership(
     sdk: &Sdk,
     viewer: &Viewer,
+    church_id: &str,
     user_id: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let Some((target, church)) = load_linked_church(sdk, user_id).await? else {
+    let Some(pair) = load_member_church(sdk, church_id, user_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    finish(sdk, domain_decline_membership(viewer, &target, &church)).await
+    finish(sdk, domain_decline_membership(viewer, &pair.0, &pair.1)).await
 }
 
 pub async fn leave_church(
     sdk: &Sdk,
     user: &User,
+    church_id: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    finish(sdk, domain_leave_church(user)).await
+    finish(sdk, domain_leave_church(user, church_id)).await
 }
 
-pub async fn accept_invite(sdk: &Sdk, user: &User) -> anyhow::Result<Result<StoryOk, DomainError>> {
-    let church_id = user.church_id.clone();
-    match finish(sdk, domain_accept_invite(user)).await? {
+pub async fn close_church(
+    sdk: &Sdk,
+    user: &User,
+    church_id: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(church) = sdk.db.church(church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let members = sdk.db.member_releases(church_id).await?;
+    finish(
+        sdk,
+        domain_close_church(user, &church, &members, now_iso()),
+    )
+    .await
+}
+
+pub async fn import_open_needs(
+    sdk: &Sdk,
+    user: &User,
+    source_church_id: &str,
+    destination_church_id: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(destination) = sdk.db.church(destination_church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let Some((source, deleted_at)) = sdk.db.stored_church(source_church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    if deleted_at.is_none() {
+        return Ok(Err(DomainError::ChurchStillOpen));
+    }
+    let needs = sdk
+        .db
+        .open_needs_on_closed_church(&user.id, source_church_id)
+        .await?;
+    finish(
+        sdk,
+        domain_import_open_needs(user, &needs, &[source.id], &destination),
+    )
+    .await
+}
+
+pub async fn transfer_church(
+    sdk: &Sdk,
+    user: &User,
+    church_id: &str,
+    email: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let email = match parse_invite_email(email) {
+        Ok(email) => email,
+        Err(error) => return Ok(Err(error)),
+    };
+    let Some(church) = sdk.db.church(church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let Some(next) = sdk.db.user_by_email(&email).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    finish(sdk, domain_transfer_church(user, &church, &next)).await
+}
+
+pub async fn accept_invite(
+    sdk: &Sdk,
+    user: &User,
+    church_id: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    match finish(sdk, domain_accept_invite(user, church_id)).await? {
         Ok(mut ok) => {
             if ok.church_id.is_none() {
-                ok.church_id = church_id;
+                ok.church_id = Some(church_id.to_string());
             }
             Ok(Ok(ok))
         }
@@ -279,22 +372,32 @@ pub async fn post_need(
         None => CatalogPresence::Listed,
     };
     let posture = sdk.weigh(VoiceKind::Need, &[title, body]).await;
-    finish(
-        sdk,
-        domain_post_need(
-            viewer,
-            church_id,
-            title,
-            body,
-            gift_id,
-            presence,
-            scope,
-            posture,
-            new_id(),
-            now_iso(),
-        ),
-    )
-    .await
+    let id = new_id();
+    let posted = match domain_post_need(
+        viewer,
+        church_id,
+        title,
+        body,
+        gift_id,
+        presence,
+        scope,
+        posture,
+        id.clone(),
+        now_iso(),
+    ) {
+        Ok(mut effect) => {
+            let code = sdk.db.fresh_share_code(ShareKind::Need, &id).await?;
+            effect.push(Write::InsertShare(Share {
+                code,
+                kind: ShareKind::Need.as_str().into(),
+                target_id: id,
+                expires_at: None,
+            }));
+            Ok(effect)
+        }
+        Err(error) => Err(error),
+    };
+    finish(sdk, posted).await
 }
 
 pub async fn apply_to_need(
@@ -331,11 +434,80 @@ pub async fn close_need(
     sdk: &Sdk,
     viewer: &Viewer,
     need_id: &str,
+    praise: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
     let Some(need) = sdk.db.need(need_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    finish(sdk, domain_close_need(viewer, &need)).await
+    let posture = sdk.weigh(VoiceKind::Praise, &[praise]).await;
+    finish(
+        sdk,
+        domain_close_need(viewer, &need, praise, posture, now_iso()),
+    )
+    .await
+}
+
+pub async fn reopen_need(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need_id: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(need) = sdk.db.need(need_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    finish(sdk, domain_reopen_need(viewer, &need)).await
+}
+
+pub async fn share_need(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need_id: &str,
+    place: Option<Place>,
+) -> anyhow::Result<Result<String, DomainError>> {
+    let Some(need) = sdk.db.need(need_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    let Some(church) = sdk.db.church(&need.church_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    if let Err(error) = seen_need(viewer, &need, &church, place) {
+        return Ok(Err(error));
+    }
+    if let Some(share) = sdk.db.share_for_target(ShareKind::Need, need_id).await? {
+        return Ok(Ok(format!("/s/{}", share.code)));
+    }
+    let code = sdk
+        .db
+        .fresh_rotated_share_code(ShareKind::Need, need_id)
+        .await?;
+    let window_end = shift_days(&now_iso(), MET_NEED_DAYS);
+    let expires_at = share_expires_on(need.shelf, &window_end);
+    let mut effect = Effect::write(Write::DeleteNeedShare {
+        target_id: need.id.clone(),
+    });
+    effect.push(Write::InsertShare(Share {
+        code: code.clone(),
+        kind: ShareKind::Need.as_str().into(),
+        target_id: need.id,
+        expires_at,
+    }));
+    sdk.commit(&effect).await?;
+    Ok(Ok(format!("/s/{code}")))
+}
+
+fn seen_need(
+    viewer: &Viewer,
+    need: &Need,
+    church: &Church,
+    place: Option<Place>,
+) -> Result<(), DomainError> {
+    if require_need_view(viewer, need.sight(), church).is_ok() {
+        return Ok(());
+    }
+    if place.is_some_and(|point| can_view_need_near(viewer, need.sight(), church, point)) {
+        return Ok(());
+    }
+    require_need_view(viewer, need.sight(), church)
 }
 
 pub async fn accept_application(
@@ -437,7 +609,7 @@ pub async fn update_profile(
 
 pub async fn join_finder(
     sdk: &Sdk,
-    except_church_id: Option<&str>,
+    except_church_ids: &[&str],
     place: Option<Place>,
     query: &str,
 ) -> anyhow::Result<Result<Vec<ChurchSearchHit>, DomainError>> {
@@ -451,17 +623,23 @@ pub async fn join_finder(
         None => None,
     };
     if !query.is_empty() {
-        let here = place.map(|(latitude, longitude)| Place { latitude, longitude });
-        return Ok(Ok(search_churches(sdk, query, here, 8).await?));
+        let here = place.map(|(latitude, longitude)| Place {
+            latitude,
+            longitude,
+        });
+        let mut hits = search_churches(sdk, query, here, 8).await?;
+        hits.retain(|hit| !except_church_ids.contains(&hit.id.as_str()));
+        return Ok(Ok(hits));
     }
     let Some((latitude, longitude)) = place else {
         return Ok(Ok(Vec::new()));
     };
-    let churches = sdk
-        .db
-        .churches_near(latitude, longitude, except_church_id)
-        .await?;
-    Ok(Ok(churches.iter().map(search_hit).collect()))
+    let churches = sdk.db.churches_near(latitude, longitude, None).await?;
+    Ok(Ok(churches
+        .iter()
+        .filter(|church| !except_church_ids.contains(&church.id.as_str()))
+        .map(search_hit)
+        .collect()))
 }
 
 pub async fn add_gift(
@@ -569,11 +747,12 @@ pub async fn home_needs(
     viewer: &Viewer,
     after: Option<&str>,
 ) -> anyhow::Result<NeedPage> {
+    sdk.db.archive_met_needs().await?;
     let cursor = parse_need_cursor(after);
     let sql_page = sdk.db.home_need_cards(viewer, cursor).await?;
     let page_ids: Vec<&str> = unique_church_ids(&sql_page);
     let page_churches = sdk.db.churches_with_ids(&page_ids).await?;
-    let churches = union_churches(viewer.church.as_ref(), page_churches);
+    let churches = union_churches(&viewer.churches, page_churches);
     let visible = take_visible_cards(viewer, &sql_page, &churches);
     let next_cursor = next_need_cursor(&visible);
     Ok(NeedPage {
@@ -641,6 +820,7 @@ pub async fn church_show(
     need_after: Option<&str>,
     member_after: Option<&str>,
 ) -> anyhow::Result<Option<ChurchPage>> {
+    sdk.db.archive_met_needs().await?;
     let Some(church) = cached_or_store_church(sdk, church_id).await? else {
         return Ok(None);
     };
@@ -772,9 +952,9 @@ fn unique_church_ids(cards: &[NeedCard]) -> Vec<&str> {
     ids
 }
 
-fn union_churches(mine: Option<&Church>, page: Vec<Church>) -> Vec<Church> {
+fn union_churches(mine: &[Church], page: Vec<Church>) -> Vec<Church> {
     let mut out = Vec::new();
-    if let Some(church) = mine {
+    for church in mine {
         push_unique_church(&mut out, church);
     }
     for church in page {
@@ -792,11 +972,12 @@ fn push_unique_church(out: &mut Vec<Church>, church: &Church) {
     out.push(church.clone());
 }
 
-async fn load_linked_church(sdk: &Sdk, user_id: &str) -> anyhow::Result<Option<(User, Church)>> {
+async fn load_member_church(
+    sdk: &Sdk,
+    church_id: &str,
+    user_id: &str,
+) -> anyhow::Result<Option<(User, Church)>> {
     let Some(target) = sdk.db.user(user_id).await? else {
-        return Ok(None);
-    };
-    let Some(church_id) = target.church_id.as_deref() else {
         return Ok(None);
     };
     let Some(church) = sdk.db.church(church_id).await? else {
@@ -808,7 +989,9 @@ async fn load_linked_church(sdk: &Sdk, user_id: &str) -> anyhow::Result<Option<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecclesia_domain::{Effect, Need, User, Write};
+    use ecclesia_domain::{
+        Effect, Need, NeedShelf, Share, ShareKind, User, Write, share_code_for, share_material,
+    };
 
     async fn sdk_on(path: &std::path::Path) -> Sdk {
         let db = Db::connect(&format!("sqlite://{}", path.display()))
@@ -858,6 +1041,238 @@ mod tests {
         .unwrap()
         .unwrap();
         sdk.db.user_by_email(email).await.unwrap().expect(email)
+    }
+
+    #[tokio::test]
+    async fn us_share_01_a_need_keeps_one_code() {
+        let sdk = fresh_sdk().await;
+        let user = register_named(&sdk, "Miriam Cole", "miriam@grace.test").await;
+        let planted = plant_church(
+            &sdk,
+            &user,
+            "Grace Covenant",
+            "100 Main Street",
+            42.53,
+            -92.45,
+            "A church on Main Street.",
+            "Sunday at 10.",
+            "12-3456789",
+            "IA",
+            "123456",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let church_id = planted.church_id.expect("church");
+        let user = sdk.db.user(&user.id).await.unwrap().expect("member");
+        let viewer = sdk.viewer(user).await.unwrap();
+        let posted = post_need(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Dinners for the Okonkwo family",
+            "Five dinners this week.",
+            None,
+            "church",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let need_id = posted.need_id.expect("need");
+        let share = sdk
+            .db
+            .share_for_target(ShareKind::Need, &need_id)
+            .await
+            .unwrap()
+            .expect("code");
+        assert_eq!(share.code.len(), 6);
+        assert_eq!(share.target_id, need_id);
+        let again = sdk
+            .db
+            .share_for_target(ShareKind::Need, &need_id)
+            .await
+            .unwrap()
+            .expect("same code");
+        assert_eq!(again.code, share.code);
+        let found = sdk
+            .db
+            .share_by_code(&share.code.to_uppercase())
+            .await
+            .unwrap()
+            .expect("lookup");
+        assert_eq!(found.target_id, need_id);
+    }
+
+    #[tokio::test]
+    async fn us_share_02_a_taken_code_uses_the_next_one() {
+        let sdk = fresh_sdk().await;
+        let id = "need-fixed";
+        let natural = share_code_for(ShareKind::Need, id);
+        sdk.commit(&Effect::write(Write::InsertShare(Share {
+            code: natural.clone(),
+            kind: ShareKind::Need.as_str().into(),
+            target_id: "someone-else".into(),
+            expires_at: None,
+        })))
+        .await
+        .unwrap();
+        let code = sdk.db.fresh_share_code(ShareKind::Need, id).await.unwrap();
+        assert_ne!(code, natural);
+        assert_eq!(
+            code,
+            share_code_for(ShareKind::Need, &share_material(id, 1))
+        );
+    }
+
+    #[tokio::test]
+    async fn us_share_03_a_met_need_gets_a_fresh_code_after_thirty_days() {
+        let sdk = fresh_sdk().await;
+        let user = register_named(&sdk, "Miriam Cole", "miriam@grace.test").await;
+        let planted = plant_church(
+            &sdk,
+            &user,
+            "Grace Covenant",
+            "100 Main Street",
+            42.53,
+            -92.45,
+            "A church on Main Street.",
+            "Sunday at 10.",
+            "12-3456789",
+            "IA",
+            "123456",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let church_id = planted.church_id.expect("church");
+        let user = sdk.db.user(&user.id).await.unwrap().expect("member");
+        let viewer = sdk.viewer(user).await.unwrap();
+        let aged = post_need(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Dinners for the Okonkwo family",
+            "Five dinners this week.",
+            None,
+            "church",
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .need_id
+        .expect("aged need");
+        let still_open = post_need(
+            &sdk,
+            &viewer,
+            &church_id,
+            "A ride to the clinic",
+            "Thursday at 9.",
+            None,
+            "church",
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .need_id
+        .expect("open need");
+        let met_today = post_need(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Groceries for the Lane family",
+            "This week's list is on the counter.",
+            None,
+            "church",
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .need_id
+        .expect("met today");
+        let old_code = sdk
+            .db
+            .share_for_target(ShareKind::Need, &aged)
+            .await
+            .unwrap()
+            .expect("permanent code")
+            .code;
+        close_need(&sdk, &viewer, &aged, "The dinners are covered.")
+            .await
+            .unwrap()
+            .unwrap();
+        close_need(&sdk, &viewer, &met_today, "The groceries are in.")
+            .await
+            .unwrap()
+            .unwrap();
+        let aged_on = shift_days(&now_iso(), -(MET_NEED_DAYS + 10));
+        sdk.db.stamp_need_closed_at(&aged, &aged_on).await.unwrap();
+        sdk.db.archive_met_needs().await.unwrap();
+
+        let stored = sdk.db.need(&aged).await.unwrap().expect("need");
+        assert_eq!(stored.shelf, NeedShelf::Archived);
+        assert!(
+            sdk.db
+                .share_for_target(ShareKind::Need, &aged)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(sdk.db.share_by_code(&old_code).await.unwrap().is_none());
+
+        let listed = sdk
+            .db
+            .church_need_cards_page(&church_id, None)
+            .await
+            .unwrap();
+        let listed_ids: Vec<&str> = listed.iter().map(|card| card.id.as_str()).collect();
+        assert!(listed_ids.contains(&still_open.as_str()));
+        assert!(listed_ids.contains(&met_today.as_str()));
+        assert!(!listed_ids.contains(&aged.as_str()));
+
+        let home = sdk.db.home_need_cards(&viewer, None).await.unwrap();
+        let home_ids: Vec<&str> = home.iter().map(|card| card.id.as_str()).collect();
+        assert!(home_ids.contains(&still_open.as_str()));
+        assert!(!home_ids.contains(&met_today.as_str()));
+        assert!(!home_ids.contains(&aged.as_str()));
+
+        let path = share_need(&sdk, &viewer, &aged, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let fresh = path.trim_start_matches("/s/").to_string();
+        assert_ne!(fresh, old_code);
+        let share = sdk
+            .db
+            .share_for_target(ShareKind::Need, &aged)
+            .await
+            .unwrap()
+            .expect("timed code");
+        assert_eq!(share.code, fresh);
+        let expires = share.expires_at.expect("window");
+        assert!(expires > now_iso());
+        let again = share_need(&sdk, &viewer, &aged, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(again, path);
+
+        sdk.db
+            .stamp_share_expiry(&fresh, "2020-01-01T00:00:00Z")
+            .await
+            .unwrap();
+        assert!(
+            sdk.db
+                .share_for_target(ShareKind::Need, &aged)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let rotated = share_need(&sdk, &viewer, &aged, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(rotated, path);
+        assert_eq!(stored.shelf, NeedShelf::Archived);
     }
 
     #[tokio::test]
@@ -990,6 +1405,9 @@ mod tests {
             -92.45,
             "A church on Main Street.",
             "Sunday at 10.",
+            "12-3456789",
+            "IA",
+            "123456",
         )
         .await
         .unwrap()
@@ -1025,6 +1443,42 @@ mod tests {
         assert!(
             text.contains("http://127.0.0.1:43781/churches"),
             "mail was {text}"
+        );
+        let _ruth = register_named(&sdk, "Ruth Hale", "ruth@mercy.test").await;
+        let _paul = register_named(&sdk, "Paul Ames", "paul@mercy.test").await;
+        let batch = vec![
+            "nobody2@x.test".into(),
+            "ruth@mercy.test".into(),
+            "paul@mercy.test".into(),
+            "ruth@mercy.test".into(),
+        ];
+        invite_members(&sdk, &viewer, &church_id, &batch, &mail_origin())
+            .await
+            .unwrap()
+            .unwrap();
+        let rows = sdk.db.pending_outbox().await.unwrap();
+        let mails: Vec<_> = rows.iter().filter(|row| row.kind == "mail").collect();
+        assert!(
+            mails
+                .iter()
+                .any(|row| row.payload.contains("ruth@mercy.test"))
+        );
+        assert!(
+            mails
+                .iter()
+                .any(|row| row.payload.contains("paul@mercy.test"))
+        );
+        assert!(
+            mails
+                .iter()
+                .all(|row| !row.payload.contains("nobody2@x.test"))
+        );
+        assert_eq!(
+            mails
+                .iter()
+                .filter(|row| row.payload.contains("ruth@mercy.test"))
+                .count(),
+            1
         );
     }
 
@@ -1229,6 +1683,9 @@ mod tests {
             -92.45,
             "A church on Main Street.",
             "Sunday at 10.",
+            "12-3456789",
+            "IA",
+            "123456",
         )
         .await
         .unwrap()
@@ -1244,6 +1701,9 @@ mod tests {
             scope: "church".into(),
             status: "open".into(),
             created_at: "2026-08-01T00:00:00Z".into(),
+            closed_at: None,
+            praise: None,
+            shelf: NeedShelf::Listed,
         }));
         for index in 1..21 {
             effect.push(Write::InsertNeed(Need {
@@ -1256,6 +1716,9 @@ mod tests {
                 scope: "church".into(),
                 status: "open".into(),
                 created_at: format!("2026-08-{:02}T00:00:00Z", index + 1),
+                closed_at: None,
+                praise: None,
+                shelf: NeedShelf::Listed,
             }));
         }
         sdk.db.apply(&effect).await.unwrap();
@@ -1285,6 +1748,9 @@ mod tests {
             country: "US".into(),
             description: "Paging.".into(),
             gathering: String::new(),
+            ein: "12-3456789".into(),
+            registry_state: "IA".into(),
+            registry_number: "123456".into(),
             owner_id: "user_page".into(),
             invite_code: "page-00".into(),
             created_at: "2026-01-01T00:00:00Z".into(),
@@ -1299,6 +1765,9 @@ mod tests {
                 country: "US".into(),
                 description: "Paging.".into(),
                 gathering: String::new(),
+                ein: "12-3456789".into(),
+                registry_state: "IA".into(),
+                registry_number: "123456".into(),
                 owner_id: "user_page".into(),
                 invite_code: format!("page-{index:02}"),
                 created_at: format!("2026-01-{:02}T00:00:00Z", index + 1),
@@ -1327,6 +1796,9 @@ mod tests {
             -92.45,
             "A church on Main Street.",
             "Sunday at 10.",
+            "12-3456789",
+            "IA",
+            "123456",
         )
         .await
         .unwrap()
@@ -1339,16 +1811,20 @@ mod tests {
         for index in 0..20 {
             let user_id = format!("user_page_{index:02}");
             effect.push(Write::InsertUser(User {
-                id: user_id,
+                id: user_id.clone(),
                 first_name: "Page".into(),
                 last_name: format!("Member {index:02}"),
                 email: format!("page{index:02}@grace.test"),
                 bio: String::new(),
                 created_at: format!("2026-02-{:02}T00:00:00Z", index + 1),
-                church_id: Some(church_id.clone()),
-                church_status: Some("active".into()),
-                church_role: Some("member".into()),
+                memberships: Vec::new(),
             }));
+            effect.push(Write::UpsertMembership {
+                user_id,
+                church_id: church_id.clone(),
+                status: "active".into(),
+                role: "member".into(),
+            });
         }
         for index in 0..21 {
             effect.push(Write::InsertNeed(Need {
@@ -1361,6 +1837,9 @@ mod tests {
                 scope: "church".into(),
                 status: "open".into(),
                 created_at: format!("2026-08-{:02}T00:00:00Z", index + 1),
+                closed_at: None,
+                praise: None,
+                shelf: NeedShelf::Listed,
             }));
         }
         sdk.db.apply(&effect).await.unwrap();
@@ -1398,7 +1877,6 @@ pub enum PrayerDeck {
         card: PrayerCard,
         source: PrayerSource,
     },
-    SharePlace,
     Finished,
 }
 
@@ -1419,10 +1897,7 @@ pub async fn post_prayer(
         PrayerName::Unnamed => {
             let token = crate::password::mint_token();
             let manage_hash = crate::password::hash_token(&token);
-            (
-                PrayerByline::Unnamed { manage_hash },
-                Some(token),
-            )
+            (PrayerByline::Unnamed { manage_hash }, Some(token))
         }
     };
     let posture = sdk.weigh(VoiceKind::Prayer, &[body]).await;
@@ -1457,17 +1932,17 @@ pub async fn post_prayer(
     }
 }
 
-pub async fn prayer_deck(
-    sdk: &Sdk,
-    viewer: &Viewer,
-    place: Option<Place>,
-) -> anyhow::Result<PrayerDeck> {
+pub async fn prayer_deck(sdk: &Sdk, viewer: &Viewer) -> anyhow::Result<PrayerDeck> {
     let day = today_utc();
-    let church_id = viewer.active_church().map(|church| church.id.as_str());
-    let located = sdk
-        .db
-        .open_prayers_for_deck(church_id, place.map(|point| (point.latitude, point.longitude)))
-        .await?;
+    let church_ids: Vec<&str> = viewer
+        .active_churches()
+        .map(|church| church.id.as_str())
+        .collect();
+    let anchors: Vec<(f64, f64)> = viewer
+        .active_churches()
+        .map(|church| (church.latitude, church.longitude))
+        .collect();
+    let located = sdk.db.open_prayers_for_deck(&church_ids, &anchors).await?;
     let seen = sdk.db.seen_prayer_ids(&viewer.user.id, &day).await?;
     let seen_ids: Vec<&str> = seen.iter().map(String::as_str).collect();
     let sights: Vec<PrayerSight<'_>> = located
@@ -1478,12 +1953,8 @@ pub async fn prayer_deck(
             longitude: *longitude,
         })
         .collect();
-    let Some((prayer, source)) = pick_daily_prayer(viewer, &day, place, &sights, &seen_ids) else {
-        return Ok(if place.is_none() {
-            PrayerDeck::SharePlace
-        } else {
-            PrayerDeck::Finished
-        });
+    let Some((prayer, source)) = pick_daily_prayer(viewer, &day, &sights, &seen_ids) else {
+        return Ok(PrayerDeck::Finished);
     };
     let Some(card) = sdk.db.prayer_card(&prayer.id).await? else {
         return Ok(PrayerDeck::Finished);
@@ -1504,13 +1975,9 @@ pub async fn mark_prayer(
     let Some(church) = sdk.db.church(&prayer.church_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let reach = if viewer.is_active_in(&prayer.church_id) {
-        PrayerReach::HomeChurch
-    } else {
-        let Some(place) = place else {
-            return Ok(Err(DomainError::OutsideNeighborhood));
-        };
-        PrayerReach::Near(place)
+    let reach = match prayer_reach(viewer, &church, place) {
+        Ok(reach) => reach,
+        Err(error) => return Ok(Err(error)),
     };
     let day = today_utc();
     let prior = PriorPrayerMark::of_kind(
@@ -1581,16 +2048,10 @@ pub async fn reply_to_need(
     .await
 }
 
-pub async fn nearby_feed(
-    sdk: &Sdk,
-    viewer: &Viewer,
-    place: Place,
-) -> anyhow::Result<NearbyFeed> {
+pub async fn nearby_feed(sdk: &Sdk, viewer: &Viewer, place: Place) -> anyhow::Result<NearbyFeed> {
+    sdk.db.archive_met_needs().await?;
     let needs = sdk.db.needs_near(place.latitude, place.longitude).await?;
-    let prayers = sdk
-        .db
-        .prayers_near(place.latitude, place.longitude)
-        .await?;
+    let prayers = sdk.db.prayers_near(place.latitude, place.longitude).await?;
     let mut ids: Vec<&str> = unique_church_ids(&needs);
     for card in &prayers {
         if !ids.contains(&card.church_id.as_str()) {
@@ -1617,6 +2078,29 @@ pub async fn nearby_feed(
 
 pub async fn answered_prayers(sdk: &Sdk, church_id: &str) -> anyhow::Result<Vec<PrayerCard>> {
     sdk.db.answered_prayers(church_id).await
+}
+
+fn prayer_reach(
+    viewer: &Viewer,
+    church: &Church,
+    place: Option<Place>,
+) -> Result<PrayerReach, DomainError> {
+    if viewer.is_active_in(&church.id) {
+        return Ok(PrayerReach::HomeChurch);
+    }
+    if let Some(place) = place {
+        return Ok(PrayerReach::Near(place));
+    }
+    let Some(home) = viewer
+        .active_churches()
+        .find(|mine| ecclesia_domain::churches_are_neighbors(mine, church))
+    else {
+        return Err(DomainError::OutsideNeighborhood);
+    };
+    Ok(PrayerReach::Near(Place {
+        latitude: home.latitude,
+        longitude: home.longitude,
+    }))
 }
 
 async fn load_application_need(

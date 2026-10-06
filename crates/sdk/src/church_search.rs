@@ -13,12 +13,26 @@ pub fn rank_churches<'a>(query: &str, churches: &'a [Church], limit: usize) -> V
         .iter()
         .filter_map(|church| score_church(&needle, church).map(|score| (score, church)))
         .collect();
-    scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.name.cmp(&right.1.name)));
-    scored.into_iter().take(limit).map(|(_, church)| church).collect()
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.name.cmp(&right.1.name))
+    });
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, church)| church)
+        .collect()
 }
 
 fn normalize_query(query: &str) -> String {
-    query.trim().to_lowercase().chars().take(MAX_QUERY_LEN).collect()
+    query
+        .trim()
+        .to_lowercase()
+        .chars()
+        .take(MAX_QUERY_LEN)
+        .collect()
 }
 
 /// Churches inside the nearby radius move ahead of the rest. Rank order stays inside each group.
@@ -40,11 +54,7 @@ fn score_church(needle: &str, church: &Church) -> Option<i32> {
     }
     best = best.max(field_score(needle, &address) / 2);
     best = best.max(field_score(needle, &hay) / 2);
-    if best > 0 {
-        Some(best)
-    } else {
-        None
-    }
+    if best > 0 { Some(best) } else { None }
 }
 
 fn city_names(address: &str) -> Vec<String> {
@@ -92,15 +102,16 @@ fn field_score(needle: &str, haystack: &str) -> i32 {
 /// Every typed word must be a prefix of some church word, in order.
 /// "gra fel" matches "Grace Fellowship".
 fn word_prefix_score(needle: &str, words: &[&str]) -> i32 {
-    let parts: Vec<&str> = needle.split_whitespace().filter(|part| !part.is_empty()).collect();
+    let parts: Vec<&str> = needle
+        .split_whitespace()
+        .filter(|part| !part.is_empty())
+        .collect();
     if parts.len() < 2 || words.is_empty() {
         return 0;
     }
     let mut at = 0;
     for part in &parts {
-        let found = words[at..]
-            .iter()
-            .position(|word| word.starts_with(part));
+        let found = words[at..].iter().position(|word| word.starts_with(part));
         let Some(found) = found else {
             return 0;
         };
@@ -131,6 +142,9 @@ mod tests {
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),
+            ein: "12-3456789".into(),
+            registry_state: "IA".into(),
+            registry_number: "123456".into(),
             owner_id: "o".into(),
             invite_code: "code".into(),
             created_at: String::new(),
@@ -144,7 +158,10 @@ mod tests {
             church("New Grace Chapel", "Waterloo"),
         ];
         let hits = rank_churches("grace cov", &churches, 5);
-        assert_eq!(hits.first().map(|c| c.name.as_str()), Some("Grace Covenant"));
+        assert_eq!(
+            hits.first().map(|c| c.name.as_str()),
+            Some("Grace Covenant")
+        );
     }
 
     #[test]
@@ -165,7 +182,10 @@ mod tests {
         assert_eq!(cedar.len(), 1);
         assert_eq!(cedar[0].name, "Grace Fellowship");
         let austin = rank_churches("austin", &churches, 5);
-        assert_eq!(austin.first().map(|hit| hit.name.as_str()), Some("Mercy Chapel"));
+        assert_eq!(
+            austin.first().map(|hit| hit.name.as_str()),
+            Some("Mercy Chapel")
+        );
     }
 
     #[test]
@@ -179,7 +199,13 @@ mod tests {
         let churches = [far, near];
         let mut hits = rank_churches("chapel", &churches, 5);
         assert_eq!(hits[0].name, "North Chapel");
-        prefer_nearby(&mut hits, Place { latitude: 42.5349, longitude: -92.4453 });
+        prefer_nearby(
+            &mut hits,
+            Place {
+                latitude: 42.5349,
+                longitude: -92.4453,
+            },
+        );
         assert_eq!(hits[0].name, "South Chapel");
     }
 
@@ -188,7 +214,9 @@ mod tests {
         let churches = [church("Grace Fellowship", "Cedar Falls")];
         for query in ["g", "gr", "gra", "grace", "grace fel", "grace fellowship"] {
             assert_eq!(
-                rank_churches(query, &churches, 5).first().map(|c| c.name.as_str()),
+                rank_churches(query, &churches, 5)
+                    .first()
+                    .map(|c| c.name.as_str()),
                 Some("Grace Fellowship"),
                 "{query}"
             );

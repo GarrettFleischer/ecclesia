@@ -1,11 +1,18 @@
-use super::bind::Bind;
 use super::Db;
+use super::bind::Bind;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct PushSubscription {
     pub endpoint: String,
     pub p256dh: String,
     pub auth: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct StoredPush {
+    pub endpoint: String,
+    pub user_id: String,
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -28,7 +35,8 @@ impl Db {
              VALUES (?, ?, ?, ?, ?)
              ON CONFLICT(endpoint) DO UPDATE SET
                 p256dh = excluded.p256dh,
-                auth = excluded.auth
+                auth = excluded.auth,
+                deleted_at = NULL
              WHERE push_subscriptions.user_id = excluded.user_id",
             &[
                 Bind::Text(user_id),
@@ -46,16 +54,33 @@ impl Db {
         user_id: &str,
         endpoint: &str,
     ) -> anyhow::Result<()> {
+        let deleted_at = crate::clock::now_iso();
         self.execute(
-            "DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?",
-            &[Bind::Text(endpoint), Bind::Text(user_id)],
+            "UPDATE push_subscriptions SET deleted_at = ? WHERE endpoint = ? AND user_id = ? AND deleted_at IS NULL",
+            &[
+                Bind::Text(&deleted_at),
+                Bind::Text(endpoint),
+                Bind::Text(user_id),
+            ],
         )
         .await
     }
 
     pub async fn forget_push_subscription(&self, endpoint: &str) -> anyhow::Result<()> {
+        let deleted_at = crate::clock::now_iso();
         self.execute(
-            "DELETE FROM push_subscriptions WHERE endpoint = ?",
+            "UPDATE push_subscriptions SET deleted_at = ? WHERE endpoint = ? AND deleted_at IS NULL",
+            &[Bind::Text(&deleted_at), Bind::Text(endpoint)],
+        )
+        .await
+    }
+
+    pub async fn stored_push_subscription(
+        &self,
+        endpoint: &str,
+    ) -> anyhow::Result<Option<StoredPush>> {
+        self.fetch_optional(
+            "SELECT endpoint, user_id, deleted_at FROM push_subscriptions WHERE endpoint = ?",
             &[Bind::Text(endpoint)],
         )
         .await
@@ -63,7 +88,7 @@ impl Db {
 
     pub async fn push_subscriptions(&self, user_id: &str) -> anyhow::Result<Vec<PushSubscription>> {
         self.fetch_all(
-            "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?",
+            "SELECT endpoint, p256dh, auth FROM push_subscriptions_live WHERE user_id = ?",
             &[Bind::Text(user_id)],
         )
         .await
@@ -137,6 +162,13 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+        let kept = db
+            .stored_push_subscription("https://push.example/m1")
+            .await
+            .unwrap()
+            .expect("row stays");
+        assert_eq!(kept.user_id, "user_miriam");
+        assert!(kept.deleted_at.is_some());
     }
 
     #[tokio::test]

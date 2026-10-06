@@ -2,9 +2,9 @@
 
 use chrono::{Duration, SecondsFormat, TimeZone, Utc};
 
+use super::Db;
 use super::bind::Bind;
 use super::dialect::Driver;
-use super::Db;
 use crate::clock::now_iso;
 
 const MAX_ATTEMPTS: i64 = 8;
@@ -96,9 +96,7 @@ async fn claim_sqlite(db: &Db, now: &str) -> anyhow::Result<Vec<OutboxRow>> {
         anyhow::bail!("sqlite claim on a postgres store");
     };
     let mut conn = pool.acquire().await?;
-    sqlx::query("BEGIN IMMEDIATE")
-        .execute(&mut *conn)
-        .await?;
+    sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
     let claimed = async {
         let rows = sqlx::query_as::<sqlx::Sqlite, OutboxRow>(
             "SELECT * FROM outbox
@@ -161,11 +159,7 @@ async fn fail_outbox(db: &Db, id: &str) -> anyhow::Result<()> {
         return db
             .execute(
                 "UPDATE outbox SET status = 'dead', attempts = ?, dead_at = ? WHERE id = ?",
-                &[
-                    Bind::I64(attempts),
-                    Bind::Text(&dead_at),
-                    Bind::Text(id),
-                ],
+                &[Bind::I64(attempts), Bind::Text(&dead_at), Bind::Text(id)],
             )
             .await;
     }
@@ -173,18 +167,16 @@ async fn fail_outbox(db: &Db, id: &str) -> anyhow::Result<()> {
     let available = shift_iso(&now_iso(), delay);
     db.execute(
         "UPDATE outbox SET status = 'pending', attempts = ?, available_at = ? WHERE id = ?",
-        &[
-            Bind::I64(attempts),
-            Bind::Text(&available),
-            Bind::Text(id),
-        ],
+        &[Bind::I64(attempts), Bind::Text(&available), Bind::Text(id)],
     )
     .await
 }
 
 fn shift_iso(now: &str, seconds: i64) -> String {
     match parse_iso(now) {
-        Some(when) => (when + Duration::seconds(seconds)).to_rfc3339_opts(SecondsFormat::Secs, true),
+        Some(when) => {
+            (when + Duration::seconds(seconds)).to_rfc3339_opts(SecondsFormat::Secs, true)
+        }
         None => now.to_string(),
     }
 }

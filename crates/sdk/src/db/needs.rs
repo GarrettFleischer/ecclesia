@@ -1,9 +1,9 @@
-use super::bind::{placeholders, Bind};
+use super::Db;
+use super::bind::{Bind, placeholders};
 use super::distance::haversine_km_sql;
 use super::rows::{
     ApplicationCardRow, ApplicationRow, NeedCardRow, NeedReplyCardRow, NeedRow, map_all,
 };
-use super::Db;
 use ecclesia_domain::{
     Application, ApplicationCard, Need, NeedCard, NeedReplyCard, Viewer, nearby_km,
 };
@@ -12,9 +12,9 @@ const NEED_CARD_SELECT: &str = r#"
         SELECT n.id, n.church_id, c.name AS church_name, c.address AS church_address,
                n.author_id, u.first_name AS author_first, u.last_name AS author_last,
                n.title, n.body, n.gift_id, g.name AS gift_name,
-               n.scope, n.status, n.created_at
+               n.scope, n.status, n.created_at, n.praise, n.archived
         FROM needs n
-        JOIN churches c ON c.id = n.church_id
+        JOIN churches_live c ON c.id = n.church_id
         JOIN users u ON u.id = n.author_id
         LEFT JOIN gifts g ON g.id = n.gift_id
 "#;
@@ -22,9 +22,54 @@ const NEED_CARD_SELECT: &str = r#"
 impl Db {
     pub async fn need(&self, id: &str) -> anyhow::Result<Option<Need>> {
         Ok(self
-            .fetch_optional::<NeedRow>("SELECT * FROM needs WHERE id = ?", &[Bind::Text(id)])
+            .fetch_optional::<NeedRow>(
+                "SELECT n.* FROM needs n JOIN churches_live c ON c.id = n.church_id WHERE n.id = ?",
+                &[Bind::Text(id)],
+            )
             .await?
             .map(Need::from))
+    }
+
+    pub async fn open_needs_from_closed_churches(
+        &self,
+        author_id: &str,
+    ) -> anyhow::Result<Vec<ClosedNeedGroup>> {
+        let rows = self
+            .fetch_all::<ClosedNeedRow>(
+                r#"
+                SELECT c.id AS church_id, c.name AS church_name, n.title AS title
+                FROM needs n
+                JOIN churches c ON c.id = n.church_id
+                WHERE n.author_id = ? AND n.status = 'open' AND n.archived = 0
+                  AND c.deleted_at IS NOT NULL
+                ORDER BY c.name, c.id, n.created_at, n.id
+                "#,
+                &[Bind::Text(author_id)],
+            )
+            .await?;
+        Ok(group_closed_needs(rows))
+    }
+
+    pub async fn open_needs_on_closed_church(
+        &self,
+        author_id: &str,
+        church_id: &str,
+    ) -> anyhow::Result<Vec<Need>> {
+        let rows = self
+            .fetch_all::<NeedRow>(
+                r#"
+                SELECT n.id, n.church_id, n.author_id, n.title, n.body, n.gift_id, n.scope,
+                       n.status, n.created_at, n.closed_at, n.praise, n.archived
+                FROM needs n
+                JOIN churches c ON c.id = n.church_id
+                WHERE n.author_id = ? AND n.church_id = ? AND n.status = 'open' AND n.archived = 0
+                  AND c.deleted_at IS NOT NULL
+                ORDER BY n.created_at, n.id
+                "#,
+                &[Bind::Text(author_id), Bind::Text(church_id)],
+            )
+            .await?;
+        Ok(rows.into_iter().map(Need::from).collect())
     }
 
     pub async fn need_card(&self, id: &str) -> anyhow::Result<Option<NeedCard>> {
@@ -42,16 +87,16 @@ impl Db {
     ) -> anyhow::Result<Vec<NeedCard>> {
         let church_ids: Vec<&str> = viewer
             .user
-            .church_id
-            .as_deref()
-            .filter(|_| viewer.user.is_active())
-            .into_iter()
+            .memberships
+            .iter()
+            .filter(|link| link.is_active())
+            .map(|link| link.church_id.as_str())
             .collect();
         if church_ids.is_empty() {
             return Ok(Vec::new());
         }
         let mut sql = String::from(NEED_CARD_SELECT);
-        sql.push_str(" WHERE n.status = 'open' AND (n.church_id IN (");
+        sql.push_str(" WHERE n.archived = 0 AND n.status = 'open' AND (n.church_id IN (");
         sql.push_str(&placeholders(church_ids.len()));
         let distance = haversine_km_sql(
             "mine.latitude",
@@ -64,10 +109,10 @@ impl Db {
             OR (
                 n.scope IN ('neighboring', 'body')
                 AND EXISTS (
-                    SELECT 1 FROM churches mine
-                    JOIN users viewer_user ON viewer_user.church_id = mine.id
-                    WHERE viewer_user.id = ?
-                      AND viewer_user.church_status = 'active'
+                    SELECT 1 FROM churches_live mine
+                    JOIN memberships_live viewer_m ON viewer_m.church_id = mine.id
+                    WHERE viewer_m.user_id = ?
+                      AND viewer_m.status = 'active'
                       AND mine.id != c.id
                       AND {distance} <= {cutoff}
                 )
@@ -98,7 +143,7 @@ impl Db {
         match after {
             None => {
                 let sql = format!(
-                    "{NEED_CARD_SELECT} WHERE n.church_id = ? ORDER BY n.created_at DESC, n.id DESC LIMIT 20"
+                    "{NEED_CARD_SELECT} WHERE n.church_id = ? AND n.archived = 0 ORDER BY n.created_at DESC, n.id DESC LIMIT 20"
                 );
                 Ok(map_all(
                     self.fetch_all::<NeedCardRow>(&sql, &[Bind::Text(church_id)])
@@ -107,7 +152,7 @@ impl Db {
             }
             Some((created_at, id)) => {
                 let sql = format!(
-                    "{NEED_CARD_SELECT} WHERE n.church_id = ?
+                    "{NEED_CARD_SELECT} WHERE n.church_id = ? AND n.archived = 0
                      AND (n.created_at < ? OR (n.created_at = ? AND n.id < ?))
                      ORDER BY n.created_at DESC, n.id DESC
                      LIMIT 20"
@@ -195,12 +240,45 @@ impl Db {
             "c.longitude",
         );
         let sql = format!(
-            "{NEED_CARD_SELECT} WHERE n.status = 'open' AND {distance} <= {cutoff}
+            "{NEED_CARD_SELECT} WHERE n.archived = 0 AND n.status = 'open' AND {distance} <= {cutoff}
              ORDER BY n.created_at DESC, n.id DESC LIMIT 40",
             cutoff = nearby_km()
         );
         Ok(map_all(self.fetch_all::<NeedCardRow>(&sql, &[]).await?))
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosedNeedGroup {
+    pub church_id: String,
+    pub church_name: String,
+    pub titles: Vec<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ClosedNeedRow {
+    church_id: String,
+    church_name: String,
+    title: String,
+}
+
+fn group_closed_needs(rows: Vec<ClosedNeedRow>) -> Vec<ClosedNeedGroup> {
+    let mut groups: Vec<ClosedNeedGroup> = Vec::new();
+    for row in rows {
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| group.church_id == row.church_id)
+        {
+            group.titles.push(row.title);
+            continue;
+        }
+        groups.push(ClosedNeedGroup {
+            church_id: row.church_id,
+            church_name: row.church_name,
+            titles: vec![row.title],
+        });
+    }
+    groups
 }
 
 #[cfg(test)]

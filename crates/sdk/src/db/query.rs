@@ -3,9 +3,9 @@
 use sqlx::query::{Query, QueryAs, QueryScalar};
 use sqlx::{PgPool, Postgres, Sqlite, SqlitePool};
 
+use super::Db;
 use super::bind::Bind;
 use super::dialect::Driver;
-use super::Db;
 
 enum OwnedBind {
     Text(String),
@@ -99,7 +99,11 @@ impl Db {
     }
 }
 
-async fn execute_rows_sqlite(pool: &SqlitePool, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<u64> {
+async fn execute_rows_sqlite(
+    pool: &SqlitePool,
+    sql: &str,
+    binds: &[Bind<'_>],
+) -> anyhow::Result<u64> {
     let owned = owned_binds(binds);
     let mut query = sqlx::query(sql);
     for bind in &owned {
@@ -108,7 +112,11 @@ async fn execute_rows_sqlite(pool: &SqlitePool, sql: &str, binds: &[Bind<'_>]) -
     Ok(query.execute(pool).await?.rows_affected())
 }
 
-async fn execute_rows_postgres(pool: &PgPool, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<u64> {
+async fn execute_rows_postgres(
+    pool: &PgPool,
+    sql: &str,
+    binds: &[Bind<'_>],
+) -> anyhow::Result<u64> {
     let sql = Driver::Postgres.sql(sql);
     let owned = owned_binds(binds);
     let mut query = sqlx::query(&sql);

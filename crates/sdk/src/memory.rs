@@ -1,5 +1,6 @@
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Need, NeedReply, Notification, Prayer, User, Write,
+    Application, Church, Effect, Endorsement, Membership, Need, NeedReply, NeedShelf, Notification,
+    Prayer, Share, User, Write,
 };
 
 /// In-process world. The SDK applies Domain effects here so stories can be
@@ -8,8 +9,11 @@ use ecclesia_domain::{
 pub struct MemoryWorld {
     pub users: Vec<User>,
     pub churches: Vec<Church>,
+    pub closed_churches: Vec<(Church, String)>,
     pub member_gifts: Vec<(String, String, String)>,
+    pub removed_gifts: Vec<(String, String, String)>,
     pub needs: Vec<Need>,
+    pub shares: Vec<Share>,
     pub applications: Vec<Application>,
     pub need_replies: Vec<NeedReply>,
     pub prayers: Vec<Prayer>,
@@ -54,14 +58,38 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
             bio,
         } => update_user(world, id, first_name, last_name, bio),
         Write::InsertChurch(church) => world.churches.push(church),
-        Write::SetChurchLink {
+        Write::UpsertMembership {
             user_id,
             church_id,
-            church_status,
-            church_role,
-        } => set_church_link(world, user_id, church_id, church_status, church_role),
+            status,
+            role,
+        } => upsert_membership(world, user_id, church_id, status, role),
+        Write::DeleteMembership { user_id, church_id } => {
+            delete_membership(world, user_id, church_id)
+        }
+        Write::SetChurchOwner {
+            church_id,
+            owner_id,
+        } => {
+            if let Some(church) = world
+                .churches
+                .iter_mut()
+                .find(|church| church.id == church_id)
+            {
+                church.owner_id = owner_id;
+            }
+        }
+        Write::CloseChurch { id, deleted_at } => close_church(world, id, deleted_at),
         Write::InsertNeed(need) => world.needs.push(need),
-        Write::SetNeedStatus { id, status } => set_need_status(world, id, status),
+        Write::InsertShare(share) => world.shares.push(share),
+        Write::DeleteNeedShare { target_id } => delete_need_share(world, &target_id),
+        Write::SetNeedStatus {
+            id,
+            status,
+            closed_at,
+            praise,
+        } => set_need_status(world, id, status, closed_at, praise),
+        Write::MoveNeed { id, church_id } => move_need(world, id, church_id),
         Write::InsertApplication(application) => world.applications.push(application),
         Write::SetApplicationStatus { id, status } => set_application_status(world, id, status),
         Write::InsertEndorsement(endorsement) => world.endorsements.push(endorsement),
@@ -102,24 +130,74 @@ fn update_user(
     }
 }
 
-fn set_church_link(
+fn close_church(world: &mut MemoryWorld, id: String, deleted_at: String) {
+    let Some(index) = world.churches.iter().position(|church| church.id == id) else {
+        return;
+    };
+    let church = world.churches.remove(index);
+    world.closed_churches.push((church, deleted_at));
+}
+
+fn upsert_membership(
     world: &mut MemoryWorld,
     user_id: String,
-    church_id: Option<String>,
-    church_status: Option<String>,
-    church_role: Option<String>,
+    church_id: String,
+    status: String,
+    role: String,
 ) {
-    if let Some(user) = world.users.iter_mut().find(|user| user.id == user_id) {
-        user.church_id = church_id;
-        user.church_status = church_status;
-        user.church_role = church_role;
+    let Some(user) = world.users.iter_mut().find(|user| user.id == user_id) else {
+        return;
+    };
+    if let Some(link) = user
+        .memberships
+        .iter_mut()
+        .find(|link| link.church_id == church_id)
+    {
+        link.status = status;
+        link.role = role;
+        return;
+    }
+    user.memberships.push(Membership {
+        church_id,
+        status,
+        role,
+    });
+}
+
+fn delete_membership(world: &mut MemoryWorld, user_id: String, church_id: String) {
+    let Some(user) = world.users.iter_mut().find(|user| user.id == user_id) else {
+        return;
+    };
+    user.memberships.retain(|link| link.church_id != church_id);
+}
+
+fn set_need_status(
+    world: &mut MemoryWorld,
+    id: String,
+    status: &'static str,
+    closed_at: Option<String>,
+    praise: Option<String>,
+) {
+    if let Some(need) = world.needs.iter_mut().find(|need| need.id == id) {
+        need.status = status.into();
+        need.closed_at = closed_at;
+        need.praise = praise;
     }
 }
 
-fn set_need_status(world: &mut MemoryWorld, id: String, status: &'static str) {
-    if let Some(need) = world.needs.iter_mut().find(|need| need.id == id) {
-        need.status = status.into();
+fn move_need(world: &mut MemoryWorld, id: String, church_id: String) {
+    let Some(need) = world.needs.iter_mut().find(|need| need.id == id) else {
+        return;
+    };
+    if need.status == "open" && need.shelf == NeedShelf::Listed {
+        need.church_id = church_id;
     }
+}
+
+fn delete_need_share(world: &mut MemoryWorld, target_id: &str) {
+    world
+        .shares
+        .retain(|share| share.kind != "need" || share.target_id != target_id);
 }
 
 fn set_application_status(world: &mut MemoryWorld, id: String, status: &'static str) {
@@ -143,13 +221,29 @@ fn upsert_member_gift(world: &mut MemoryWorld, user_id: String, gift_id: String,
         existing.2 = note;
         return;
     }
+    if let Some(index) = world
+        .removed_gifts
+        .iter()
+        .position(|(user, gift, _)| user == &user_id && gift == &gift_id)
+    {
+        let mut gift = world.removed_gifts.remove(index);
+        gift.2 = note;
+        world.member_gifts.push(gift);
+        return;
+    }
     world.member_gifts.push((user_id, gift_id, note));
 }
 
 fn remove_member_gift(world: &mut MemoryWorld, user_id: String, gift_id: String) {
-    world
+    let Some(index) = world
         .member_gifts
-        .retain(|(u, g, _)| !(u == &user_id && g == &gift_id));
+        .iter()
+        .position(|(user, gift, _)| user == &user_id && gift == &gift_id)
+    else {
+        return;
+    };
+    let gift = world.member_gifts.remove(index);
+    world.removed_gifts.push(gift);
 }
 
 fn answer_prayer(world: &mut MemoryWorld, id: String, praise: String, answered_at: String) {
@@ -221,7 +315,12 @@ mod tests {
         let effect = replace_with_pending(&peter, &grace, &["miriam".into()]).unwrap();
         world.apply(effect, "t1");
         let saved = world.user("peter").unwrap();
-        assert_eq!(saved.church_status.as_deref(), Some("pending"));
+        assert_eq!(
+            saved
+                .membership_in("grace")
+                .map(|link| link.status.as_str()),
+            Some("pending")
+        );
         assert_eq!(world.notifications[0].user_id, "miriam");
     }
 
@@ -230,10 +329,14 @@ mod tests {
         let mut world = MemoryWorld::default();
         let peter = user_in_church("peter", "grace", "member", "invited");
         world.users.push(peter.clone());
-        let effect = accept_invite(&peter).unwrap();
+        let effect = accept_invite(&peter, "grace").unwrap();
         world.apply(effect, "t1");
         assert_eq!(
-            world.user("peter").unwrap().church_status.as_deref(),
+            world
+                .user("peter")
+                .unwrap()
+                .membership_in("grace")
+                .map(|link| link.status.as_str()),
             Some("active")
         );
     }
@@ -268,7 +371,7 @@ mod tests {
     fn us_mem_04_sdk_member_cannot_approve() {
         let viewer = Viewer {
             user: user_in_church("ruth", "grace", "member", "active"),
-            church: Some(church("grace")),
+            churches: vec![church("grace")],
             gift_ids: vec![],
         };
         let target = user_in_church("peter", "grace", "member", "pending");

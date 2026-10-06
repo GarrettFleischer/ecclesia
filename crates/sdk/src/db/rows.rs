@@ -2,8 +2,8 @@
 
 use ecclesia_domain::{
     Application, ApplicationCard, Church, ChurchMember, Endorsement, EndorsementCard, Gift,
-    NeedReplyCard, Prayer, PrayerCard,
-    MemberGift, Need, NeedCard, Notification, User, display_name,
+    MemberGift, Need, NeedCard, NeedReplyCard, NeedShelf, Notification, Prayer, PrayerCard, Share,
+    User, display_name,
 };
 
 #[derive(sqlx::FromRow)]
@@ -14,11 +14,15 @@ pub struct UserRow {
     pub email: String,
     pub bio: String,
     pub created_at: String,
-    pub church_id: Option<String>,
-    pub church_status: Option<String>,
-    pub church_role: Option<String>,
     #[sqlx(default)]
     pub password_hash: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct MembershipRow {
+    pub church_id: String,
+    pub role: String,
+    pub status: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -103,6 +107,9 @@ pub struct ChurchRow {
     pub country: String,
     pub description: String,
     pub gathering: String,
+    pub ein: String,
+    pub registry_state: String,
+    pub registry_number: String,
     pub owner_id: String,
     pub invite_code: String,
     pub created_at: String,
@@ -119,6 +126,12 @@ pub struct NeedRow {
     pub scope: String,
     pub status: String,
     pub created_at: String,
+    #[sqlx(default)]
+    pub closed_at: Option<String>,
+    #[sqlx(default)]
+    pub praise: Option<String>,
+    #[sqlx(default)]
+    pub archived: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -137,6 +150,10 @@ pub struct NeedCardRow {
     pub scope: String,
     pub status: String,
     pub created_at: String,
+    #[sqlx(default)]
+    pub praise: Option<String>,
+    #[sqlx(default)]
+    pub archived: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -177,9 +194,7 @@ impl From<UserRow> for User {
             email: row.email,
             bio: row.bio,
             created_at: row.created_at,
-            church_id: row.church_id,
-            church_status: row.church_status,
-            church_role: row.church_role,
+            memberships: Vec::new(),
         }
     }
 }
@@ -276,6 +291,9 @@ impl From<ChurchRow> for Church {
             country: row.country,
             description: row.description,
             gathering: row.gathering,
+            ein: row.ein,
+            registry_state: row.registry_state,
+            registry_number: row.registry_number,
             owner_id: row.owner_id,
             invite_code: row.invite_code,
             created_at: row.created_at,
@@ -295,6 +313,9 @@ impl From<NeedRow> for Need {
             scope: row.scope,
             status: row.status,
             created_at: row.created_at,
+            closed_at: row.closed_at,
+            praise: row.praise,
+            shelf: NeedShelf::from_flag(row.archived),
         }
     }
 }
@@ -315,6 +336,8 @@ impl From<NeedCardRow> for NeedCard {
             scope: row.scope,
             status: row.status,
             created_at: row.created_at,
+            praise: row.praise,
+            shelf: NeedShelf::from_flag(row.archived),
         }
     }
 }
@@ -452,6 +475,25 @@ impl From<PrayerCardRow> for PrayerCard {
             praise: row.praise,
             prayed_count: row.prayed_count,
             created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+pub struct ShareRow {
+    pub code: String,
+    pub kind: String,
+    pub target_id: String,
+    pub expires_at: Option<String>,
+}
+
+impl From<ShareRow> for Share {
+    fn from(row: ShareRow) -> Self {
+        Self {
+            code: row.code,
+            expires_at: row.expires_at,
+            kind: row.kind,
+            target_id: row.target_id,
         }
     }
 }

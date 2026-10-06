@@ -1,7 +1,7 @@
-use super::bind::Bind;
+use super::Db;
+use super::bind::{Bind, placeholders};
 use super::distance::haversine_km_sql;
 use super::rows::{MarkRow, PrayerCardRow, PrayerLocatedRow, PrayerRow, map_all};
-use super::Db;
 use ecclesia_domain::{Prayer, PrayerCard, nearby_km};
 
 const PRAYER_CARD_SELECT: &str = r#"
@@ -10,14 +10,17 @@ const PRAYER_CARD_SELECT: &str = r#"
                p.body, p.status, p.praise, p.created_at,
                (SELECT COUNT(*) FROM prayer_marks m WHERE m.prayer_id = p.id AND m.kind = 'prayed') AS prayed_count
         FROM prayers p
-        JOIN churches c ON c.id = p.church_id
+        JOIN churches_live c ON c.id = p.church_id
         LEFT JOIN users u ON u.id = p.author_id
 "#;
 
 impl Db {
     pub async fn prayer(&self, id: &str) -> anyhow::Result<Option<Prayer>> {
         Ok(self
-            .fetch_optional::<PrayerRow>("SELECT * FROM prayers WHERE id = ?", &[Bind::Text(id)])
+            .fetch_optional::<PrayerRow>(
+                "SELECT p.* FROM prayers p JOIN churches_live c ON c.id = p.church_id WHERE p.id = ?",
+                &[Bind::Text(id)],
+            )
             .await?
             .map(Prayer::from))
     }
@@ -62,31 +65,38 @@ impl Db {
 
     pub async fn open_prayers_for_deck(
         &self,
-        church_id: Option<&str>,
-        place: Option<(f64, f64)>,
+        church_ids: &[&str],
+        anchors: &[(f64, f64)],
     ) -> anyhow::Result<Vec<(Prayer, f64, f64)>> {
         let mut sql = String::from(
             "SELECT p.id, p.church_id, p.author_id, p.body, p.status, p.praise, p.manage_hash,
                     p.created_at, p.answered_at, c.latitude, c.longitude
              FROM prayers p
-             JOIN churches c ON c.id = p.church_id
+             JOIN churches_live c ON c.id = p.church_id
              WHERE p.status = 'open' AND (",
         );
         let mut binds = Vec::new();
-        if let Some(church_id) = church_id {
-            sql.push_str("p.church_id = ?");
-            binds.push(Bind::Text(church_id));
-        } else {
-            sql.push_str("1 = 0");
+        let mut parts = Vec::new();
+        if !church_ids.is_empty() {
+            parts.push(format!(
+                "p.church_id IN ({})",
+                placeholders(church_ids.len())
+            ));
+            binds.extend(church_ids.iter().copied().map(Bind::Text));
         }
-        if let Some((latitude, longitude)) = place {
+        for (latitude, longitude) in anchors {
             let distance = haversine_km_sql(
                 &latitude.to_string(),
                 &longitude.to_string(),
                 "c.latitude",
                 "c.longitude",
             );
-            sql.push_str(&format!(" OR {distance} <= {}", nearby_km()));
+            parts.push(format!("{distance} <= {}", nearby_km()));
+        }
+        if parts.is_empty() {
+            sql.push_str("1 = 0");
+        } else {
+            sql.push_str(&parts.join(" OR "));
         }
         sql.push_str(") ORDER BY p.created_at DESC LIMIT 200");
         Ok(map_all(

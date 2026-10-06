@@ -84,7 +84,10 @@ mod tests {
         let (id, got) = decode_access("secret", &raw).expect("decode");
         assert_eq!(id, "sess_1");
         assert_eq!(got, exp);
-        assert_eq!(decode_access("secret", &raw.replace("sess_1", "sess_2")), None);
+        assert_eq!(
+            decode_access("secret", &raw.replace("sess_1", "sess_2")),
+            None
+        );
     }
 
     #[test]

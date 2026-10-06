@@ -1,6 +1,6 @@
+use super::Db;
 use super::bind::Bind;
 use super::rows::{EndorsementCardRow, EndorsementRow, GiftRow, MemberGiftRow, map_all};
-use super::Db;
 use ecclesia_domain::{Endorsement, EndorsementCard, Gift, MemberGift};
 
 impl Db {
@@ -23,7 +23,7 @@ impl Db {
             self.fetch_all::<MemberGiftRow>(
                 r#"
             SELECT mg.user_id, mg.gift_id, mg.note, g.name AS gift_name, g.category
-            FROM member_gifts mg
+            FROM member_gifts_live mg
             JOIN gifts g ON g.id = mg.gift_id
             WHERE mg.user_id = ?
             ORDER BY g.category, g.name
@@ -36,7 +36,7 @@ impl Db {
 
     pub async fn gift_ids_for(&self, user_id: &str) -> anyhow::Result<Vec<String>> {
         self.fetch_strings(
-            "SELECT gift_id FROM member_gifts WHERE user_id = ?",
+            "SELECT gift_id FROM member_gifts_live WHERE user_id = ?",
             &[Bind::Text(user_id)],
         )
         .await
@@ -50,7 +50,7 @@ impl Db {
     ) -> anyhow::Result<()> {
         self.execute(
             "INSERT INTO member_gifts (user_id, gift_id, note) VALUES (?, ?, ?)
-             ON CONFLICT(user_id, gift_id) DO UPDATE SET note = excluded.note",
+             ON CONFLICT(user_id, gift_id) DO UPDATE SET note = excluded.note, deleted_at = NULL",
             &[
                 Bind::Text(user_id),
                 Bind::Text(gift_id),
@@ -61,9 +61,14 @@ impl Db {
     }
 
     pub async fn remove_member_gift(&self, user_id: &str, gift_id: &str) -> anyhow::Result<()> {
+        let deleted_at = crate::clock::now_iso();
         self.execute(
-            "DELETE FROM member_gifts WHERE user_id = ? AND gift_id = ?",
-            &[Bind::Text(user_id), Bind::Text(gift_id)],
+            "UPDATE member_gifts SET deleted_at = ? WHERE user_id = ? AND gift_id = ? AND deleted_at IS NULL",
+            &[
+                Bind::Text(&deleted_at),
+                Bind::Text(user_id),
+                Bind::Text(gift_id),
+            ],
         )
         .await
     }

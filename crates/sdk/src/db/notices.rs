@@ -1,6 +1,6 @@
+use super::Db;
 use super::bind::Bind;
 use super::rows::{NotificationRow, map_all};
-use super::Db;
 use crate::clock::{new_id, now_iso};
 use ecclesia_domain::Notification;
 

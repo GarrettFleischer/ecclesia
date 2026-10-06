@@ -102,7 +102,8 @@ impl Cache {
             }
             CacheInner::Redis(store) => {
                 let mut conn = store.client.get_multiplexed_async_connection().await?;
-                let value: Option<String> = redis::cmd("GET").arg(key).query_async(&mut conn).await?;
+                let value: Option<String> =
+                    redis::cmd("GET").arg(key).query_async(&mut conn).await?;
                 Ok(value)
             }
         }
@@ -249,13 +250,17 @@ pub fn keys_for_write(write: &Write, church_id: Option<&str>) -> Vec<String> {
         Write::InsertChurch(church) => {
             vec!["directory".into(), format!("church:{}", church.id)]
         }
-        Write::SetChurchLink { church_id: next, .. } => {
-            let mut keys = vec!["directory".into()];
-            if let Some(id) = next {
-                keys.push(format!("church:{id}"));
-            }
+        Write::CloseChurch { id, .. } => {
+            vec!["directory".into(), format!("church:{id}")]
+        }
+        Write::SetChurchOwner { church_id, .. } => {
+            vec!["directory".into(), format!("church:{church_id}")]
+        }
+        Write::UpsertMembership { church_id: id, .. }
+        | Write::DeleteMembership { church_id: id, .. } => {
+            let mut keys = vec!["directory".into(), format!("church:{id}")];
             if let Some(previous) = church_id {
-                if next.as_deref() != Some(previous) {
+                if previous != id.as_str() {
                     keys.push(format!("church:{previous}"));
                 }
             }
@@ -264,6 +269,16 @@ pub fn keys_for_write(write: &Write, church_id: Option<&str>) -> Vec<String> {
         Write::InsertNeed(need) => {
             vec![format!("church:{}", need.church_id), "directory".into()]
         }
+        Write::MoveNeed { church_id: next, .. } => {
+            let mut keys = vec![format!("church:{next}"), "directory".into()];
+            if let Some(previous) = church_id {
+                if previous != next.as_str() {
+                    keys.insert(0, format!("church:{previous}"));
+                }
+            }
+            keys
+        }
+        Write::InsertShare(_) | Write::DeleteNeedShare { .. } => Vec::new(),
         Write::SetNeedStatus { .. } => church_id
             .map(|id| vec![format!("church:{id}"), "directory".into()])
             .unwrap_or_default(),
@@ -297,6 +312,9 @@ mod tests {
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),
+            ein: "12-3456789".into(),
+            registry_state: "IA".into(),
+            registry_number: "123456".into(),
             owner_id: "o".into(),
             invite_code: "c".into(),
             created_at: "t".into(),

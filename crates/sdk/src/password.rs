@@ -1,6 +1,6 @@
 //! Score and hash secrets. Domain never sees the raw value or the PHC string.
 
-use argon2::password_hash::{rand_core::OsRng, SaltString};
+use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use ecclesia_domain::Strength;
 use sha2::{Digest, Sha256};
@@ -59,7 +59,10 @@ mod tests {
 
     #[test]
     fn us_auth_weak_score_is_too_guessable() {
-        assert_eq!(score("password", "Ada", "ada@x.test"), Strength::TooGuessable);
+        assert_eq!(
+            score("password", "Ada", "ada@x.test"),
+            Strength::TooGuessable
+        );
         assert_eq!(score("", "Ada", "ada@x.test"), Strength::TooGuessable);
         let long = "a".repeat(129);
         assert_eq!(score(&long, "Ada", "ada@x.test"), Strength::TooGuessable);

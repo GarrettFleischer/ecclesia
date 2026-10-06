@@ -20,6 +20,9 @@ pub async fn run_worker(db: &Db, push: &PushHub) -> anyhow::Result<()> {
 }
 
 pub async fn poll_once(db: &Db, push: &PushHub) {
+    if let Err(error) = db.archive_met_needs().await {
+        tracing::warn!("need archive failed: {error:#}");
+    }
     let now = now_iso();
     match db.outbox_lag_seconds(&now).await {
         Ok(Some(lag)) => {
@@ -70,8 +73,14 @@ async fn deliver_row(db: &Db, push: &PushHub, row: OutboxRow) {
 async fn deliver_push(db: &Db, push: &PushHub, row: &OutboxRow) -> anyhow::Result<()> {
     let payload = serde_json::from_str::<PushPayload>(&row.payload)
         .map_err(|error| anyhow::anyhow!("outbox payload was not a notice: {error}"))?;
-    push.deliver_text(db, &payload.user_id, &payload.title, &payload.body, &payload.href)
-        .await
+    push.deliver_text(
+        db,
+        &payload.user_id,
+        &payload.title,
+        &payload.body,
+        &payload.href,
+    )
+    .await
 }
 
 #[derive(serde::Deserialize)]
@@ -88,11 +97,7 @@ async fn deliver_mail(row: &OutboxRow) -> anyhow::Result<()> {
     post_mail(row, &env, RESEND_URL).await
 }
 
-async fn post_mail(
-    row: &OutboxRow,
-    env: &crate::host::MailEnv,
-    url: &str,
-) -> anyhow::Result<()> {
+async fn post_mail(row: &OutboxRow, env: &crate::host::MailEnv, url: &str) -> anyhow::Result<()> {
     let (Some(key), Some(from)) = (env.api_key.as_deref(), env.from.as_deref()) else {
         return Ok(());
     };
@@ -137,8 +142,9 @@ mod tests {
         let row = OutboxRow {
             id: "ob-mail-1".into(),
             kind: "mail".into(),
-            payload: r#"{"to":"ada@verify.test","subject":"Your sign in link","text":"Open this."}"#
-                .into(),
+            payload:
+                r#"{"to":"ada@verify.test","subject":"Your sign in link","text":"Open this."}"#
+                    .into(),
             attempts: 0,
             available_at: "2026-09-22T00:00:00Z".into(),
             status: "pending".into(),
@@ -161,9 +167,18 @@ mod tests {
             lower.contains("idempotency-key: mail/ob-mail-1"),
             "hub request was {recorded}"
         );
-        assert!(lower.contains("authorization: bearer re_test"), "hub request was {recorded}");
-        assert!(recorded.contains("ada@verify.test"), "hub request was {recorded}");
-        assert!(recorded.contains("Your sign in link"), "hub request was {recorded}");
+        assert!(
+            lower.contains("authorization: bearer re_test"),
+            "hub request was {recorded}"
+        );
+        assert!(
+            recorded.contains("ada@verify.test"),
+            "hub request was {recorded}"
+        );
+        assert!(
+            recorded.contains("Your sign in link"),
+            "hub request was {recorded}"
+        );
         assert!(
             recorded.contains("Ecclesia <mail@ecclesia.test>"),
             "hub request was {recorded}"

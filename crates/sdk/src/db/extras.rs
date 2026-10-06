@@ -12,7 +12,7 @@ pub struct StoryExtras {
     pub insert_reset: Option<TokenWrite>,
     pub consume_magic_id: Option<String>,
     pub consume_reset_id: Option<String>,
-    pub mail: Option<MailWrite>,
+    pub mail: Vec<MailWrite>,
 }
 
 #[derive(Debug, Clone)]

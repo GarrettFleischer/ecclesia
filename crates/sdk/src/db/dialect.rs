@@ -161,7 +161,9 @@ mod tests {
     #[test]
     fn us_store_03_local_host_ignores_remote_postgres_url() {
         assert!(is_local_database_url("sqlite://ecclesia.db"));
-        assert!(is_local_database_url("postgres://ecclesia:ecclesia@127.0.0.1:5432/ecclesia"));
+        assert!(is_local_database_url(
+            "postgres://ecclesia:ecclesia@127.0.0.1:5432/ecclesia"
+        ));
         assert!(!is_local_database_url(
             "postgres://user:pass@ep-cool-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
         ));

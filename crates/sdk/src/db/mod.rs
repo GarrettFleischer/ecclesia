@@ -9,8 +9,8 @@ mod extras;
 mod gifts;
 mod needs;
 mod notices;
-mod prayers;
 mod outbox;
+mod prayers;
 mod push;
 mod query;
 mod rows;
@@ -18,6 +18,7 @@ mod schema;
 mod seed;
 mod seed_data;
 mod sessions;
+mod shares;
 mod users;
 
 use anyhow::Context;
@@ -38,6 +39,7 @@ pub use extras::{
     MailWrite, PasswordHashWrite, SessionRow, SessionTransport, SessionWrite, StoryExtras,
     TokenRow, TokenWrite,
 };
+pub use needs::ClosedNeedGroup;
 pub use outbox::{OutboxFinish, OutboxRow};
 pub use push::{PushDevice, PushSubscription};
 
@@ -90,17 +92,29 @@ async fn connect_sqlite(url: &str) -> anyhow::Result<Db> {
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         .foreign_keys(true);
+    // Schema changes on a pooled SQLite connection are invisible to the
+    // connection that still holds the old schema, so DROP INDEX then CREATE
+    // INDEX of the same name fails with "already exists". Migrate on one
+    // connection, then open the pool the rest of the process uses.
+    let migrate_pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options.clone())
+        .await
+        .with_context(|| format!("connecting to {url}"))?;
+    let migrator = Db {
+        inner: Inner::Sqlite(migrate_pool.clone()),
+    };
+    migrator.migrate().await?;
+    migrator.seed_if_empty().await?;
+    migrate_pool.close().await;
     let pool = SqlitePoolOptions::new()
         .max_connections(StoreDriver::Sqlite.pool_size())
         .connect_with(options)
         .await
         .with_context(|| format!("connecting to {url}"))?;
-    let db = Db {
+    Ok(Db {
         inner: Inner::Sqlite(pool),
-    };
-    db.migrate().await?;
-    db.seed_if_empty().await?;
-    Ok(db)
+    })
 }
 
 async fn connect_postgres(url: &str) -> anyhow::Result<Db> {

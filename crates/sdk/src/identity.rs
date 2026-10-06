@@ -2,23 +2,23 @@
 
 use chrono::{Duration, SecondsFormat, Utc};
 use ecclesia_domain::{
-    DomainError, EmailAvailability, Strength, User, Viewer, accept_password, display_name,
-    invite_member as domain_invite_member, normalize_email, parse_invite_email,
-    register as domain_register, VoiceKind,
+    Church, DomainError, Effect, EmailAvailability, Strength, User, Viewer, VoiceKind,
+    accept_password, display_name, invite_addresses, invite_member as domain_invite_member,
+    normalize_email, register as domain_register,
 };
 
 use crate::bearer::{
-    access_exp_unix, decode_access, encode_access, hash_refresh_wire, mint_refresh_wire,
-    ApiSessionTokens, ACCESS_SECONDS,
+    ACCESS_SECONDS, ApiSessionTokens, access_exp_unix, decode_access, encode_access,
+    hash_refresh_wire, mint_refresh_wire,
 };
-use serde::Serialize;
 use crate::clock::{new_id, now_iso};
 use crate::db::{
     MailWrite, PasswordHashWrite, SessionTransport, SessionWrite, StoryExtras, TokenWrite,
 };
 use crate::password::{hash_and_wipe, hash_token, mint_token, score, verify_password};
-use crate::session::{fresh_csrf, Session};
-use crate::story::{finish_with, Sdk, StoryOk};
+use crate::session::{Session, fresh_csrf};
+use crate::story::{Sdk, StoryOk, finish_with};
+use serde::Serialize;
 
 const MAGIC_MINUTES: i64 = 60;
 const RESET_HOURS: i64 = 24;
@@ -67,13 +67,17 @@ pub async fn register(
         Ok(effect) => effect,
         Err(error) => return Ok(Err(error)),
     };
-    let extras = session_extras(&user_id, device, StoryExtras {
-        password_hash: Some(PasswordHashWrite {
-            user_id: user_id.clone(),
-            hash,
-        }),
-        ..StoryExtras::default()
-    });
+    let extras = session_extras(
+        &user_id,
+        device,
+        StoryExtras {
+            password_hash: Some(PasswordHashWrite {
+                user_id: user_id.clone(),
+                hash,
+            }),
+            ..StoryExtras::default()
+        },
+    );
     let mut ok = StoryOk::from_effect(&effect);
     ok.session_id = extras.session.as_ref().map(|row| row.id.clone());
     ok.csrf = extras.session.as_ref().map(|row| row.csrf.clone());
@@ -130,11 +134,7 @@ async fn mint_from_extras(
     Ok(Ok(ok))
 }
 
-fn session_extras(
-    user_id: &str,
-    device: &DeviceMeta,
-    mut extras: StoryExtras,
-) -> StoryExtras {
+fn session_extras(user_id: &str, device: &DeviceMeta, mut extras: StoryExtras) -> StoryExtras {
     let now = now_iso();
     extras.session = Some(cookie_session_write(user_id, device, now));
     extras
@@ -269,13 +269,20 @@ pub struct BearerIdentity {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ApiMembership {
+    pub church_id: String,
+    pub status: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ApiProfile {
     pub id: String,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
     pub bio: String,
-    pub church_id: Option<String>,
+    pub memberships: Vec<ApiMembership>,
 }
 
 pub async fn api_me_profile(
@@ -295,7 +302,15 @@ pub async fn api_me_profile(
         last_name: user.last_name,
         email: user.email,
         bio: user.bio,
-        church_id: user.church_id,
+        memberships: user
+            .memberships
+            .iter()
+            .map(|link| ApiMembership {
+                church_id: link.church_id.clone(),
+                status: link.status.clone(),
+                role: link.role.clone(),
+            })
+            .collect(),
     }))
 }
 
@@ -518,18 +533,21 @@ async fn request_token(
     };
     let (subject, lead) = match kind {
         TokenKind::Magic => ("Your sign in link", "Open this link to sign in."),
-        TokenKind::Reset => ("Set a new password", "Open this link to set a new password."),
+        TokenKind::Reset => (
+            "Set a new password",
+            "Open this link to set a new password.",
+        ),
     };
     let extras = StoryExtras {
         retire_magic_user: matches!(kind, TokenKind::Magic).then(|| user.id.clone()),
         retire_reset_user: matches!(kind, TokenKind::Reset).then(|| user.id.clone()),
         insert_magic: matches!(kind, TokenKind::Magic).then(|| token.clone()),
         insert_reset: matches!(kind, TokenKind::Reset).then(|| token),
-        mail: Some(MailWrite {
+        mail: vec![MailWrite {
             to: user.email,
             subject: subject.into(),
             text: format!("{lead}\n{href}"),
-        }),
+        }],
         ..StoryExtras::default()
     };
     sdk.db
@@ -617,32 +635,118 @@ pub async fn invite_member(
     email: &str,
     origin: &MailOrigin,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let emails = [email.to_string()];
+    invite_members(sdk, viewer, church_id, &emails, origin).await
+}
+
+pub async fn invite_members(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    church_id: &str,
+    emails: &[String],
+    origin: &MailOrigin,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
     let Some(church) = sdk.db.church(church_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let email = match parse_invite_email(email) {
-        Ok(email) => email,
+    let addresses = match invite_addresses(emails) {
+        Ok(addresses) => addresses,
         Err(error) => return Ok(Err(error)),
     };
-    let Some(invitee) = sdk.db.user_by_email(&email).await? else {
+    let gather = match gather_invites(sdk, viewer, &church, &addresses, origin).await? {
+        Ok(gather) => gather,
+        Err(error) => return Ok(Err(error)),
+    };
+    if gather.effect.writes.is_empty() {
+        if gather.unknowns == 0 {
+            if let Some(error) = gather.refusal {
+                return Ok(Err(error));
+            }
+        }
         return Ok(Ok(StoryOk {
             church_id: Some(church.id),
             ..StoryOk::default()
         }));
+    }
+    finish_with(
+        sdk,
+        Ok(gather.effect),
+        StoryExtras {
+            mail: gather.mails,
+            ..StoryExtras::default()
+        },
+    )
+    .await
+}
+
+struct InviteGather {
+    effect: Effect,
+    mails: Vec<MailWrite>,
+    unknowns: usize,
+    refusal: Option<DomainError>,
+}
+
+async fn gather_invites(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    church: &Church,
+    addresses: &[String],
+    origin: &MailOrigin,
+) -> anyhow::Result<Result<InviteGather, DomainError>> {
+    let mut gather = InviteGather {
+        effect: Effect::default(),
+        mails: Vec::new(),
+        unknowns: 0,
+        refusal: None,
     };
-    let effect = domain_invite_member(viewer, &church, &invitee);
-    let extras = StoryExtras {
-        mail: Some(MailWrite {
-            to: invitee.email,
-            subject: format!("Invite to {}", church.name),
-            text: format!(
-                "You're invited to {}. Code {}.\n{}/churches",
-                church.name, church.invite_code, origin.origin
-            ),
-        }),
-        ..StoryExtras::default()
-    };
-    finish_with(sdk, effect, extras).await
+    for email in addresses {
+        match sdk.db.user_by_email(email).await? {
+            None => gather.unknowns += 1,
+            Some(invitee) => {
+                if let Err(error) = fold_invite(&mut gather, viewer, church, &invitee, origin) {
+                    return Ok(Err(error));
+                }
+            }
+        }
+    }
+    Ok(Ok(gather))
+}
+
+fn fold_invite(
+    gather: &mut InviteGather,
+    viewer: &Viewer,
+    church: &Church,
+    invitee: &User,
+    origin: &MailOrigin,
+) -> Result<(), DomainError> {
+    match domain_invite_member(viewer, church, invitee) {
+        Ok(effect) => {
+            gather.effect.writes.extend(effect.writes);
+            gather.effect.notices.extend(effect.notices);
+            gather
+                .mails
+                .push(invite_mail(church, &invitee.email, origin));
+            Ok(())
+        }
+        Err(error @ (DomainError::SelfAction | DomainError::AlreadyMember)) => {
+            if gather.refusal.is_none() {
+                gather.refusal = Some(error);
+            }
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn invite_mail(church: &Church, to: &str, origin: &MailOrigin) -> MailWrite {
+    MailWrite {
+        to: to.to_string(),
+        subject: format!("Invite to {}", church.name),
+        text: format!(
+            "You're invited to {}. Code {}.\n{}/churches",
+            church.name, church.invite_code, origin.origin
+        ),
+    }
 }
 
 fn token_live(row: &crate::db::TokenRow, secret: &str) -> bool {

@@ -1,7 +1,8 @@
 use sqlx::{PgPool, SqlitePool};
 
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Need, NeedReply, NoticeDraft, Prayer, User, Write,
+    Application, Church, Effect, Endorsement, Need, NeedReply, NoticeDraft, Prayer, Share, User,
+    Write,
 };
 
 use crate::cache::keys_for_write;
@@ -47,7 +48,8 @@ async fn apply_postgres(
 
 trait Exec {
     async fn exec(&mut self, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<()>;
-    async fn fetch_text(&mut self, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<Option<String>>;
+    async fn fetch_text(&mut self, sql: &str, binds: &[Bind<'_>])
+    -> anyhow::Result<Option<String>>;
 }
 
 struct SqliteExec<'a, 'c>(&'a mut sqlx::Transaction<'c, sqlx::Sqlite>);
@@ -68,7 +70,11 @@ impl Exec for SqliteExec<'_, '_> {
         Ok(())
     }
 
-    async fn fetch_text(&mut self, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<Option<String>> {
+    async fn fetch_text(
+        &mut self,
+        sql: &str,
+        binds: &[Bind<'_>],
+    ) -> anyhow::Result<Option<String>> {
         let mut query = sqlx::query_scalar::<sqlx::Sqlite, String>(sql);
         for bind in binds {
             query = match *bind {
@@ -98,7 +104,11 @@ impl Exec for PostgresExec<'_, '_> {
         Ok(())
     }
 
-    async fn fetch_text(&mut self, sql: &str, binds: &[Bind<'_>]) -> anyhow::Result<Option<String>> {
+    async fn fetch_text(
+        &mut self,
+        sql: &str,
+        binds: &[Bind<'_>],
+    ) -> anyhow::Result<Option<String>> {
         let sql = Driver::Postgres.sql(sql);
         let mut query = sqlx::query_scalar::<sqlx::Postgres, String>(sql.as_ref());
         for bind in binds {
@@ -131,12 +141,20 @@ async fn apply_effect(
 
 async fn apply_extras(exec: &mut impl Exec, extras: &StoryExtras) -> anyhow::Result<()> {
     if let Some(user_id) = extras.delete_sessions_user.as_deref() {
-        exec.exec("DELETE FROM sessions WHERE user_id = ?", &[Bind::Text(user_id)])
-            .await?;
+        let deleted_at = now_iso();
+        exec.exec(
+            "UPDATE sessions SET deleted_at = ? WHERE user_id = ? AND deleted_at IS NULL",
+            &[Bind::Text(&deleted_at), Bind::Text(user_id)],
+        )
+        .await?;
     }
     if let Some(id) = extras.delete_session_id.as_deref() {
-        exec.exec("DELETE FROM sessions WHERE id = ?", &[Bind::Text(id)])
-            .await?;
+        let deleted_at = now_iso();
+        exec.exec(
+            "UPDATE sessions SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+            &[Bind::Text(&deleted_at), Bind::Text(id)],
+        )
+        .await?;
     }
     if let Some(write) = extras.password_hash.as_ref() {
         exec.exec(
@@ -181,9 +199,7 @@ async fn apply_extras(exec: &mut impl Exec, extras: &StoryExtras) -> anyhow::Res
     if let Some(id) = extras.consume_reset_id.as_deref() {
         consume_token_row(exec, "password_resets", id).await?;
     }
-    if let Some(mail) = extras.mail.as_ref() {
-        insert_mail(exec, mail).await?;
-    }
+    insert_mails(exec, &extras.mail).await?;
     Ok(())
 }
 
@@ -195,9 +211,8 @@ async fn consume_token_row(exec: &mut impl Exec, table: &str, id: &str) -> anyho
 
 async fn retire_tokens(exec: &mut impl Exec, table: &str, user_id: &str) -> anyhow::Result<()> {
     let now = now_iso();
-    let sql = format!(
-        "UPDATE {table} SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL"
-    );
+    let sql =
+        format!("UPDATE {table} SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL");
     exec.exec(&sql, &[Bind::Text(&now), Bind::Text(user_id)])
         .await
 }
@@ -224,6 +239,16 @@ async fn insert_token(
     .await
 }
 
+async fn insert_mails(
+    exec: &mut impl Exec,
+    mails: &[super::extras::MailWrite],
+) -> anyhow::Result<()> {
+    for mail in mails {
+        insert_mail(exec, mail).await?;
+    }
+    Ok(())
+}
+
 async fn insert_mail(exec: &mut impl Exec, mail: &super::extras::MailWrite) -> anyhow::Result<()> {
     let created = now_iso();
     let payload = serde_json::json!({
@@ -247,15 +272,16 @@ async fn insert_mail(exec: &mut impl Exec, mail: &super::extras::MailWrite) -> a
 
 async fn church_id_for(exec: &mut impl Exec, write: &Write) -> anyhow::Result<Option<String>> {
     match write {
-        Write::SetChurchLink { user_id, .. } => exec
-            .fetch_text(
-                "SELECT church_id FROM users WHERE id = ?",
-                &[Bind::Text(user_id)],
+        Write::UpsertMembership { church_id, .. } | Write::DeleteMembership { church_id, .. } => {
+            Ok(Some(church_id.clone()))
+        }
+        Write::MoveNeed { id, .. } | Write::SetNeedStatus { id, .. } => {
+            exec.fetch_text(
+                "SELECT church_id FROM needs WHERE id = ?",
+                &[Bind::Text(id)],
             )
-            .await,
-        Write::SetNeedStatus { id, .. } => exec
-            .fetch_text("SELECT church_id FROM needs WHERE id = ?", &[Bind::Text(id)])
-            .await,
+            .await
+        }
         _ => Ok(None),
     }
 }
@@ -285,14 +311,30 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
             bio,
         } => update_user(exec, id, first_name, last_name, bio).await,
         Write::InsertChurch(church) => insert_church(exec, church).await,
-        Write::SetChurchLink {
+        Write::UpsertMembership {
             user_id,
             church_id,
-            church_status,
-            church_role,
-        } => set_church_link(exec, user_id, church_id, church_status, church_role).await,
+            status,
+            role,
+        } => upsert_membership(exec, user_id, church_id, status, role).await,
+        Write::DeleteMembership { user_id, church_id } => {
+            delete_membership(exec, user_id, church_id).await
+        }
+        Write::SetChurchOwner {
+            church_id,
+            owner_id,
+        } => set_church_owner(exec, church_id, owner_id).await,
+        Write::CloseChurch { id, deleted_at } => close_church(exec, id, deleted_at).await,
         Write::InsertNeed(need) => insert_need(exec, need).await,
-        Write::SetNeedStatus { id, status } => set_status(exec, StatusTable::Needs, id, status).await,
+        Write::InsertShare(share) => insert_share(exec, share).await,
+        Write::DeleteNeedShare { target_id } => delete_need_share(exec, target_id).await,
+        Write::SetNeedStatus {
+            id,
+            status,
+            closed_at,
+            praise,
+        } => set_need_status(exec, id, status, closed_at.as_deref(), praise.as_deref()).await,
+        Write::MoveNeed { id, church_id } => move_need(exec, id, church_id).await,
         Write::InsertApplication(application) => insert_application(exec, application).await,
         Write::SetApplicationStatus { id, status } => {
             set_status(exec, StatusTable::Applications, id, status).await
@@ -326,7 +368,6 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
 }
 
 enum StatusTable {
-    Needs,
     Applications,
     Endorsements,
 }
@@ -334,7 +375,6 @@ enum StatusTable {
 impl StatusTable {
     fn update_sql(self) -> &'static str {
         match self {
-            Self::Needs => "UPDATE needs SET status = ? WHERE id = ?",
             Self::Applications => "UPDATE applications SET status = ? WHERE id = ?",
             Self::Endorsements => "UPDATE endorsements SET status = ? WHERE id = ?",
         }
@@ -382,8 +422,8 @@ async fn apply_notice(exec: &mut impl Exec, notice: &NoticeDraft) -> anyhow::Res
 
 async fn insert_user(exec: &mut impl Exec, user: &User) -> anyhow::Result<()> {
     exec.exec(
-        "INSERT INTO users (id, first_name, last_name, email, bio, created_at, church_id, church_status, church_role)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, first_name, last_name, email, bio, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
         &[
             Bind::Text(&user.id),
             Bind::Text(&user.first_name),
@@ -391,9 +431,6 @@ async fn insert_user(exec: &mut impl Exec, user: &User) -> anyhow::Result<()> {
             Bind::Text(&user.email),
             Bind::Text(&user.bio),
             Bind::Text(&user.created_at),
-            Bind::OptText(user.church_id.as_deref()),
-            Bind::OptText(user.church_status.as_deref()),
-            Bind::OptText(user.church_role.as_deref()),
         ],
     )
     .await
@@ -418,29 +455,70 @@ async fn update_user(
     .await
 }
 
-async fn set_church_link(
+async fn upsert_membership(
     exec: &mut impl Exec,
     user_id: &str,
-    church_id: &Option<String>,
-    church_status: &Option<String>,
-    church_role: &Option<String>,
+    church_id: &str,
+    status: &str,
+    role: &str,
+) -> anyhow::Result<()> {
+    let now = crate::clock::now_iso();
+    exec.exec(
+        "INSERT INTO memberships (user_id, church_id, role, status, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (user_id, church_id) DO UPDATE SET role = excluded.role, status = excluded.status, deleted_at = NULL",
+        &[
+            Bind::Text(user_id),
+            Bind::Text(church_id),
+            Bind::Text(role),
+            Bind::Text(status),
+            Bind::Text(&now),
+        ],
+    )
+    .await
+}
+
+async fn delete_membership(
+    exec: &mut impl Exec,
+    user_id: &str,
+    church_id: &str,
+) -> anyhow::Result<()> {
+    let now = crate::clock::now_iso();
+    exec.exec(
+        "UPDATE memberships SET deleted_at = ? WHERE user_id = ? AND church_id = ? AND deleted_at IS NULL",
+        &[
+            Bind::Text(&now),
+            Bind::Text(user_id),
+            Bind::Text(church_id),
+        ],
+    )
+    .await
+}
+
+async fn set_church_owner(
+    exec: &mut impl Exec,
+    church_id: &str,
+    owner_id: &str,
 ) -> anyhow::Result<()> {
     exec.exec(
-        "UPDATE users SET church_id = ?, church_status = ?, church_role = ? WHERE id = ?",
-        &[
-            Bind::OptText(church_id.as_deref()),
-            Bind::OptText(church_status.as_deref()),
-            Bind::OptText(church_role.as_deref()),
-            Bind::Text(user_id),
-        ],
+        "UPDATE churches SET owner_id = ? WHERE id = ? AND deleted_at IS NULL",
+        &[Bind::Text(owner_id), Bind::Text(church_id)],
+    )
+    .await
+}
+
+async fn close_church(exec: &mut impl Exec, id: &str, deleted_at: &str) -> anyhow::Result<()> {
+    exec.exec(
+        "UPDATE churches SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+        &[Bind::Text(deleted_at), Bind::Text(id)],
     )
     .await
 }
 
 async fn insert_church(exec: &mut impl Exec, church: &Church) -> anyhow::Result<()> {
     exec.exec(
-        "INSERT INTO churches (id, name, address, latitude, longitude, country, description, gathering, owner_id, invite_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO churches (id, name, address, latitude, longitude, country, description, gathering, ein, registry_state, registry_number, owner_id, invite_code, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         &[
             Bind::Text(&church.id),
             Bind::Text(&church.name),
@@ -450,6 +528,9 @@ async fn insert_church(exec: &mut impl Exec, church: &Church) -> anyhow::Result<
             Bind::Text(&church.country),
             Bind::Text(&church.description),
             Bind::Text(&church.gathering),
+            Bind::Text(&church.ein),
+            Bind::Text(&church.registry_state),
+            Bind::Text(&church.registry_number),
             Bind::Text(&church.owner_id),
             Bind::Text(&church.invite_code),
             Bind::Text(&church.created_at),
@@ -458,10 +539,60 @@ async fn insert_church(exec: &mut impl Exec, church: &Church) -> anyhow::Result<
     .await
 }
 
+async fn insert_share(exec: &mut impl Exec, share: &Share) -> anyhow::Result<()> {
+    exec.exec(
+        "INSERT INTO shares (code, kind, target_id, expires_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (kind, target_id) DO UPDATE SET code = excluded.code, expires_at = excluded.expires_at, deleted_at = NULL",
+        &[
+            Bind::Text(&share.code),
+            Bind::Text(&share.kind),
+            Bind::Text(&share.target_id),
+            Bind::OptText(share.expires_at.as_deref()),
+        ],
+    )
+    .await
+}
+
+async fn delete_need_share(exec: &mut impl Exec, target_id: &str) -> anyhow::Result<()> {
+    let now = crate::clock::now_iso();
+    exec.exec(
+        "UPDATE shares SET deleted_at = ? WHERE kind = 'need' AND target_id = ? AND deleted_at IS NULL",
+        &[Bind::Text(&now), Bind::Text(target_id)],
+    )
+    .await
+}
+
+async fn set_need_status(
+    exec: &mut impl Exec,
+    id: &str,
+    status: &str,
+    closed_at: Option<&str>,
+    praise: Option<&str>,
+) -> anyhow::Result<()> {
+    exec.exec(
+        "UPDATE needs SET status = ?, closed_at = ?, praise = ? WHERE id = ?",
+        &[
+            Bind::Text(status),
+            Bind::OptText(closed_at),
+            Bind::OptText(praise),
+            Bind::Text(id),
+        ],
+    )
+    .await
+}
+
+async fn move_need(exec: &mut impl Exec, id: &str, church_id: &str) -> anyhow::Result<()> {
+    exec.exec(
+        "UPDATE needs SET church_id = ? WHERE id = ? AND status = 'open' AND archived = 0",
+        &[Bind::Text(church_id), Bind::Text(id)],
+    )
+    .await
+}
+
 async fn insert_need(exec: &mut impl Exec, need: &Need) -> anyhow::Result<()> {
     exec.exec(
-        "INSERT INTO needs (id, church_id, author_id, title, body, gift_id, scope, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO needs (id, church_id, author_id, title, body, gift_id, scope, status, created_at, closed_at, praise, archived)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         &[
             Bind::Text(&need.id),
             Bind::Text(&need.church_id),
@@ -472,6 +603,9 @@ async fn insert_need(exec: &mut impl Exec, need: &Need) -> anyhow::Result<()> {
             Bind::Text(&need.scope),
             Bind::Text(&need.status),
             Bind::Text(&need.created_at),
+            Bind::OptText(need.closed_at.as_deref()),
+            Bind::OptText(need.praise.as_deref()),
+            Bind::I64(need.shelf.flag()),
         ],
     )
     .await
@@ -594,7 +728,7 @@ async fn upsert_member_gift(
 ) -> anyhow::Result<()> {
     exec.exec(
         "INSERT INTO member_gifts (user_id, gift_id, note) VALUES (?, ?, ?)
-         ON CONFLICT(user_id, gift_id) DO UPDATE SET note = excluded.note",
+         ON CONFLICT(user_id, gift_id) DO UPDATE SET note = excluded.note, deleted_at = NULL",
         &[
             Bind::Text(user_id),
             Bind::Text(gift_id),
@@ -609,9 +743,14 @@ async fn remove_member_gift(
     user_id: &str,
     gift_id: &str,
 ) -> anyhow::Result<()> {
+    let deleted_at = now_iso();
     exec.exec(
-        "DELETE FROM member_gifts WHERE user_id = ? AND gift_id = ?",
-        &[Bind::Text(user_id), Bind::Text(gift_id)],
+        "UPDATE member_gifts SET deleted_at = ? WHERE user_id = ? AND gift_id = ? AND deleted_at IS NULL",
+        &[
+            Bind::Text(&deleted_at),
+            Bind::Text(user_id),
+            Bind::Text(gift_id),
+        ],
     )
     .await
 }

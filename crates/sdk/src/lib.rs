@@ -5,8 +5,8 @@
 
 pub mod bearer;
 pub mod cache;
-pub mod church_search;
 pub mod chat;
+pub mod church_search;
 pub mod clock;
 pub mod db;
 pub mod host;
@@ -16,6 +16,7 @@ pub mod limit;
 pub mod memory;
 pub mod outbox;
 pub mod password;
+pub mod places;
 pub mod prelude;
 pub mod prompts;
 pub mod push;

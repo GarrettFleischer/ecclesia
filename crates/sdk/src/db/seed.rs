@@ -1,7 +1,7 @@
+use super::Db;
 use super::bind::Bind;
 use super::dialect::Driver;
 use super::seed_data::GIFTS;
-use super::Db;
 use crate::host::is_public_host;
 
 /// Dev church and seed accounts: local SQLite only, never Postgres or a public host.
@@ -52,7 +52,7 @@ impl Db {
         let hash = seed_password_hash()?;
         let now = "2020-01-01T00:00:00Z";
         self.execute(
-            "INSERT INTO users (id, first_name, last_name, email, bio, password_hash, created_at, church_id, church_status, church_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, first_name, last_name, email, bio, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             &[
                 Bind::Text(SEED_OWNER_ID),
                 Bind::Text("Seed"),
@@ -61,14 +61,20 @@ impl Db {
                 Bind::Text(""),
                 Bind::Text(&hash),
                 Bind::Text(now),
-                Bind::Text(SEED_CHURCH_ID),
-                Bind::Text("active"),
-                Bind::Text("owner"),
             ],
         )
         .await?;
         self.execute(
-            "INSERT INTO churches (id, name, address, latitude, longitude, country, description, gathering, owner_id, invite_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO memberships (user_id, church_id, role, status, created_at) VALUES (?, ?, 'owner', 'active', ?)",
+            &[
+                Bind::Text(SEED_OWNER_ID),
+                Bind::Text(SEED_CHURCH_ID),
+                Bind::Text(now),
+            ],
+        )
+        .await?;
+        self.execute(
+            "INSERT INTO churches (id, name, address, latitude, longitude, country, description, gathering, ein, registry_state, registry_number, owner_id, invite_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             &[
                 Bind::Text(SEED_CHURCH_ID),
                 Bind::Text("Grace Fellowship"),
@@ -78,6 +84,9 @@ impl Db {
                 Bind::Text("US"),
                 Bind::Text("Seed church for registration."),
                 Bind::Text("Sunday at 10."),
+                Bind::Text("12-3456789"),
+                Bind::Text("IA"),
+                Bind::Text("123456"),
                 Bind::Text(SEED_OWNER_ID),
                 Bind::Text("GRACESEED"),
                 Bind::Text(now),
@@ -96,7 +105,7 @@ impl Db {
         if self.user(SEED_ADMIN_ID).await?.is_none() {
             let hash = seed_password_hash()?;
             self.execute(
-                "INSERT INTO users (id, first_name, last_name, email, bio, password_hash, created_at, church_id, church_status, church_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO users (id, first_name, last_name, email, bio, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 &[
                     Bind::Text(SEED_ADMIN_ID),
                     Bind::Text("Grace"),
@@ -105,24 +114,28 @@ impl Db {
                     Bind::Text(""),
                     Bind::Text(&hash),
                     Bind::Text(now),
-                    Bind::Text(SEED_CHURCH_ID),
-                    Bind::Text("active"),
-                    Bind::Text("owner"),
                 ],
             )
             .await?;
+            self.ensure_seed_membership(SEED_ADMIN_ID, now).await?;
         } else {
             self.set_seed_password(SEED_ADMIN_ID).await?;
-            self.execute(
-                "UPDATE users SET church_id = ?, church_status = 'active', church_role = 'owner' WHERE id = ? AND (church_id IS NULL OR church_id = ?)",
-                &[
-                    Bind::Text(SEED_CHURCH_ID),
-                    Bind::Text(SEED_ADMIN_ID),
-                    Bind::Text(SEED_CHURCH_ID),
-                ],
-            )
-            .await?;
+            self.ensure_seed_membership(SEED_ADMIN_ID, now).await?;
         }
+        Ok(())
+    }
+
+    async fn ensure_seed_membership(&self, user_id: &str, now: &str) -> anyhow::Result<()> {
+        self.execute(
+            "INSERT INTO memberships (user_id, church_id, role, status, created_at) VALUES (?, ?, 'owner', 'active', ?)
+             ON CONFLICT (user_id, church_id) DO UPDATE SET role = 'owner', status = 'active'",
+            &[
+                Bind::Text(user_id),
+                Bind::Text(SEED_CHURCH_ID),
+                Bind::Text(now),
+            ],
+        )
+        .await?;
         Ok(())
     }
 
@@ -140,7 +153,8 @@ impl Db {
         Ok(())
     }
     async fn gift_count(&self) -> anyhow::Result<i64> {
-        self.fetch_scalar_i64("SELECT COUNT(*) FROM gifts", &[]).await
+        self.fetch_scalar_i64("SELECT COUNT(*) FROM gifts", &[])
+            .await
     }
 }
 fn seed_password_hash() -> anyhow::Result<String> {

@@ -39,6 +39,9 @@ pub fn refine_system(kind: VoiceKind) -> &'static str {
         VoiceKind::Reply => {
             "Rewrite this reply so it is clear and kind. Keep when they can come and what they can do. Return only the rewritten text."
         }
+        VoiceKind::Praise => {
+            "Rewrite this praise report so it is clear and kind. Keep what happened. Return only the rewritten text."
+        }
     }
 }
 
