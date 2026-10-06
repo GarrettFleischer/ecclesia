@@ -754,7 +754,7 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
     assert!(page.contains("/static/join.js?v=6"));
-    assert!(page.contains("/static/app.js?v=29"));
+    assert!(page.contains("/static/app.js?v=31"));
     let shell = get_public(&world, "/static/app.js").await;
     assert!(shell.contains("ecclesia-place"));
     assert!(shell.contains("print-code.css"));
