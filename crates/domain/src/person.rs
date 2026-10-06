@@ -10,6 +10,32 @@ pub fn display_name(first: &str, last: &str) -> String {
     name
 }
 
+/// One row in the membership join: this person and this church.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Membership {
+    pub church_id: String,
+    pub status: String,
+    pub role: String,
+}
+
+impl Membership {
+    pub fn status(&self) -> Option<ChurchLinkStatus> {
+        ChurchLinkStatus::parse(&self.status)
+    }
+
+    pub fn role(&self) -> Option<MembershipRole> {
+        MembershipRole::parse(&self.role)
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.status() == Some(ChurchLinkStatus::Active)
+    }
+
+    pub fn is_waiting(&self) -> bool {
+        self.status().is_some_and(ChurchLinkStatus::is_waiting)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct User {
     pub id: String,
@@ -18,39 +44,37 @@ pub struct User {
     pub email: String,
     pub bio: String,
     pub created_at: String,
-    pub church_id: Option<String>,
-    pub church_status: Option<String>,
-    pub church_role: Option<String>,
+    pub memberships: Vec<Membership>,
 }
 
 impl User {
-    pub fn link_status(&self) -> Option<ChurchLinkStatus> {
-        self.church_status
-            .as_deref()
-            .and_then(ChurchLinkStatus::parse)
+    pub fn membership_in(&self, church_id: &str) -> Option<&Membership> {
+        self.memberships
+            .iter()
+            .find(|link| link.church_id == church_id)
     }
 
-    pub fn link_role(&self) -> Option<MembershipRole> {
-        self.church_role.as_deref().and_then(MembershipRole::parse)
+    pub fn has_church(&self) -> bool {
+        !self.memberships.is_empty()
     }
 
     pub fn is_active(&self) -> bool {
-        self.link_status() == Some(ChurchLinkStatus::Active)
+        self.memberships.iter().any(Membership::is_active)
     }
 
     pub fn is_waiting(&self) -> bool {
-        matches!(
-            self.link_status(),
-            Some(ChurchLinkStatus::Pending | ChurchLinkStatus::Invited)
-        )
+        self.memberships.iter().any(Membership::is_waiting)
     }
 
     pub fn is_active_in(&self, church_id: &str) -> bool {
-        self.is_active() && self.church_id.as_deref() == Some(church_id)
+        self.membership_in(church_id)
+            .is_some_and(Membership::is_active)
     }
 
     pub fn governs(&self, church_id: &str) -> bool {
-        self.is_active_in(church_id) && self.link_role().is_some_and(MembershipRole::can_govern)
+        self.membership_in(church_id).is_some_and(|link| {
+            link.is_active() && link.role().is_some_and(MembershipRole::can_govern)
+        })
     }
 }
 
@@ -152,17 +176,23 @@ pub struct ChurchMember {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Viewer {
     pub user: User,
-    pub church: Option<Church>,
+    pub churches: Vec<Church>,
     pub gift_ids: Vec<String>,
 }
 
 impl Viewer {
-    pub fn active_church(&self) -> Option<&Church> {
-        self.church.as_ref().filter(|_| self.user.is_active())
+    pub fn active_churches(&self) -> impl Iterator<Item = &Church> {
+        self.churches
+            .iter()
+            .filter(|church| self.user.is_active_in(&church.id))
     }
 
-    pub fn waiting_church(&self) -> Option<&Church> {
-        self.church.as_ref().filter(|_| self.user.is_waiting())
+    pub fn waiting_churches(&self) -> impl Iterator<Item = &Church> {
+        self.churches.iter().filter(|church| {
+            self.user
+                .membership_in(&church.id)
+                .is_some_and(Membership::is_waiting)
+        })
     }
 
     pub fn is_active_anywhere(&self) -> bool {

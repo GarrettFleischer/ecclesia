@@ -2,7 +2,7 @@
 
 use super::effect::{DomainError, Effect, Write};
 use super::flags::{Posture, require_uplifting};
-use super::geo::{Place, place_is_near};
+use super::geo::{Place, distance_km, nearby_km, place_is_near};
 use super::household::Church;
 use super::need::{Prayer, PrayerCard, PrayerStatus};
 use super::person::Viewer;
@@ -69,7 +69,7 @@ pub enum PrayerReach {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrayerSource {
     Church,
-    Nearby,
+    Surrounding,
 }
 
 pub struct PrayerSight<'a> {
@@ -174,7 +174,8 @@ fn require_prayer_reach(
             }
         }
         PrayerReach::Near(place) => {
-            if viewer.is_active_anywhere() && place_is_near(church.latitude, church.longitude, place)
+            if viewer.is_active_anywhere()
+                && place_is_near(church.latitude, church.longitude, place)
             {
                 Ok(())
             } else {
@@ -238,22 +239,32 @@ pub fn visible_prayers_near<'a>(
 pub fn pick_daily_prayer<'a>(
     viewer: &Viewer,
     day: &str,
-    place: Option<Place>,
     prayers: &'a [PrayerSight<'a>],
     seen: &[&str],
 ) -> Option<(&'a Prayer, PrayerSource)> {
-    let church_id = viewer.active_church().map(|church| church.id.as_str());
+    if !viewer.is_active_anywhere() {
+        return None;
+    }
     if let Some(prayer) = first_ranked(viewer, day, seen, prayers, |sight| {
-        church_id == Some(sight.prayer.church_id.as_str())
+        viewer.is_active_in(&sight.prayer.church_id)
     }) {
         return Some((prayer, PrayerSource::Church));
     }
-    let place = place?;
     first_ranked(viewer, day, seen, prayers, |sight| {
-        church_id != Some(sight.prayer.church_id.as_str())
-            && place_is_near(sight.latitude, sight.longitude, place)
+        !viewer.is_active_in(&sight.prayer.church_id) && near_a_home_church(viewer, sight)
     })
-    .map(|prayer| (prayer, PrayerSource::Nearby))
+    .map(|prayer| (prayer, PrayerSource::Surrounding))
+}
+
+fn near_a_home_church(viewer: &Viewer, sight: &PrayerSight<'_>) -> bool {
+    viewer.active_churches().any(|church| {
+        distance_km(
+            church.latitude,
+            church.longitude,
+            sight.latitude,
+            sight.longitude,
+        ) <= nearby_km()
+    })
 }
 
 fn first_ranked<'a>(
@@ -269,7 +280,9 @@ fn first_ranked<'a>(
             continue;
         }
         best = Some(match best {
-            Some(current) if rank(viewer, day, current.prayer) <= rank(viewer, day, sight.prayer) => {
+            Some(current)
+                if rank(viewer, day, current.prayer) <= rank(viewer, day, sight.prayer) =>
+            {
                 current
             }
             _ => sight,
@@ -302,7 +315,7 @@ fn feed(hash: &mut u64, value: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sample::{church, church_at, user_in_church, viewer_of};
+    use crate::sample::{church, church_at, user, user_in_church, viewer_of};
 
     fn card(id: &str, church_id: &str) -> PrayerCard {
         PrayerCard {
@@ -408,21 +421,16 @@ mod tests {
             sight(&near, &mercy),
             sight(&far, &far_church),
         ];
-        let place = Place {
-            latitude: home.latitude,
-            longitude: home.longitude,
-        };
-        let (picked, source) =
-            pick_daily_prayer(&viewer, "2026-10-02", Some(place), &sights, &[]).unwrap();
+        let (picked, source) = pick_daily_prayer(&viewer, "2026-10-02", &sights, &[]).unwrap();
         assert_eq!(picked.id, "church");
         assert_eq!(source, PrayerSource::Church);
         let (picked, source) =
-            pick_daily_prayer(&viewer, "2026-10-02", Some(place), &sights, &["church"]).unwrap();
+            pick_daily_prayer(&viewer, "2026-10-02", &sights, &["church"]).unwrap();
         assert_eq!(picked.id, "near");
-        assert_eq!(source, PrayerSource::Nearby);
-        assert!(
-            pick_daily_prayer(&viewer, "2026-10-02", None, &sights, &["church"]).is_none()
-        );
+        assert_eq!(source, PrayerSource::Surrounding);
+        assert!(pick_daily_prayer(&viewer, "2026-10-02", &sights, &["church", "near"]).is_none());
+        let guest = viewer_of(user("guest"), None);
+        assert!(pick_daily_prayer(&guest, "2026-10-02", &sights, &[]).is_none());
     }
 
     #[test]

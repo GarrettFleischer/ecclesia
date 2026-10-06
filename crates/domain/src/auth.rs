@@ -26,9 +26,7 @@ pub fn register(
         email,
         bio: String::new(),
         created_at: now,
-        church_id: None,
-        church_status: None,
-        church_role: None,
+        memberships: Vec::new(),
     })))
 }
 
@@ -74,7 +72,7 @@ mod tests {
                 assert_eq!(user.email, "ada@newmercy.test");
                 assert_eq!(user.first_name, "Ada");
                 assert_eq!(user.last_name, "Lovelace");
-                assert!(user.church_id.is_none());
+                assert!(user.memberships.is_empty());
             }
             other => panic!("{other:?}"),
         }

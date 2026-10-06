@@ -1,11 +1,11 @@
 use super::geo::{Place, distance_km, nearby_km, place_is_near};
 use super::model::{
-    Church, ChurchLinkStatus, DomainError, NeedCard, NeedScope, NeedSight, User, Viewer,
+    Church, ChurchLinkStatus, DomainError, NeedCard, NeedScope, NeedSight, NeedStatus, ShareKind,
+    User, Viewer,
 };
 
 pub fn churches_are_neighbors(a: &Church, b: &Church) -> bool {
-    a.id != b.id
-        && distance_km(a.latitude, a.longitude, b.latitude, b.longitude) <= nearby_km()
+    a.id != b.id && distance_km(a.latitude, a.longitude, b.latitude, b.longitude) <= nearby_km()
 }
 
 pub fn is_need_steward(viewer: &Viewer, need: NeedSight<'_>) -> bool {
@@ -22,8 +22,8 @@ pub fn can_view_need(viewer: &Viewer, need: NeedSight<'_>, church: &Church) -> b
         Some(NeedScope::Neighboring) => {
             viewer.is_active_in(need.church_id)
                 || viewer
-                    .active_church()
-                    .is_some_and(|mine| churches_are_neighbors(mine, church))
+                    .active_churches()
+                    .any(|mine| churches_are_neighbors(mine, church))
         }
         None => false,
     }
@@ -160,34 +160,105 @@ fn card_is_visible(viewer: &Viewer, card: &NeedCard, churches: &[Church]) -> boo
         .is_some_and(|church| card.is_open() && can_view_need(viewer, card.sight(), church))
 }
 
+/// Church pages keep a met need until it leaves the list.
+pub fn visible_church_need_cards<'a>(
+    viewer: &'a Viewer,
+    cards: &'a [NeedCard],
+    churches: &'a [Church],
+) -> impl Iterator<Item = &'a NeedCard> + 'a {
+    cards
+        .iter()
+        .filter(move |card| church_card_stays(viewer, card, churches))
+}
+
+fn church_card_stays(viewer: &Viewer, card: &NeedCard, churches: &[Church]) -> bool {
+    if !matches!(card.status(), Some(NeedStatus::Open | NeedStatus::Closed)) {
+        return false;
+    }
+    church_for_card(card, churches)
+        .is_some_and(|church| can_view_need(viewer, card.sight(), church))
+}
+
 fn church_for_card<'a>(card: &NeedCard, churches: &'a [Church]) -> Option<&'a Church> {
     churches.iter().find(|church| church.id == card.church_id)
 }
 
+const CODE_LEN: usize = 6;
+const CODE_ALPHABET: &[u8] = b"23456789abcdefghjkmnpqrstuvwxyz";
+
 pub fn invite_code_for(name: &str, nonce: &str) -> String {
-    format!("{}-{}", slug_from(name, 8), nonce_from(nonce, 8)).to_ascii_lowercase()
+    code_from_mix(mix_letters(&code_letters(name, nonce)))
 }
 
-fn slug_from(name: &str, take: usize) -> String {
-    name.chars()
-        .flat_map(|c| c.to_lowercase())
-        .filter(|c| c.is_ascii_alphanumeric())
-        .take(take)
-        .collect()
+pub fn share_code_for(kind: ShareKind, material: &str) -> String {
+    invite_code_for(kind.as_str(), material)
 }
 
-fn nonce_from(nonce: &str, take: usize) -> String {
-    nonce
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .take(take)
-        .collect()
+pub fn share_material(target_id: &str, extra: usize) -> String {
+    match extra {
+        0 => target_id.to_string(),
+        _ => format!("{target_id}{extra}"),
+    }
+}
+
+fn code_letters(name: &str, nonce: &str) -> String {
+    let mut letters = String::new();
+    append_letters(&mut letters, name);
+    append_letters(&mut letters, nonce);
+    letters
+}
+
+fn append_letters(letters: &mut String, raw: &str) {
+    for ch in raw.chars() {
+        if let Some(letter) = letter_for_code(ch) {
+            letters.push(letter);
+        }
+    }
+}
+
+fn letter_for_code(ch: char) -> Option<char> {
+    if ch.is_ascii_alphanumeric() {
+        ch.to_lowercase().next()
+    } else {
+        None
+    }
+}
+
+fn mix_letters(letters: &str) -> u32 {
+    let mut state = 2_166_136_261u32;
+    for (index, byte) in letters.bytes().enumerate() {
+        state = fold_letter(state, byte, index);
+    }
+    state
+}
+
+fn fold_letter(state: u32, byte: u8, index: usize) -> u32 {
+    let mixed = state ^ u32::from(byte);
+    mixed.wrapping_mul(16_777_619) ^ (index as u32)
+}
+
+fn code_from_mix(mut state: u32) -> String {
+    let mut code = String::with_capacity(CODE_LEN);
+    for _ in 0..CODE_LEN {
+        state = step_mix(state);
+        code.push(code_char(state));
+    }
+    code
+}
+
+fn step_mix(state: u32) -> u32 {
+    state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223)
+}
+
+fn code_char(state: u32) -> char {
+    let index = ((state >> 16) as usize) % CODE_ALPHABET.len();
+    CODE_ALPHABET[index] as char
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Need, NeedCard, User};
+    use crate::model::{Membership, Need, NeedCard, NeedShelf, User};
 
     const CEDAR_FALLS: (f64, f64) = (42.5349, -92.4453);
     const WATERLOO: (f64, f64) = (42.4928, -92.3426);
@@ -201,17 +272,17 @@ mod tests {
             email: format!("{id}@ecclesia.test"),
             bio: String::new(),
             created_at: "2026-01-01T00:00:00Z".into(),
-            church_id: None,
-            church_status: None,
-            church_role: None,
+            memberships: Vec::new(),
         }
     }
 
     fn linked(id: &str, church_id: &str, status: &str) -> User {
         let mut person = user(id);
-        person.church_id = Some(church_id.into());
-        person.church_status = Some(status.into());
-        person.church_role = Some("member".into());
+        person.memberships.push(Membership {
+            church_id: church_id.into(),
+            status: status.into(),
+            role: "member".into(),
+        });
         person
     }
 
@@ -225,6 +296,9 @@ mod tests {
             country: "US".into(),
             description: String::new(),
             gathering: String::new(),
+            ein: "12-3456789".into(),
+            registry_state: "IA".into(),
+            registry_number: "123456".into(),
             owner_id: "owner".into(),
             invite_code: "code".into(),
             created_at: "2026-01-01T00:00:00Z".into(),
@@ -234,7 +308,7 @@ mod tests {
     fn viewer(user: User, church: Option<Church>) -> Viewer {
         Viewer {
             user,
-            church,
+            churches: church.into_iter().collect(),
             gift_ids: vec![],
         }
     }
@@ -250,6 +324,9 @@ mod tests {
             scope: scope.as_str().into(),
             status: "open".into(),
             created_at: "2026-01-01T00:00:00Z".into(),
+            closed_at: None,
+            praise: None,
+            shelf: crate::NeedShelf::Listed,
         }
     }
 
@@ -315,10 +392,7 @@ mod tests {
     #[test]
     fn us_need_05_pending_member_is_not_yet_in_the_body() {
         let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
-        let peter = viewer(
-            linked("peter", "grace", "pending"),
-            Some(grace.clone()),
-        );
+        let peter = viewer(linked("peter", "grace", "pending"), Some(grace.clone()));
         let n = need(NeedScope::Body, "grace", "miriam");
         assert!(!can_view_need(&peter, n.sight(), &grace));
         assert_eq!(
@@ -330,10 +404,7 @@ mod tests {
     #[test]
     fn us_need_02_author_cannot_apply_to_own_need() {
         let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
-        let miriam = viewer(
-            linked("miriam", "grace", "active"),
-            Some(grace.clone()),
-        );
+        let miriam = viewer(linked("miriam", "grace", "active"), Some(grace.clone()));
         let n = need(NeedScope::Church, "grace", "miriam");
         assert_eq!(
             can_apply(&miriam, n.sight(), &grace),
@@ -360,12 +431,45 @@ mod tests {
     }
 
     #[test]
-    fn invite_code_is_pure_given_a_nonce() {
-        assert_eq!(
-            invite_code_for("Grace Covenant", "k2m9p4r1"),
-            "gracecov-k2m9p4r1"
+    fn share_code_stays_with_its_need() {
+        let id = "99be4e88-44f7-40f5-88d6-865fdc1e6445";
+        let code = share_code_for(crate::ShareKind::Need, id);
+        assert_eq!(code, share_code_for(crate::ShareKind::Need, id));
+        assert_eq!(code.len(), 6);
+        assert!(
+            code.bytes()
+                .all(|byte| super::CODE_ALPHABET.contains(&byte))
         );
-        assert_eq!(invite_code_for("Grace", "Ab12CdEf"), "grace-ab12cdef");
+        assert_ne!(code, share_code_for(crate::ShareKind::Need, "other-need"));
+        assert_eq!(share_material(id, 0), id);
+        assert_ne!(
+            code,
+            share_code_for(crate::ShareKind::Need, &share_material(id, 1))
+        );
+    }
+
+    #[test]
+    fn an_archived_need_share_expires_with_its_window() {
+        let window = "2026-11-05T00:00:00Z";
+        assert_eq!(
+            crate::share_expires_on(crate::NeedShelf::Listed, window),
+            None
+        );
+        assert_eq!(
+            crate::share_expires_on(crate::NeedShelf::Archived, window).as_deref(),
+            Some(window)
+        );
+        assert_eq!(crate::MET_NEED_DAYS, 30);
+    }
+
+    #[test]
+    fn invite_code_is_a_short_code() {
+        assert_eq!(invite_code_for("Grace Covenant", "k2m9p4r1"), "u5fr77");
+        assert_eq!(invite_code_for("Grace", "Ab12CdEf"), "84yc8y");
+        assert_eq!(
+            invite_code_for("North Cedar Chapel", "99be4e88-44f7-40f5-88d6-865fdc1e6445"),
+            "8wrpz8"
+        );
     }
 
     #[test]
@@ -387,6 +491,8 @@ mod tests {
             scope: NeedScope::Church.as_str().into(),
             status: "open".into(),
             created_at: "t0".into(),
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let open = NeedCard {
             id: "n2".into(),
@@ -402,6 +508,8 @@ mod tests {
             scope: NeedScope::Neighboring.as_str().into(),
             status: "open".into(),
             created_at: "t0".into(),
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let cards = [hidden, open];
         let churches = [grace];
@@ -409,5 +517,39 @@ mod tests {
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].id, "n2");
         assert!(std::ptr::eq(visible[0], &cards[1]));
+    }
+
+    #[test]
+    fn us_need_03_a_met_need_stays_on_the_church_page() {
+        let grace = church("grace", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let luke = church("luke", CEDAR_FALLS.0, CEDAR_FALLS.1);
+        let james = viewer(linked("james", "luke", "active"), Some(luke));
+        let met = NeedCard {
+            id: "n3".into(),
+            church_id: "grace".into(),
+            church_name: "Grace".into(),
+            church_address: "100 Main Street".into(),
+            author_id: "miriam".into(),
+            author_name: "Miriam".into(),
+            title: "Dinners".into(),
+            body: "This week.".into(),
+            gift_id: None,
+            gift_name: None,
+            scope: NeedScope::Neighboring.as_str().into(),
+            status: "closed".into(),
+            created_at: "t0".into(),
+            praise: Some("Thursday was covered.".into()),
+            shelf: NeedShelf::Listed,
+        };
+        let cards = [met];
+        let churches = [grace];
+        let on_church: Vec<&NeedCard> =
+            visible_church_need_cards(&james, &cards, &churches).collect();
+        assert_eq!(on_church.len(), 1);
+        assert!(
+            visible_need_cards(&james, &cards, &churches)
+                .next()
+                .is_none()
+        );
     }
 }

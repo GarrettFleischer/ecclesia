@@ -3,14 +3,14 @@
 
 use ecclesia_domain::{
     ADDRESS_MAX, ApplicationStatus, Church, ChurchLinkStatus, DomainError, Effect,
-    EmailAvailability, EndorsementStatus, Gift, GiftOnProfile, MembershipRole, NAME_MAX, Need,
-    NeedCard, NeedScope, NeedStatus, SkillSource, VoiceKind, VoicePass, can_apply, can_endorse,
-    can_view_need, churches_are_neighbors, churches_with_counts, coordinates, count_for,
-    device_token, distance_km, group_churches_by_place, https_endpoint, invite_code_for,
-    is_need_steward, link_after_approval, nearby_km, need_fields, normalize_email, note_field,
-    notice_each_governor, optional_note, optional_text, parse_invite_email, person_fields,
-    profile_fields, push_key, push_platform, require_need_view, require_text, rewrite_text, sample,
-    skill_field, visible_need_cards,
+    EmailAvailability, EndorsementStatus, GATHERING_MAX, Gift, GiftOnProfile, MembershipRole,
+    NAME_MAX, Need, NeedCard, NeedScope, NeedShelf, NeedStatus, SkillSource, VoiceKind, VoicePass,
+    can_apply, can_endorse, can_view_need, churches_are_neighbors, churches_with_counts,
+    coordinates, count_for, device_token, distance_km, group_churches_by_place, https_endpoint,
+    invite_code_for, is_need_steward, link_after_approval, nearby_km, need_fields, normalize_email,
+    note_field, notice_each_governor, optional_note, optional_text, parse_invite_email,
+    person_fields, profile_fields, push_key, push_platform, require_need_view, require_text,
+    rewrite_text, sample, skill_field, visible_need_cards,
 };
 use proptest::collection;
 use proptest::prelude::*;
@@ -87,6 +87,9 @@ fn need_record(scope: &str, status: &str, author_id: &str) -> Need {
         scope: scope.into(),
         status: status.into(),
         created_at: "t0".into(),
+        closed_at: None,
+        praise: None,
+        shelf: NeedShelf::Listed,
     }
 }
 
@@ -105,6 +108,8 @@ fn need_card(scope: &str, status: &str, author_id: &str) -> NeedCard {
         scope: scope.into(),
         status: status.into(),
         created_at: "t0".into(),
+        praise: None,
+        shelf: NeedShelf::Listed,
     }
 }
 
@@ -274,7 +279,7 @@ proptest! {
         let name_r = require_text(&name, TITLE_MAX);
         let address_r = require_text(&address, ADDRESS_MAX);
         let description_r = require_text(&description, BODY_MAX);
-        let gathering_r = optional_text(&gathering, TITLE_MAX);
+        let gathering_r = optional_text(&gathering, GATHERING_MAX);
         let coord_r = coordinates(latitude, longitude);
         let name_has_letter = name_r
             .as_ref()
@@ -375,12 +380,8 @@ proptest! {
         assert_eq!(plain, invite_code_for(&with_noise(&name, noise), &with_noise(&nonce, noise)));
         assert_eq!(plain, invite_code_for(&name.to_ascii_uppercase(), &nonce.to_ascii_uppercase()));
         assert_eq!(plain, plain.to_ascii_lowercase());
-        let (slug, tail) = plain.split_once('-').unwrap();
-        assert!(slug.chars().all(|ch| ch.is_ascii_alphanumeric()));
-        assert!(tail.chars().all(|ch| ch.is_ascii_alphanumeric()));
-        assert!(slug.chars().count() <= 8);
-        assert!(tail.chars().count() <= 8);
-        assert!(plain.split('-').nth(2).is_none());
+        assert_eq!(plain.chars().count(), 6);
+        assert!(plain.chars().all(|ch| "23456789abcdefghjkmnpqrstuvwxyz".contains(ch)));
     }
 
     #[test]
@@ -437,7 +438,7 @@ proptest! {
         for status in [EndorsementStatus::Pending, EndorsementStatus::Accepted, EndorsementStatus::Declined] {
             assert_eq!(EndorsementStatus::parse(status.as_str()), Some(status));
         }
-        for kind in [VoiceKind::Need, VoiceKind::Offer, VoiceKind::Endorsement, VoiceKind::GiftNote, VoiceKind::Bio, VoiceKind::Church] {
+        for kind in [VoiceKind::Need, VoiceKind::Offer, VoiceKind::Endorsement, VoiceKind::GiftNote, VoiceKind::Bio, VoiceKind::Church, VoiceKind::Prayer, VoiceKind::Reply, VoiceKind::Praise] {
             assert_eq!(VoiceKind::parse(kind.as_str()), Some(kind));
         }
         match NeedScope::parse(&token) {
@@ -587,7 +588,7 @@ proptest! {
     }
 
     #[test]
-    fn us_prop_err_01_flash_codes_are_tokens(index in 0usize..25) {
+    fn us_prop_err_01_flash_codes_are_tokens(index in 0usize..34) {
         let error = domain_error(index);
         let code = error.flash_code();
         assert!(!code.is_empty());
@@ -631,6 +632,15 @@ fn domain_error(index: usize) -> DomainError {
         22 => DomainError::NotAuthor,
         23 => DomainError::PrayerAnswered,
         24 => DomainError::NoChurch,
+        25 => DomainError::InvalidEin,
+        26 => DomainError::InvalidRegistry,
+        27 => DomainError::InvalidPostal,
+        28 => DomainError::InvalidService,
+        29 => DomainError::PastorHoldsChurch,
+        30 => DomainError::AlreadyPastor,
+        31 => DomainError::NeedOpen,
+        32 => DomainError::NeedArchived,
+        33 => DomainError::ChurchStillOpen,
         _ => DomainError::OutsideChurch,
     }
 }

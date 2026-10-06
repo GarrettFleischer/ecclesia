@@ -35,6 +35,70 @@ impl NeedScope {
     }
 }
 
+/// Days a met need stays in lists before its share code is removed.
+pub const MET_NEED_DAYS: i64 = 30;
+
+/// Whether a need still belongs in lists. `archived` is 0 or 1 in the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeedShelf {
+    Listed,
+    Archived,
+}
+
+impl NeedShelf {
+    pub fn from_flag(flag: i64) -> Self {
+        match flag {
+            0 => Self::Listed,
+            _ => Self::Archived,
+        }
+    }
+
+    pub fn flag(self) -> i64 {
+        match self {
+            Self::Listed => 0,
+            Self::Archived => 1,
+        }
+    }
+}
+
+/// When a newly issued need code stops working. Listed needs do not expire.
+pub fn share_expires_on(shelf: NeedShelf, window_end: &str) -> Option<String> {
+    match shelf {
+        NeedShelf::Listed => None,
+        NeedShelf::Archived => Some(window_end.to_string()),
+    }
+}
+
+/// What a short code points at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShareKind {
+    Need,
+}
+
+impl ShareKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Need => "need",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "need" => Some(Self::Need),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Share {
+    pub code: String,
+    pub kind: String,
+    pub target_id: String,
+    pub expires_at: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Need {
     pub id: String,
@@ -46,6 +110,9 @@ pub struct Need {
     pub scope: String,
     pub status: String,
     pub created_at: String,
+    pub closed_at: Option<String>,
+    pub praise: Option<String>,
+    pub shelf: NeedShelf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +234,8 @@ pub struct NeedCard {
     pub scope: String,
     pub status: String,
     pub created_at: String,
+    pub praise: Option<String>,
+    pub shelf: NeedShelf,
 }
 
 impl NeedCard {

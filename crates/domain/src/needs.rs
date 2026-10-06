@@ -3,11 +3,11 @@
 use super::flags::{CatalogPresence, Posture, PriorOffer};
 use super::model::{
     Application, ApplicationCard, ApplicationStatus, Church, DomainError, Effect, Need, NeedReply,
-    NeedSight, NeedStatus, Viewer, Write,
+    NeedShelf, NeedSight, NeedStatus, User, Viewer, Write,
 };
 use super::notice::notice;
-use super::rules::{NeedApproach, can_apply, can_reply, is_need_steward};
 use super::person::display_name;
+use super::rules::{NeedApproach, can_apply, can_reply, is_need_steward};
 use super::validate::{need_fields, note_field};
 
 /// US-NEED-01 — post a need from a household you already belong to.
@@ -39,6 +39,9 @@ pub fn post_need(
         scope: parsed_scope.as_str().into(),
         status: NeedStatus::Open.as_str().into(),
         created_at: now,
+        closed_at: None,
+        praise: None,
+        shelf: NeedShelf::Listed,
     })))
 }
 
@@ -95,16 +98,54 @@ fn refuse_duplicate_offer(prior: PriorOffer) -> Result<(), DomainError> {
     }
 }
 
-/// US-NEED-03 — the author or a governor closes a need.
-pub fn close_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> {
-    require_need_steward(viewer, need)?;
+/// US-NEED-03 — the author marks a need met and writes how it was met.
+pub fn close_need(
+    viewer: &Viewer,
+    need: &Need,
+    praise: &str,
+    posture: Posture,
+    now: String,
+) -> Result<Effect, DomainError> {
+    require_need_author(viewer, need)?;
+    if need.shelf == NeedShelf::Archived {
+        return Err(DomainError::NeedArchived);
+    }
     if !need.is_open() {
         return Err(DomainError::NeedClosed);
     }
+    super::flags::require_uplifting(posture)?;
+    let praise = note_field(praise)?;
     Ok(Effect::write(Write::SetNeedStatus {
         id: need.id.clone(),
         status: NeedStatus::Closed.as_str(),
+        closed_at: Some(now),
+        praise: Some(praise),
     }))
+}
+
+/// The author opens a met need again, until it is archived.
+pub fn reopen_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> {
+    require_need_author(viewer, need)?;
+    if need.shelf == NeedShelf::Archived {
+        return Err(DomainError::NeedArchived);
+    }
+    if need.status() != Some(NeedStatus::Closed) {
+        return Err(open_need_status(need));
+    }
+    Ok(Effect::write(Write::SetNeedStatus {
+        id: need.id.clone(),
+        status: NeedStatus::Open.as_str(),
+        closed_at: None,
+        praise: None,
+    }))
+}
+
+fn open_need_status(need: &Need) -> DomainError {
+    if need.is_open() {
+        DomainError::NeedOpen
+    } else {
+        DomainError::NeedClosed
+    }
 }
 
 /// A public reply on a need the person can see.
@@ -144,11 +185,80 @@ pub fn reply_to_need(
     Ok(effect)
 }
 
+/// Move the author's open needs from a closed church onto a church they belong to.
+pub fn import_open_needs(
+    actor: &User,
+    needs: &[Need],
+    closed_church_ids: &[String],
+    destination: &Church,
+) -> Result<Effect, DomainError> {
+    if !actor.is_active_in(&destination.id) {
+        return Err(DomainError::NotInTheBody);
+    }
+    if needs.is_empty() {
+        return Err(DomainError::NothingPending);
+    }
+    Ok(Effect {
+        writes: moved_needs(actor, needs, closed_church_ids, destination)?,
+        notices: Vec::new(),
+    })
+}
+
+fn moved_needs(
+    actor: &User,
+    needs: &[Need],
+    closed_church_ids: &[String],
+    destination: &Church,
+) -> Result<Vec<Write>, DomainError> {
+    let mut writes = Vec::with_capacity(needs.len());
+    for need in needs {
+        writes.push(move_open_need(
+            actor,
+            need,
+            closed_church_ids,
+            destination,
+        )?);
+    }
+    Ok(writes)
+}
+
+fn move_open_need(
+    actor: &User,
+    need: &Need,
+    closed_church_ids: &[String],
+    destination: &Church,
+) -> Result<Write, DomainError> {
+    if need.author_id != actor.id {
+        return Err(DomainError::NotAuthor);
+    }
+    if need.shelf == NeedShelf::Archived {
+        return Err(DomainError::NeedArchived);
+    }
+    if need.status() != Some(NeedStatus::Open) {
+        return Err(DomainError::NeedClosed);
+    }
+    if !closed_church_ids.iter().any(|id| id == &need.church_id) {
+        return Err(DomainError::ChurchStillOpen);
+    }
+    Ok(Write::MoveNeed {
+        id: need.id.clone(),
+        church_id: destination.id.clone(),
+    })
+}
+
 fn require_need_steward(viewer: &Viewer, need: &Need) -> Result<(), DomainError> {
     if is_need_steward(viewer, need.sight()) {
         Ok(())
     } else {
         Err(DomainError::NotSteward)
+    }
+}
+
+fn require_need_author(viewer: &Viewer, need: &Need) -> Result<(), DomainError> {
+    if viewer.user.id == need.author_id {
+        Ok(())
+    } else {
+        Err(DomainError::NotAuthor)
     }
 }
 
@@ -274,6 +384,9 @@ mod tests {
             scope: "neighboring".into(),
             status: "open".into(),
             created_at: "t0".into(),
+            closed_at: None,
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let effect = apply_to_need(
             &elena,
@@ -306,6 +419,9 @@ mod tests {
             scope: "neighboring".into(),
             status: "open".into(),
             created_at: "t0".into(),
+            closed_at: None,
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let effect = reply_to_need(
             &elena,
@@ -340,6 +456,9 @@ mod tests {
             scope: "church".into(),
             status: "open".into(),
             created_at: "t0".into(),
+            closed_at: None,
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let effect = reply_to_need(
             &miriam,
@@ -379,6 +498,9 @@ mod tests {
             scope: "neighboring".into(),
             status: "open".into(),
             created_at: "t0".into(),
+            closed_at: None,
+            praise: None,
+            shelf: NeedShelf::Listed,
         };
         let elena = ApplicationCard {
             id: "a1".into(),
@@ -393,5 +515,180 @@ mod tests {
         assert_eq!(visible_offers(&author, need.sight(), &cards).count(), 1);
         assert_eq!(visible_offers(&applicant, need.sight(), &cards).count(), 1);
         assert_eq!(visible_offers(&neighbor, need.sight(), &cards).count(), 0);
+    }
+
+    fn dinner(author: &str, status: &str, shelf: NeedShelf) -> Need {
+        Need {
+            id: "need_dinners".into(),
+            church_id: "grace".into(),
+            author_id: author.into(),
+            title: "Dinners".into(),
+            body: "This week.".into(),
+            gift_id: None,
+            scope: "church".into(),
+            status: status.into(),
+            created_at: "t0".into(),
+            closed_at: None,
+            praise: None,
+            shelf,
+        }
+    }
+
+    #[test]
+    fn us_need_03_the_author_writes_how_it_was_met() {
+        let grace = church("grace");
+        let miriam = viewer_of(
+            user_in_church("miriam", "grace", "owner", "active"),
+            Some(grace),
+        );
+        let effect = close_need(
+            &miriam,
+            &dinner("miriam", "open", NeedShelf::Listed),
+            "Thursday's meals are covered.",
+            Posture::Lifts,
+            "t2".into(),
+        )
+        .unwrap();
+        let Write::SetNeedStatus {
+            status,
+            praise,
+            closed_at,
+            ..
+        } = &effect.writes[0]
+        else {
+            panic!("expected status");
+        };
+        assert_eq!(*status, "closed");
+        assert_eq!(praise.as_deref(), Some("Thursday's meals are covered."));
+        assert_eq!(closed_at.as_deref(), Some("t2"));
+    }
+
+    #[test]
+    fn us_need_03_only_the_author_can_mark_it_met() {
+        let grace = church("grace");
+        let pastor = viewer_of(
+            user_in_church("peter", "grace", "owner", "active"),
+            Some(grace),
+        );
+        let need = dinner("miriam", "open", NeedShelf::Listed);
+        assert_eq!(
+            close_need(&pastor, &need, "Done.", Posture::Lifts, "t2".into()),
+            Err(DomainError::NotAuthor)
+        );
+        assert_eq!(
+            close_need(
+                &viewer_of(
+                    user_in_church("miriam", "grace", "owner", "active"),
+                    Some(church("grace")),
+                ),
+                &need,
+                "   ",
+                Posture::Lifts,
+                "t2".into(),
+            ),
+            Err(DomainError::InvalidInput)
+        );
+    }
+
+    #[test]
+    fn us_need_03_the_author_can_reopen_until_it_is_archived() {
+        let grace = church("grace");
+        let miriam = viewer_of(
+            user_in_church("miriam", "grace", "owner", "active"),
+            Some(grace),
+        );
+        let effect = reopen_need(&miriam, &dinner("miriam", "closed", NeedShelf::Listed)).unwrap();
+        let Write::SetNeedStatus {
+            status,
+            praise,
+            closed_at,
+            ..
+        } = &effect.writes[0]
+        else {
+            panic!("expected status");
+        };
+        assert_eq!(*status, "open");
+        assert!(praise.is_none());
+        assert!(closed_at.is_none());
+        assert_eq!(
+            reopen_need(&miriam, &dinner("miriam", "open", NeedShelf::Listed)),
+            Err(DomainError::NeedOpen)
+        );
+        assert_eq!(
+            reopen_need(&miriam, &dinner("miriam", "closed", NeedShelf::Archived)),
+            Err(DomainError::NeedArchived)
+        );
+    }
+
+    #[test]
+    fn author_moves_open_needs_from_a_closed_church() {
+        let hope = church("hope");
+        let ada = user_in_church("ada", "hope", "member", "active");
+        let closed = vec!["grace".into()];
+        let effect = import_open_needs(
+            &ada,
+            &[dinner("ada", "open", NeedShelf::Listed)],
+            &closed,
+            &hope,
+        )
+        .unwrap();
+        match &effect.writes[0] {
+            Write::MoveNeed { id, church_id } => {
+                assert_eq!(id, "need_dinners");
+                assert_eq!(church_id, "hope");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            import_open_needs(&ada, &[], &closed, &hope),
+            Err(DomainError::NothingPending)
+        );
+        assert_eq!(
+            import_open_needs(
+                &ada,
+                &[dinner("ada", "closed", NeedShelf::Listed)],
+                &closed,
+                &hope
+            ),
+            Err(DomainError::NeedClosed)
+        );
+        assert_eq!(
+            import_open_needs(
+                &ada,
+                &[dinner("ada", "open", NeedShelf::Archived)],
+                &closed,
+                &hope
+            ),
+            Err(DomainError::NeedArchived)
+        );
+        assert_eq!(
+            import_open_needs(
+                &ada,
+                &[dinner("ada", "open", NeedShelf::Listed)],
+                &["hope".into()],
+                &hope
+            ),
+            Err(DomainError::ChurchStillOpen)
+        );
+        let peter = user_in_church("peter", "hope", "member", "active");
+        assert_eq!(
+            import_open_needs(
+                &peter,
+                &[dinner("ada", "open", NeedShelf::Listed)],
+                &closed,
+                &hope
+            ),
+            Err(DomainError::NotAuthor)
+        );
+        let waiting = user_in_church("ada", "hope", "member", "pending");
+        assert_eq!(
+            import_open_needs(
+                &waiting,
+                &[dinner("ada", "open", NeedShelf::Listed)],
+                &closed,
+                &hope
+            ),
+            Err(DomainError::NotInTheBody)
+        );
     }
 }

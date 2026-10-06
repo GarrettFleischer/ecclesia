@@ -136,6 +136,7 @@ pub enum VoiceKind {
     Church,
     Prayer,
     Reply,
+    Praise,
 }
 
 impl VoiceKind {
@@ -149,6 +150,7 @@ impl VoiceKind {
             Self::Church => "church",
             Self::Prayer => "prayer",
             Self::Reply => "reply",
+            Self::Praise => "praise",
         }
     }
 
@@ -162,6 +164,7 @@ impl VoiceKind {
             "church" => Some(Self::Church),
             "prayer" => Some(Self::Prayer),
             "reply" => Some(Self::Reply),
+            "praise" => Some(Self::Praise),
             _ => None,
         }
     }
@@ -210,5 +213,4 @@ mod tests {
         assert_eq!(VoicePass::parse("review"), VoicePass::Review);
         assert_eq!(VoicePass::parse("publish"), VoicePass::Publish);
     }
-
 }

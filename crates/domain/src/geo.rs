@@ -22,8 +22,8 @@ pub fn distance_km(a_lat: f64, a_lng: f64, b_lat: f64, b_lng: f64) -> f64 {
     let phi2 = b_lat.to_radians();
     let d_phi = (b_lat - a_lat).to_radians();
     let d_lambda = (b_lng - a_lng).to_radians();
-    let haversine = (d_phi / 2.0).sin().powi(2)
-        + phi1.cos() * phi2.cos() * (d_lambda / 2.0).sin().powi(2);
+    let haversine =
+        (d_phi / 2.0).sin().powi(2) + phi1.cos() * phi2.cos() * (d_lambda / 2.0).sin().powi(2);
     let arc = 2.0 * haversine.sqrt().atan2((1.0 - haversine).sqrt());
     EARTH_KM * arc
 }

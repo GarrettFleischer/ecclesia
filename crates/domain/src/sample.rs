@@ -14,17 +14,17 @@ pub fn user_named(id: &str, first_name: &str, last_name: &str) -> User {
         email: format!("{id}@ecclesia.test"),
         bio: String::new(),
         created_at: "t0".into(),
-        church_id: None,
-        church_status: None,
-        church_role: None,
+        memberships: Vec::new(),
     }
 }
 
 pub fn user_in_church(id: &str, church_id: &str, role: &str, status: &str) -> User {
     let mut person = user(id);
-    person.church_id = Some(church_id.into());
-    person.church_role = Some(role.into());
-    person.church_status = Some(status.into());
+    person.memberships.push(super::person::Membership {
+        church_id: church_id.into(),
+        role: role.into(),
+        status: status.into(),
+    });
     person
 }
 
@@ -42,6 +42,9 @@ pub fn church_at(id: &str, latitude: f64, longitude: f64) -> Church {
         country: "US".into(),
         description: String::new(),
         gathering: String::new(),
+        ein: "12-3456789".into(),
+        registry_state: "IA".into(),
+        registry_number: "123456".into(),
         owner_id: "owner".into(),
         invite_code: "code".into(),
         created_at: "t0".into(),
@@ -51,7 +54,7 @@ pub fn church_at(id: &str, latitude: f64, longitude: f64) -> Church {
 pub fn viewer_of(user: User, church: Option<Church>) -> Viewer {
     Viewer {
         user,
-        church,
+        churches: church.into_iter().collect(),
         gift_ids: vec![],
     }
 }
