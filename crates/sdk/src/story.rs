@@ -34,10 +34,9 @@ use crate::refine::RefineHub;
 
 pub use crate::bearer::ApiSessionTokens;
 pub use crate::identity::{
-    ApiProfile, BearerIdentity, DeviceMeta, MailOrigin, api_logout_bearer, api_me_profile,
-    change_password, complete_reset, consume_magic, logout, logout_all, refresh_api, register,
-    request_magic, request_reset, reset_form_ok, resolve_bearer, resolve_session, revoke_session,
-    sign_in, sign_in_api,
+    DeviceMeta, MailOrigin, api_logout_bearer, api_me_profile, change_password, complete_reset,
+    consume_magic, logout, logout_all, refresh_api, register, request_magic, request_reset,
+    reset_form_ok, resolve_bearer, resolve_session, revoke_session, sign_in, sign_in_api,
 };
 
 #[derive(Clone)]
@@ -2074,10 +2073,6 @@ pub async fn nearby_feed(sdk: &Sdk, viewer: &Viewer, place: Place) -> anyhow::Re
         needs: kept_needs,
         prayers: kept_prayers,
     })
-}
-
-pub async fn answered_prayers(sdk: &Sdk, church_id: &str) -> anyhow::Result<Vec<PrayerCard>> {
-    sdk.db.answered_prayers(church_id).await
 }
 
 fn prayer_reach(

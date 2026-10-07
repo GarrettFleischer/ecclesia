@@ -1,12 +1,8 @@
 use super::Db;
 use super::bind::{Bind, placeholders};
 use super::distance::haversine_km_sql;
-use super::rows::{
-    ApplicationCardRow, ApplicationRow, NeedCardRow, NeedReplyCardRow, NeedRow, map_all,
-};
-use ecclesia_domain::{
-    Application, ApplicationCard, Need, NeedCard, NeedReplyCard, Viewer, nearby_km,
-};
+use super::rows::{ApplicationRow, NeedCardRow, NeedReplyCardRow, NeedRow, map_all};
+use ecclesia_domain::{Application, Need, NeedCard, NeedReplyCard, Viewer, nearby_km};
 
 const NEED_CARD_SELECT: &str = r#"
         SELECT n.id, n.church_id, c.name AS church_name, c.address AS church_address,
@@ -171,26 +167,6 @@ impl Db {
                 ))
             }
         }
-    }
-
-    pub async fn applications_for_need(
-        &self,
-        need_id: &str,
-    ) -> anyhow::Result<Vec<ApplicationCard>> {
-        Ok(map_all(
-            self.fetch_all::<ApplicationCardRow>(
-                r#"
-            SELECT a.id, a.need_id, a.user_id, u.first_name AS user_first, u.last_name AS user_last,
-                   a.message, a.status, a.created_at
-            FROM applications a
-            JOIN users u ON u.id = a.user_id
-            WHERE a.need_id = ?
-            ORDER BY a.created_at
-            "#,
-                &[Bind::Text(need_id)],
-            )
-            .await?,
-        ))
     }
 
     pub async fn application(&self, id: &str) -> anyhow::Result<Option<Application>> {

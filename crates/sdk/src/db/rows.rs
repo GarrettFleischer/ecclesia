@@ -1,9 +1,8 @@
 //! sqlx row shapes. Domain types cannot derive FromRow.
 
 use ecclesia_domain::{
-    Application, ApplicationCard, Church, ChurchMember, Endorsement, EndorsementCard, Gift,
-    MemberGift, Need, NeedCard, NeedReplyCard, NeedShelf, Notification, Prayer, PrayerCard, Share,
-    User, display_name,
+    Application, Church, ChurchMember, Endorsement, EndorsementCard, Gift, MemberGift, Need,
+    NeedCard, NeedReplyCard, NeedShelf, Notification, Prayer, PrayerCard, Share, User, display_name,
 };
 
 #[derive(sqlx::FromRow)]
@@ -161,18 +160,6 @@ pub struct ApplicationRow {
     pub id: String,
     pub need_id: String,
     pub user_id: String,
-    pub message: String,
-    pub status: String,
-    pub created_at: String,
-}
-
-#[derive(sqlx::FromRow)]
-pub struct ApplicationCardRow {
-    pub id: String,
-    pub need_id: String,
-    pub user_id: String,
-    pub user_first: String,
-    pub user_last: String,
     pub message: String,
     pub status: String,
     pub created_at: String,
@@ -348,20 +335,6 @@ impl From<ApplicationRow> for Application {
             id: row.id,
             need_id: row.need_id,
             user_id: row.user_id,
-            message: row.message,
-            status: row.status,
-            created_at: row.created_at,
-        }
-    }
-}
-
-impl From<ApplicationCardRow> for ApplicationCard {
-    fn from(row: ApplicationCardRow) -> Self {
-        Self {
-            id: row.id,
-            need_id: row.need_id,
-            user_id: row.user_id,
-            user_name: display_name(&row.user_first, &row.user_last),
             message: row.message,
             status: row.status,
             created_at: row.created_at,

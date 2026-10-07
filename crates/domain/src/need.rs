@@ -137,13 +137,6 @@ impl NeedStatus {
             _ => None,
         }
     }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Open => "Open",
-            Self::Closed => "Closed",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,14 +162,6 @@ impl ApplicationStatus {
             "accepted" => Some(Self::Accepted),
             "declined" => Some(Self::Declined),
             _ => None,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Pending => "Waiting",
-            Self::Accepted => "Accepted",
-            Self::Declined => "Declined",
         }
     }
 }
@@ -288,12 +273,6 @@ impl Application {
     }
 }
 
-impl ApplicationCard {
-    pub fn status(&self) -> Option<ApplicationStatus> {
-        ApplicationStatus::parse(&self.status)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NeedReply {
     pub id: String,
@@ -327,14 +306,6 @@ impl PrayerStatus {
             Self::Answered => "answered",
         }
     }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "open" => Some(Self::Open),
-            "answered" => Some(Self::Answered),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -353,10 +324,6 @@ pub struct Prayer {
 impl Prayer {
     pub fn is_open(&self) -> bool {
         self.status == PrayerStatus::Open.as_str()
-    }
-
-    pub fn status(&self) -> Option<PrayerStatus> {
-        PrayerStatus::parse(&self.status)
     }
 }
 
