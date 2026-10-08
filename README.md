@@ -2,6 +2,8 @@
 
 The body of Christ. Members care for one another.
 
+Ecclesia is under the PolyForm Noncommercial License. Commercial use is not allowed. See [LICENSE](LICENSE).
+
 A church posts a need. People who can help say so. Nearby churches see those needs too. Pastors approve who joins. Anyone can endorse a skill they have seen, even one the person never claimed. The note stays private until they accept it.
 
 ## Run it
