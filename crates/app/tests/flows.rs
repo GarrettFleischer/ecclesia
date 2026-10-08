@@ -1960,7 +1960,7 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(landing.contains("My wife has been very sick. I've been home with her."));
     assert!(!landing.contains("Help while my wife is sick"));
     assert!(landing.contains("Prayer matters"));
-    assert!(landing.contains("My daughter hasn't spoken to us in six months."));
+    assert!(landing.contains("My daughter called last night."));
     assert!(!landing.contains("Please pray"));
     assert!(!landing.contains("please pray"));
     assert!(landing.contains("They just need to find each other."));
@@ -1985,7 +1985,7 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("A Need, Answered Together"));
     assert!(!landing.contains("data-photo-viewer"));
     assert!(!landing.contains("data-photo-open"));
-    assert!(landing.contains("/static/app.css?v=49"));
+    assert!(landing.contains("/static/app.css?v=50"));
     assert!(landing.contains("landing-phones"));
     assert!(!landing.contains("<input"));
     assert!(landing.contains("Create an account"));

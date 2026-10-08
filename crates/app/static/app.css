@@ -3424,6 +3424,12 @@ blockquote.verse cite {
   margin: 0;
 }
 
+.product-screen .prayer-card .prayer-react {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+}
+
 .product-screen .example-with-gift .example-credential {
   order: 2;
   display: flex;

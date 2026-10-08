@@ -448,40 +448,76 @@ fn prayer_phone() -> Markup {
         html! {
             div class="prayer-stack" {
                 (prayer_card(
-                    Some("Grace Fellowship"),
-                    "My daughter hasn't spoken to us in six months. I don't know what to do anymore.",
-                    Some(("margaret-hale", "Margaret Hale")),
-                    SampleHands::Counted("4"),
+                    "Grace Fellowship",
+                    "My daughter called last night. We're having a hard time understanding each other right now. I don't know whether to give her space or reach out again.",
+                    "Margaret Hale",
+                    "4",
                 ))
                 (prayer_card(
-                    None,
-                    "We've lost several families this year, and our pastor is exhausted.",
-                    None,
-                    SampleHands::Counted("8"),
+                    "Grace Fellowship",
+                    "Our pastor has been carrying a lot this year. He's doing his best, but I can tell he's tired.",
+                    "David Morrison",
+                    "8",
                 ))
                 (prayer_card(
-                    Some("St. Luke\u{2019}s"),
-                    "Their son died this week.",
-                    Some(("james-porter", "James Porter")),
-                    SampleHands::Counted("15"),
+                    "Hope Chapel",
+                    "My husband starts treatment Monday. I'm trying to keep everything at home running normally for him and the kids.",
+                    "Claire Bennett",
+                    "6",
                 ))
                 (prayer_card(
-                    None,
-                    "I'm trying to keep everything together, but I'm running out of strength.",
-                    None,
-                    SampleHands::Counted("2"),
+                    "Grace Fellowship",
+                    "My son hasn't been coming to church lately. I don't want to push him away, but I also don't want to stop reaching out.",
+                    "Anonymous",
+                    "11",
                 ))
                 (prayer_card(
-                    Some("Hope Chapel"),
-                    "My husband starts treatment on Monday. I need him to sleep, and I need to keep the house steady while he is there.",
-                    Some(("claire-bennett", "Claire Bennett")),
-                    SampleHands::Counted("6"),
+                    "Covenant Church",
+                    "We're still getting things back in order after the storm. A lot of little repairs have turned into a pretty long list.",
+                    "Rachel Thompson",
+                    "3",
                 ))
                 (prayer_card(
-                    None,
-                    "My son has stopped coming. He is angry, and I do not want to make it worse by putting my name on this.",
-                    None,
-                    SampleHands::Quiet,
+                    "Hope Chapel",
+                    "We've been trying to stretch our budget a little further than usual. I'm trusting that things will work out, but I'd appreciate some prayer for wisdom.",
+                    "Anonymous",
+                    "19",
+                ))
+                (prayer_card(
+                    "St. Luke\u{2019}s",
+                    "One of our older members has been feeling pretty isolated lately. I keep thinking about how easy it is for someone to slip through the cracks.",
+                    "Mary Collins",
+                    "7",
+                ))
+                (prayer_card(
+                    "Grace Fellowship",
+                    "We have our community food drive this weekend. We could use a few more volunteers, and I'm praying we have a good turnout.",
+                    "Pastor Daniel Reed",
+                    "12",
+                ))
+                (prayer_card(
+                    "Covenant Church",
+                    "We've got several families who need help with projects around their homes. We have people willing to help\u{2014}we're just trying to get everyone connected.",
+                    "James Cole",
+                    "9",
+                ))
+                (prayer_card(
+                    "Grace Fellowship",
+                    "We're starting a new small group this month. I'm excited about it, but honestly a little nervous about whether people will show up.",
+                    "Anonymous",
+                    "23",
+                ))
+                (prayer_card(
+                    "Hope Chapel",
+                    "I start a new job next week. Excited about the opportunity, but definitely feeling a little nervous about getting up to speed.",
+                    "Emily Parker",
+                    "14",
+                ))
+                (prayer_card(
+                    "Grace Fellowship",
+                    "I've been putting off a conversation with a friend because I don't know how to start it. I could really use some wisdom.",
+                    "Anonymous",
+                    "17",
                 ))
             }
         },
@@ -625,50 +661,27 @@ fn plain_reply(
     }
 }
 
-#[derive(Clone, Copy)]
-enum SampleHands {
-    Quiet,
-    Counted(&'static str),
-}
-
 fn prayer_card(
-    church: Option<&'static str>,
+    church: &'static str,
     request: &'static str,
-    person: Option<(&'static str, &'static str)>,
-    hands: SampleHands,
+    name: &'static str,
+    count: &'static str,
 ) -> Markup {
     html! {
         article class="card prayer-card" {
-            @if let Some(church) = church {
-                p class="eyebrow" { (church) }
-            }
+            p class="eyebrow" { (church) }
             p class="prayer-request" { (request) }
             div class="prayer-foot" {
-                @if let Some((person_id, name)) = person {
-                    p class="byline" {
-                        (person_avatar(person_id, name, AvatarFace::Initials, AvatarSize::Small))
-                        (name)
-                    }
+                p class="byline" {
+                    (person_avatar(name, name, AvatarFace::Initials, AvatarSize::Small))
+                    (name)
                 }
                 div class="prayer-react" {
-                    @if let SampleHands::Counted(count) = hands {
-                        span class="pray-count" { (count) }
-                    }
-                    (sample_hands(hands))
+                    span class="pray-mark is-pressed" aria-hidden="true" { (icon(Icon::Pray)) }
+                    span class="pray-count" { (count) }
                 }
             }
         }
-    }
-}
-
-fn sample_hands(hands: SampleHands) -> Markup {
-    match hands {
-        SampleHands::Quiet => html! {
-            span class="pray-mark" aria-hidden="true" { (icon(Icon::Pray)) }
-        },
-        SampleHands::Counted(_) => html! {
-            span class="pray-mark is-pressed" aria-hidden="true" { (icon(Icon::Pray)) }
-        },
     }
 }
 
