@@ -254,50 +254,6 @@ fn narrative() -> Markup {
                 (handrail_post())
                 (david_phone())
             }
-            h3 { "A church that cares is a witness" }
-            p { "We see the same pattern in the generations that followed." }
-            p {
-                "Around 155, Justin Martyr described a typical Sunday gathering in Rome. After the Scriptures were read and the prayers were offered, members gave what they were able to give. Those resources were then used to care for widows and orphans, the sick, prisoners, and strangers who were living among them."
-            }
-            p {
-                "The church cared for its own people\u{2014}and it cared for people who had no one else."
-            }
-            p {
-                "Several decades later, Tertullian recorded the reaction of outsiders to the way Christians treated one another:"
-            }
-            blockquote class="verse" {
-                p { "\u{201c}See how they love one another.\u{201d}" }
-            }
-            p {
-                "That reputation did not come from a campaign. It came from what people could see."
-            }
-            p {
-                "In 362, the Roman emperor Julian, who opposed Christianity and wanted to restore the traditional Roman religion, complained that Christians were doing something his own priests were failing to do: caring for the poor, including people outside their own faith."
-            }
-            p {
-                "Even an opponent of the church could recognize the power of a community that took care of people."
-            }
-            p { "Paul put the principle plainly:" }
-            (scripture::verse(&scripture::GALATIANS_6_10))
-            p strong {
-                "Everyone matters. And the people in our own household should never be forgotten."
-            }
-            p {
-                "When a congregation knows its people, notices when something is wrong, and responds when someone needs help, fellowship becomes more than a Sunday gathering. It becomes a community."
-            }
-            p {
-                "And that kind of love is still one of the clearest ways the church can show the world who Christ is."
-            }
-            p class="landing-sources" {
-                "Justin Martyr, First Apology 67, about 155. Tertullian, Apology 39, about 197. Julian, Letter to Arsacius, 362."
-            }
-            h2 { "Prayer matters" }
-            (prayer_phone())
-            p { "You may never meet these people." }
-            p { "You may never know how their stories turn out." }
-            p { "But for a moment, their burden becomes yours." }
-            (scripture::verse(&scripture::GALATIANS_6_2))
-            p { "The same body that meets practical needs can carry one another in prayer." }
             h2 { "One church, not a collection of islands" }
             p { "There is another problem that is easy to overlook." }
             p {
@@ -314,6 +270,31 @@ fn narrative() -> Markup {
             p { "That does not mean every need disappeared." }
             p { "It means the needs of the community became the concern of the community." }
             (church_map())
+            h2 { "A church that cares is a witness" }
+            p { "We see the same pattern in the generations that followed." }
+            p {
+                "Tertullian recorded the reaction of outsiders to the way Christians treated one another:"
+            }
+            blockquote class="verse" {
+                p { "\u{201c}See how they love one another.\u{201d}" }
+            }
+            p {
+                "The care of its own members was something the world did not do. That care was a light, and a witness, before anyone outside had to be told."
+            }
+            (scripture::verse(&scripture::FIRST_CORINTHIANS_12_26))
+            p {
+                "When a congregation knows its people, notices when something is wrong, and responds when someone needs help, fellowship becomes more than a Sunday gathering. It becomes a community."
+            }
+            p {
+                "And that kind of love is still one of the clearest ways the church can show the world who Christ is."
+            }
+            h2 { "Prayer matters" }
+            (prayer_phone())
+            p { "You may never meet these people." }
+            p { "You may never know how their stories turn out." }
+            p { "But for a moment, their burden becomes yours." }
+            (scripture::verse(&scripture::GALATIANS_6_2))
+            p { "The same body that meets practical needs can carry one another in prayer." }
             h2 { "One Body" }
             p {
                 "Jesus did not call us to build isolated communities that happen to believe the same things."
@@ -554,15 +535,21 @@ fn handrail_post() -> Markup {
 fn caleb_reply() -> Markup {
     html! {
         div class="example-with-gift" {
-            (example_reply(
-                "caleb-crew",
-                "caleb-morgan",
-                "Caleb Morgan",
-                ReplyKind::Message,
-                "My crew can come Saturday morning. I'll measure first so we bring the right rail and anchors.",
-                CALEB_AVATAR,
-                NO_PHOTOS,
-            ))
+            article class="card" data-reply="caleb-crew" {
+                div class="byline" {
+                    (person_avatar(
+                        "caleb-morgan",
+                        "Caleb Morgan",
+                        static_avatar("caleb-morgan", CALEB_AVATAR),
+                        AvatarSize::Small,
+                    ))
+                    p class="meta" {
+                        "Caleb Morgan"
+                        span class="reply-church" { "Mercy Chapel" }
+                    }
+                }
+                p { "My crew can come Saturday morning. I'll measure first so we bring the right rail and anchors." }
+            }
             p class="example-credential" {
                 span class="chip" { "Carpentry & repairs" }
                 span { "Licensed contractor" }

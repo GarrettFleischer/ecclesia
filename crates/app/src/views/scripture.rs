@@ -38,12 +38,6 @@ pub const GALATIANS_6_2: Verse = Verse {
     reference: "Galatians 6:2",
 };
 
-/// Galatians 6:10.
-pub const GALATIANS_6_10: Verse = Verse {
-    text: "So then, as we have opportunity, let us do good to everyone, and especially to those who are of the household of faith.",
-    reference: "Galatians 6:10",
-};
-
 /// 1 Corinthians 12:26.
 pub const FIRST_CORINTHIANS_12_26: Verse = Verse {
     text: "If one member suffers, all suffer together; if one member is honored, all rejoice together.",
