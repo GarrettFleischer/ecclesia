@@ -63,17 +63,18 @@ pub async fn pray(
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
     let deck = story::prayer_deck(&state.sdk, &viewer).await?;
-    let (card, source, empty, controls) = match deck {
-        PrayerDeck::Card { card, source } => {
+    let (card, tally, empty, controls) = match deck {
+        PrayerDeck::Card { card, source: _ } => {
             let controls = controls_for(&state, &signed.jar, &viewer, &card).await?;
-            (
-                Some(card),
-                Some(source),
-                views::PrayEmpty::Finished,
-                controls,
-            )
+            let tally = tally_for(&state, &viewer, &card).await?;
+            (Some(card), tally, views::PrayEmpty::Finished, controls)
         }
-        PrayerDeck::Finished => (None, None, empty_for(&viewer), views::PrayerControls::Quiet),
+        PrayerDeck::Finished => (
+            None,
+            views::PrayerCount::Hidden,
+            empty_for(&viewer),
+            views::PrayerControls::Quiet,
+        ),
     };
     Ok(with_cookie(
         signed.jar,
@@ -81,7 +82,7 @@ pub async fn pray(
             &viewer,
             views::flash_from(flash.ok, flash.err),
             card.as_ref(),
-            source,
+            tally,
             empty,
             controls,
             count,
@@ -269,19 +270,19 @@ async fn mark(
         Err(response) => return Ok(response),
     };
     let viewer = viewer_for(&state.sdk.db, signed.user).await?;
-    story_redirect(
-        signed.jar,
-        &dest,
-        story::mark_prayer(
-            &state.sdk,
-            &viewer,
-            id,
-            shared_place(Some(&form.lat), Some(&form.lng)),
-            kind,
-        )
-        .await?,
-        flash,
+    let result = story::mark_prayer(
+        &state.sdk,
+        &viewer,
+        id,
+        shared_place(Some(&form.lat), Some(&form.lng)),
+        kind,
     )
+    .await?;
+    let dest = match (&result, kind) {
+        (Ok(_), PrayerMarkKind::Prayed) => format!("/prayers/{id}"),
+        _ => pray_dest(&form.lat, &form.lng),
+    };
+    story_redirect(signed.jar, &dest, result, flash)
 }
 
 async fn paint_prayer(
@@ -312,12 +313,14 @@ async fn paint_prayer(
         ));
     };
     let controls = controls_for(state, &jar, &viewer, &card).await?;
+    let tally = tally_for(state, &viewer, &card).await?;
     Ok(with_cookie(
         jar,
         html(views::prayer_show(
             &viewer,
             flash,
             &card,
+            tally,
             controls,
             count,
             csrf,
@@ -326,6 +329,23 @@ async fn paint_prayer(
             kind,
         )),
     ))
+}
+
+async fn tally_for(
+    state: &AppState,
+    viewer: &Viewer,
+    card: &ecclesia_sdk::prelude::PrayerCard,
+) -> Result<views::PrayerCount, AppError> {
+    let kind = state
+        .sdk
+        .db
+        .prayer_mark_kind(
+            &viewer.user.id,
+            &card.id,
+            &ecclesia_sdk::clock::today_utc(),
+        )
+        .await?;
+    Ok(views::prayer_tally(kind.as_deref(), card.prayed_count))
 }
 
 async fn controls_for(

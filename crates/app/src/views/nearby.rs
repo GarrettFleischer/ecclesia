@@ -77,9 +77,11 @@ fn prayer_link(prayer: &PrayerCard, place: Option<(&str, &str)>) -> Markup {
         a class="card card-link" href=(href) {
             p { (prayer.body) }
             p class="meta" {
-                (prayer.church_name)
-                @if let Some(name) = &prayer.author_name {
-                    " · " (name)
+                @if prayer.author_id.is_some() {
+                    (prayer.church_name)
+                    @if let Some(name) = &prayer.author_name {
+                        " · " (name)
+                    }
                 }
             }
         }

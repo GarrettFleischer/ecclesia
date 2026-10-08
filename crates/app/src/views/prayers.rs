@@ -1,15 +1,32 @@
 use maud::{Markup, html};
 
-use ecclesia_sdk::prelude::{PrayerCard, PrayerSource, Viewer, VoiceKind};
+use ecclesia_sdk::prelude::{PrayerCard, PriorPrayerMark, Viewer, VoiceKind};
+
+use super::conversation::{AvatarSize, avatar_face, person_avatar};
 
 use super::draft::{PrayerDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{Nav, csrf_input, page, page_lead, rewrite_row};
+use super::layout::{Icon, Nav, csrf_input, icon, page, page_lead, rewrite_row};
 
 #[derive(Clone, Copy)]
 pub enum PrayEmpty {
     Finished,
     WaitingChurch,
+}
+
+#[derive(Clone, Copy)]
+pub enum PrayerCount {
+    Hidden,
+    Shown { others: i64 },
+}
+
+pub fn prayer_tally(kind: Option<&str>, prayed_count: i64) -> PrayerCount {
+    match PriorPrayerMark::of_kind(kind) {
+        PriorPrayerMark::Prayed => PrayerCount::Shown {
+            others: prayed_count.saturating_sub(1),
+        },
+        PriorPrayerMark::None | PriorPrayerMark::Seen => PrayerCount::Hidden,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -20,11 +37,26 @@ pub enum PrayerControls {
     Quiet,
 }
 
+#[derive(Clone, Copy)]
+enum PrayHands {
+    Quiet,
+    Pressed,
+}
+
+impl PrayHands {
+    fn from_count(tally: PrayerCount) -> Self {
+        match tally {
+            PrayerCount::Hidden => Self::Quiet,
+            PrayerCount::Shown { .. } => Self::Pressed,
+        }
+    }
+}
+
 pub fn pray_page(
     viewer: &Viewer,
     flash: Option<Flash>,
     card: Option<&PrayerCard>,
-    source: Option<PrayerSource>,
+    tally: PrayerCount,
     empty: PrayEmpty,
     controls: PrayerControls,
     unread: i64,
@@ -43,7 +75,7 @@ pub fn pray_page(
                 a class="btn" href="/prayers/new" { "Ask for prayer" }
             }
             @if let Some(card) = card {
-                (prayer_face(card, source, controls, csrf, None))
+                (prayer_face(card, tally, controls, csrf, None))
             } @else {
                 (pray_empty(empty))
             }
@@ -58,6 +90,7 @@ pub fn prayer_show(
     viewer: &Viewer,
     flash: Option<Flash>,
     card: &PrayerCard,
+    tally: PrayerCount,
     controls: PrayerControls,
     unread: i64,
     csrf: &str,
@@ -74,7 +107,7 @@ pub fn prayer_show(
         csrf,
         html! {
             (page_lead("Prayer"))
-            (prayer_face(card, None, controls, csrf, place))
+            (prayer_face(card, tally, controls, csrf, place))
             (praise_panel(card, controls, csrf, draft_praise, praise_kind))
         },
     )
@@ -133,7 +166,7 @@ fn prayer_form(viewer: &Viewer, csrf: &str, draft: &PrayerDraft<'_>) -> Markup {
                 }
                 label {
                     input type="radio" name="byline" value="unnamed" checked[draft.byline == "unnamed"];
-                    "No name"
+                    "Without my name"
                 }
             }
             button class="btn" type="submit" { (draft.kind.submit_label("Post prayer")) }
@@ -143,44 +176,73 @@ fn prayer_form(viewer: &Viewer, csrf: &str, draft: &PrayerDraft<'_>) -> Markup {
 
 fn prayer_face(
     card: &PrayerCard,
-    source: Option<PrayerSource>,
+    tally: PrayerCount,
     controls: PrayerControls,
     csrf: &str,
     place: Option<(&str, &str)>,
 ) -> Markup {
+    let can_pray = matches!(
+        controls,
+        PrayerControls::Mark | PrayerControls::MarkAndAnswer
+    );
     html! {
         article class="card prayer-card" {
-            @if let Some(source) = source {
-                p class="eyebrow" { (source_label(source)) }
+            @if card.author_id.is_some() {
+                p class="eyebrow" { (card.church_name) }
             }
             p class="lede" { (card.body) }
-            p class="meta" {
-                a href={ "/churches/" (card.church_id) } { (card.church_name) }
-                @if let (Some(author_id), Some(name)) = (&card.author_id, &card.author_name) {
-                    " · "
-                    a href={ "/members/" (author_id) } { (name) }
+            @if card.author_id.is_some() || can_pray {
+                div class="prayer-foot" {
+                    @if let (Some(author_id), Some(name)) = (&card.author_id, &card.author_name) {
+                        p class="byline" {
+                            (person_avatar(author_id, name, avatar_face(card.author_avatar_id.as_deref()), AvatarSize::Small))
+                            a href={ "/members/" (author_id) } { (name) }
+                        }
+                    }
+                    @if can_pray {
+                        div class="prayer-react" {
+                            (pray_others(tally))
+                            (pray_control(PrayHands::from_count(tally), card, csrf, place))
+                        }
+                    }
                 }
             }
-            (prayed_line(card.prayed_count))
             @if let Some(praise) = &card.praise {
                 h2 { "Praise report" }
                 p { (praise) }
             }
-            @if matches!(controls, PrayerControls::Mark | PrayerControls::MarkAndAnswer) {
-                div class="page-actions" {
-                    form method="post" action={ "/prayers/" (card.id) "/pray" } {
-                        (csrf_input(csrf))
-                        (place_fields(place))
-                        button class="btn" type="submit" { "I prayed" }
-                    }
-                    form method="post" action={ "/prayers/" (card.id) "/next" } {
-                        (csrf_input(csrf))
-                        (place_fields(place))
-                        button class="btn btn-quiet" type="submit" { "Next prayer" }
-                    }
+            @if can_pray {
+                form class="prayer-next" method="post" action={ "/prayers/" (card.id) "/next" } {
+                    (csrf_input(csrf))
+                    (place_fields(place))
+                    button class="btn btn-quiet" type="submit" { "Next prayer" }
                 }
             }
         }
+    }
+}
+
+fn pray_control(
+    hands: PrayHands,
+    card: &PrayerCard,
+    csrf: &str,
+    place: Option<(&str, &str)>,
+) -> Markup {
+    match hands {
+        PrayHands::Quiet => html! {
+            form class="pray-form" method="post" action={ "/prayers/" (card.id) "/pray" } {
+                (csrf_input(csrf))
+                (place_fields(place))
+                button class="pray-mark" type="submit" aria-label="Pray" aria-pressed="false" {
+                    (icon(Icon::Pray))
+                }
+            }
+        },
+        PrayHands::Pressed => html! {
+            button class="pray-mark is-pressed" type="button" aria-label="Pray" aria-pressed="true" disabled {
+                (icon(Icon::Pray))
+            }
+        },
     }
 }
 
@@ -240,18 +302,12 @@ fn pray_toast() -> Markup {
     }
 }
 
-fn source_label(source: PrayerSource) -> &'static str {
-    match source {
-        PrayerSource::Church => "Your church",
-        PrayerSource::Surrounding => "Surrounding church",
-    }
-}
-
-fn prayed_line(count: i64) -> Markup {
-    match count {
-        0 => html! {},
-        1 => html! { p class="meta" { "1 person prayed" } },
-        n => html! { p class="meta" { (n) " people prayed" } },
+fn pray_others(tally: PrayerCount) -> Markup {
+    match tally {
+        PrayerCount::Shown { others } if others > 0 => html! {
+            span class="pray-count" { (others) }
+        },
+        PrayerCount::Hidden | PrayerCount::Shown { .. } => html! {},
     }
 }
 
