@@ -33,7 +33,7 @@ Text uses `--ink`, `--ink-2`, `--ink-3`, `--accent-ink`, `--gold-ink`, `--ok`, o
 
 ## Type and structure
 
-Instrument Serif for h1 to h3 and the landing essay. Inter for everything else. Both are self-hosted in `static/fonts/`, split into latin and latin-ext, and the two latin files are preloaded.
+Instrument Serif for h1 to h3, the landing guide, and its verses. Inter for everything else. Both are self-hosted in `static/fonts/`, split into latin and latin-ext, and the two latin files are preloaded.
 
 One h1 per page, from `page_lead`. The document title is the h1, then ` · Ecclesia`. The landing title is `Ecclesia` alone.
 
@@ -45,7 +45,7 @@ Human words for roles, offers, and gifts come from `crates/app/src/views/words.r
 
 ## Imagery and glass
 
-Scenes hold no people: dawn light, mist, water, fields, linen. They live in `static/img/` as WebP. `dawn-tall` and `dawn-wide` are the landing hero and the account backdrop. `linen` sits behind Needs and Gifts. `wallpaper-*` are the same dawn scene pre-blurred for member pages.
+Scenes hold no people: dawn light, mist, water, and fields. They live in `static/img/` as WebP. `dawn-tall` and `dawn-wide` are the landing hero and the account backdrop. `wallpaper-*` are the same dawn scene pre-blurred for member pages.
 
 Cards are translucent over the pre-blurred wallpaper and carry no `backdrop-filter`. Live blur is for chrome that floats over moving content: top bar, dock, toast, install bar, `.btn-glass`, and the auth card. Reduced transparency makes `--surface`, `--bar`, `--glass`, and `--toast` solid and drops the live blur.
 
@@ -55,7 +55,7 @@ Cards are translucent over the pre-blurred wallpaper and carry no `backdrop-filt
 
 Cross-document view transitions (`@view-transition`). Opening a card moves the `page-title` name onto that card's h3 (`hookTitleMorph` in `app.js`), so the card title becomes the next page's h1. The dock pill glides to the new tab on `--spring`.
 
-Scroll-driven, inside `@supports (animation-timeline: view())`: cards and people rows reveal as they enter, the top bar frosts after the first 4rem, and the hero drifts and fades. Browsers without it get the settled state.
+Scroll-driven, inside `@supports (animation-timeline: view())`: cards, people rows, and the landing guide reveal as they enter, the top bar frosts after the first 4rem, and the hero drifts and fades. Browsers without it get the settled state.
 
 Hover lift on card links and buttons is inside `@media (hover: hover)`. `prefers-reduced-motion: reduce` turns off view transitions and cuts every animation and transition to nothing. Forced colors outline each surface in `CanvasText` and mark the current tab and the checked choice with `Highlight`.
 
@@ -63,11 +63,13 @@ Hover lift on card links and buttons is inside `@media (hover: hover)`. `prefers
 
 | Seat | Nav | What you see |
 |---|---|---|
-| Landing | `Nav::Landing` | Scene hero, essay, Needs and Gifts, install bar. No top bar, no dock |
+| Landing | `Nav::Landing` | Scene hero, the guide below it, install bar. No top bar, no dock |
 | Account | `Nav::Account` | Dawn backdrop, glass card with the mark, one h1, one form. No dock, no install bar |
 | App | `Nav::Home` and the other member items | Top bar, dock, member pages over the wallpaper |
 | Sorry, guest | `Nav::None` | Guest shell, link home |
 | Sorry, member | `Nav::Home` | App chrome stays |
+
+The public landing runs in this order: hero (lockup, title, account actions), Acts 2:44-45, the church-takes-care narrative with the Sarah, David, and handrail phones, the scattered-needs and Covenant phones, the prayer phones, the church map and one body, the account actions, footer. `footer.site-footer` is on the landing and on the privacy and terms pages. Privacy and terms use `main.sheet-legal`.
 
 The install bar is the landing seat only. Dismiss stays in `localStorage` under `ecclesia-install-dismissed`.
 

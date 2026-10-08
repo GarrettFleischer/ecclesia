@@ -5,6 +5,7 @@ use maud::{DOCTYPE, Markup, html};
 use ecclesia_sdk::prelude::{User, VoiceKind, display_name};
 
 use super::flash::Flash;
+use super::scripture::ESV_NOTICE;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Nav {
@@ -19,6 +20,7 @@ pub enum Nav {
     Join,
     None,
     Account,
+    Legal,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -313,7 +315,7 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=29";
+                link rel="stylesheet" href="/static/app.css?v=47";
                 script { (maud::PreEscaped(NEED_RETURN_HOLD)) }
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
@@ -334,11 +336,49 @@ pub fn page(
                 main id="content" class={ "sheet page-rise" (sheet_extra(nav)) } {
                     (main)
                 }
+                @if nav.shows_site_footer() {
+                    (site_footer())
+                }
                 @if show_dock(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=32" defer {}
+                script src="/static/app.js?v=33" defer {}
             }
+        }
+    }
+}
+
+const SITE_FOOTER_LINKS: [(&str, &str); 4] = [
+    (
+        "support@ecclesiatogether.org",
+        "mailto:support@ecclesiatogether.org",
+    ),
+    ("Privacy", "/privacy"),
+    ("Terms", "/terms"),
+    ("Give", "/give"),
+];
+
+impl Nav {
+    fn shows_site_footer(self) -> bool {
+        matches!(self, Nav::Landing | Nav::Legal)
+    }
+}
+
+pub fn site_footer() -> Markup {
+    html! {
+        footer class="site-footer" {
+            nav aria-label="Site" {
+                (site_footer_links())
+            }
+            p class="esv-notice" { (ESV_NOTICE) }
+        }
+    }
+}
+
+fn site_footer_links() -> Markup {
+    html! {
+        @for (label, href) in SITE_FOOTER_LINKS {
+            a href=(href) { (label) }
         }
     }
 }
@@ -443,11 +483,12 @@ fn site_class(nav: Nav) -> &'static str {
         Nav::You => "site site-app site-you",
         Nav::Join => "site site-app site-churches",
         Nav::Account => "site site-guest site-account",
+        Nav::Legal => "site site-guest site-legal",
     }
 }
 
 fn app_chrome(nav: Nav) -> bool {
-    !matches!(nav, Nav::Landing | Nav::None | Nav::Account)
+    !matches!(nav, Nav::Landing | Nav::None | Nav::Account | Nav::Legal)
 }
 
 fn show_dock(nav: Nav) -> bool {
@@ -458,6 +499,7 @@ fn sheet_extra(nav: Nav) -> &'static str {
     match nav {
         Nav::Landing => " sheet-landing",
         Nav::Account => " sheet-auth",
+        Nav::Legal => " sheet-legal",
         _ => "",
     }
 }

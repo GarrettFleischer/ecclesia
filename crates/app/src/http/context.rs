@@ -272,6 +272,9 @@ fn onboarding_open(method: &Method, path: &str) -> bool {
         return true;
     }
     path == "/"
+        || path == "/privacy"
+        || path == "/terms"
+        || path == "/give"
         || path == "/register"
         || path.starts_with("/join/")
         || path.starts_with("/session/")

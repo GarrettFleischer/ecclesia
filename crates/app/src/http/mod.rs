@@ -5,6 +5,7 @@ mod auth;
 mod churches;
 mod context;
 mod forms;
+mod legal;
 mod needs;
 mod people;
 mod prayers;
@@ -15,7 +16,7 @@ use axum::Router;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
@@ -207,6 +208,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/join/{code}", get(auth::join_link))
         .route("/s/{code}", get(needs::open_share))
+        .route("/privacy", get(legal::privacy))
+        .route("/terms", get(legal::terms))
+        .route("/give", get(legal::give))
         .route("/session/new", get(auth::sign_in_form))
         .route("/session/link/new", get(auth::magic_link_form))
         .route("/session/reset/new", get(auth::forgot_password_form))
@@ -248,11 +252,17 @@ pub fn router(state: AppState) -> Router {
             post(churches::decline_membership_http),
         )
         .route("/invites/redeem", post(churches::redeem))
+        .route("/media/stage", post(needs::stage_media_http))
+        .route("/media/{id}/{variant}", get(needs::media_show))
+        .route("/media/{id}", delete(needs::media_delete))
         .route("/needs/new", get(needs::need_new))
         .route("/needs", post(needs::create_need))
         .route("/needs/import", post(needs::import_needs_http))
         .route("/needs/{id}", get(needs::need_show))
         .route("/needs/{id}/replies", post(needs::reply_need))
+        .route("/needs/{id}/complete", post(needs::complete_need_http))
+        .route("/needs/{id}/events", get(needs::need_events))
+        .route("/needs/{id}/conversation", get(needs::need_conversation))
         .route("/needs/{id}/close", post(needs::close_need_http))
         .route("/needs/{id}/reopen", post(needs::reopen_need_http))
         .route("/needs/{id}/share", post(needs::share_need_http))
@@ -268,6 +278,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/inbox", get(people::inbox))
         .route("/me", get(people::me).post(people::update_me))
+        .route(
+            "/me/avatar",
+            post(people::replace_avatar_http).delete(people::remove_avatar_http),
+        )
         .route("/me/church/leave", post(people::leave_church_http))
         .route("/me/church/close", post(people::close_church_http))
         .route("/me/church/transfer", post(people::transfer_church_http))

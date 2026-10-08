@@ -2,6 +2,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use ecclesia::http::{AppState, router};
 use ecclesia_sdk::db::Db;
+use image::ImageEncoder;
 use tower::ServiceExt;
 
 const PASS: &str = "Thursday dinners at six oclock";
@@ -754,7 +755,7 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
     assert!(page.contains("/static/join.js?v=6"));
-    assert!(page.contains("/static/app.js?v=32"));
+    assert!(page.contains("/static/app.js?v=33"));
     let shell = get_public(&world, "/static/app.js").await;
     assert!(shell.contains("ecclesia-place"));
     assert!(shell.contains("print-code.css"));
@@ -1366,7 +1367,7 @@ async fn us_need_02_public_reply() {
         .split_once("</textarea>")
         .expect("textarea must be closed");
     assert!(!inside.contains("Reply"));
-    assert!(rest.contains(r#"<button class="btn" type="submit">Reply</button>"#));
+    assert!(rest.contains(r#"<button class="btn" type="submit">Post reply</button>"#));
     assert!(!page.contains("This need has been met"));
 
     let sent = post_form(
@@ -1385,7 +1386,7 @@ async fn us_need_02_public_reply() {
     assert!(again.contains("Elena Vasquez"));
     assert!(again.contains("/members/"));
     let flashed = get(&world, &cookie, &location).await;
-    assert!(flashed.contains("Replied."));
+    assert!(flashed.contains("Reply posted."));
 }
 
 #[tokio::test]
@@ -1940,10 +1941,49 @@ async fn us_app_03_website_landing_and_guest_home() {
     let world = app().await;
     let (landing, _, _) = get_page(world.app.clone(), None, "/").await;
     assert!(landing.contains("The Body of Christ"));
-    assert!(landing.contains("We are the ecclesia"));
-    assert!(landing.contains("His kingdom"));
-    assert!(landing.contains("Needs and Gifts"));
-    assert!(landing.contains("simply because it was unseen"));
+    let title = landing.find("The Body of Christ").expect("title");
+    let account = landing.find("Create an account").expect("account");
+    let narrative = landing
+        .find("The church was a community before it was an organization.")
+        .expect("narrative");
+    assert!(title < account);
+    assert!(account < narrative);
+    let acts = landing.find("Acts 2:44-45").expect("acts 2");
+    assert_eq!(landing.matches("Acts 2:44-45").count(), 1);
+    assert!(acts < narrative);
+    assert!(landing.contains("The Church Takes Care of Its Own"));
+    assert!(landing.contains("See how they love one another."));
+    assert!(landing.contains("It was part of the mission."));
+    assert!(landing.contains("Ride home after surgery"));
+    assert!(landing.contains("I can pick you up Thursday."));
+    assert!(landing.contains("I haven't seen the Brennans in a while"));
+    assert!(landing.contains("My wife has been very sick. I've been home with her."));
+    assert!(!landing.contains("Help while my wife is sick"));
+    assert!(landing.contains("Please pray for my daughter."));
+    assert!(landing.contains("They just need to find each other."));
+    assert!(landing.contains("One Body"));
+    assert!(!landing.contains("Ecclesia is free for churches and their members."));
+    assert!(landing.contains("Bear one another\u{2019}s burdens"));
+    assert!(landing.contains("There was not a needy person among them."));
+    assert!(landing.contains("1 Corinthians 12:27"));
+    assert!(!landing.contains("steeples-wide.webp"));
+    assert!(!landing.contains("steeples-tall.webp"));
+    assert!(landing.contains("linda-handrail-before.webp"));
+    assert!(landing.contains("church-map"));
+    assert!(landing.contains("Hope Chapel"));
+    assert!(landing.contains("Handrail for my front steps"));
+    assert!(landing.contains("Licensed contractor"));
+    assert!(landing.contains("A family needs a crib."));
+    assert!(landing.contains("Roof repair"));
+    assert!(!landing.contains("She posts a simple request"));
+    assert!(!landing.contains("Within the hour, three people respond."));
+    assert!(!landing.contains("A member asks"));
+    assert!(!landing.contains("A Need, Answered Together"));
+    assert!(!landing.contains("data-photo-viewer"));
+    assert!(!landing.contains("data-photo-open"));
+    assert!(landing.contains("/static/app.css?v=47"));
+    assert!(landing.contains("landing-phones"));
+    assert!(!landing.contains("<input"));
     assert!(landing.contains("Create an account"));
     assert!(landing.contains("Sign in"));
     assert!(!landing.contains("Email me a link"));
@@ -1991,6 +2031,78 @@ async fn us_app_03_website_landing_and_guest_home() {
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
     assert_eq!(location, "/churches/join");
+}
+
+#[tokio::test]
+async fn us_app_04_privacy_and_terms_pages() {
+    let world = app().await;
+    let (privacy, _, _) = get_page(world.app.clone(), None, "/privacy").await;
+    assert!(privacy.contains("<h1"));
+    assert!(privacy.contains("Privacy"));
+    assert!(privacy.contains("mailto:support@ecclesiatogether.org"));
+    assert!(privacy.contains("18 and older"));
+    assert!(privacy.contains("Neon stores the database in Oregon."));
+    assert!(privacy.contains(r#"class="site-footer""#));
+
+    let (terms, _, _) = get_page(world.app.clone(), None, "/terms").await;
+    assert!(terms.contains("Terms"));
+    assert!(terms.contains("You're 18 or older."));
+    assert!(terms.contains("Ecclesia is free for churches and members."));
+}
+
+#[tokio::test]
+async fn us_app_04_landing_footer_links() {
+    let world = app().await;
+    let (landing, _, _) = get_page(world.app.clone(), None, "/").await;
+    assert!(landing.contains(r#"class="site-footer""#));
+    assert!(landing.contains(r#"href="/privacy""#));
+    assert!(landing.contains(r#"href="/terms""#));
+    assert!(landing.contains("mailto:support@ecclesiatogether.org"));
+    assert!(landing.contains("ESV Text Edition: 2025"));
+    let main_end = landing.find("</main>").expect("main closes");
+    let footer = landing.find(r#"class="site-footer""#).expect("site footer");
+    assert!(footer > main_end, "footer follows main");
+    let footer_html = &landing[footer..];
+    assert!(footer_html.contains(r#"href="/give""#));
+    assert!(footer_html.contains(">Give<"));
+
+    let (give, _, _) = get_page(world.app.clone(), None, "/give").await;
+    assert!(give.contains("<h1"));
+    assert!(give.contains("Giving is not set up yet."));
+    assert!(give.contains("not tax-deductible until Ecclesia is a recognized charity."));
+    assert!(!give.contains("<form"));
+    assert!(!give.contains("<input"));
+}
+
+#[tokio::test]
+async fn us_app_04_churchless_member_opens_privacy() {
+    let world = app().await;
+    let cookie = register(&world, "No Church", "legal@example.test").await;
+    let response = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/privacy")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let give = world
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/give")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(give.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -2409,7 +2521,8 @@ async fn us_pray_02_church_prayers_come_before_the_shared_point() {
 
     let deck = get(&world, &elena, "/pray").await;
     assert!(deck.contains("Surgery on Thursday."));
-    assert!(deck.contains("Your church"));
+    assert!(deck.contains("Grace Covenant"));
+    assert!(!deck.contains("Your church"));
     assert!(deck.contains("Pray for churches where you are."));
     assert!(deck.contains("href=\"/nearby\""));
     assert!(deck.contains("Not now"));
@@ -2433,16 +2546,18 @@ async fn us_pray_02_church_prayers_come_before_the_shared_point() {
 
     let after = get(&world, &elena, "/pray").await;
     assert!(after.contains("Mercy roof prayer."));
-    assert!(after.contains("Surrounding church"));
+    assert!(after.contains("Mercy Chapel"));
     assert!(after.contains("Pray for churches where you are."));
     assert!(!after.contains("Surgery on Thursday."));
     assert!(!after.contains("Austin far prayer."));
     assert!(!after.contains("Share where you are"));
+    assert!(!after.contains("Surrounding church"));
 
     let ignored = get(&world, &elena, "/pray?lat=30.2672&lng=-97.7431").await;
     assert!(ignored.contains("Mercy roof prayer."));
-    assert!(ignored.contains("Surrounding church"));
+    assert!(ignored.contains("Mercy Chapel"));
     assert!(!ignored.contains("Austin far prayer."));
+    assert!(!ignored.contains("Surrounding church"));
 
     let nearby = get(&world, &elena, "/nearby?lat=42.5349&lng=-92.4453").await;
     assert!(nearby.contains("Mercy roof prayer."));
@@ -2526,7 +2641,42 @@ async fn us_pray_01_an_unnamed_prayer_shows_no_author() {
     let card = get(&world, &elena, &format!("/prayers/{prayer_id}")).await;
     assert!(card.contains("Surgery on Thursday."));
     assert!(!card.contains("Miriam Cole"));
+    assert!(!card.contains("Grace Covenant"));
+    assert!(!card.contains("No name"));
     assert!(!card.contains(&format!("/members/{miriam_id}")));
+    assert!(!card.contains(&format!("/churches/{grace}")));
+
+    let ada = register(&world, "Ada Lovelace", "ada-pool@austin.test").await;
+    let (ada, _austin) = plant_at(&world, &ada, "Austin Chapel", "30.2672", "-97.7431").await;
+    let deck = get(&world, &ada, "/pray").await;
+    assert!(deck.contains("Surgery on Thursday."));
+    assert!(!deck.contains("Grace Covenant"));
+    assert!(!deck.contains("No name"));
+    assert!(deck.contains("aria-label=\"Pray\""));
+    assert!(deck.contains("aria-pressed=\"false\""));
+    assert!(deck.contains(&format!("action=\"/prayers/{prayer_id}/pray\"")));
+    assert!(!deck.contains("You're the first to pray for this."));
+    assert!(!deck.contains("pray-count"));
+    assert!(!deck.contains("I prayed"));
+    let (_page, ada, csrf) = get_page(world.app.clone(), Some(&ada), "/pray").await;
+    let prayed = post(
+        &world,
+        &ada,
+        &csrf.expect("pray csrf"),
+        &format!("/prayers/{prayer_id}/pray"),
+        "pass=publish",
+    )
+    .await;
+    assert_eq!(prayed, StatusCode::SEE_OTHER);
+    let shown = get(&world, &ada, &format!("/prayers/{prayer_id}")).await;
+    assert!(!shown.contains("You're the first to pray for this."));
+    assert!(!shown.contains("other people have prayed"));
+    assert!(!shown.contains("pray-count"));
+    assert!(shown.contains("aria-label=\"Pray\""));
+    assert!(shown.contains("aria-pressed=\"true\""));
+    assert!(shown.contains("is-pressed"));
+    assert!(!shown.contains(&format!("action=\"/prayers/{prayer_id}/pray\"")));
+    assert!(!shown.contains("I prayed"));
 }
 
 async fn post_prayer(
@@ -2548,4 +2698,298 @@ async fn post_prayer(
     assert_eq!(response.status(), StatusCode::SEE_OTHER, "post prayer");
     let prayer_id = id_from_location(&location_of(&response), "/prayers/");
     (try_cookie_from(&response).unwrap_or(cookie), prayer_id)
+}
+
+#[tokio::test]
+async fn us_media_01_need_reply_completion_and_audience() {
+    let world = app().await;
+    let miriam = register(&world, "Miriam Cole", "miriam-media@grace.test").await;
+    let (miriam, grace) = plant(&world, &miriam, "Grace Covenant").await;
+    let jpeg = tiny_jpeg();
+
+    let (page, miriam, csrf) = get_page(world.app.clone(), Some(&miriam), "/needs/new").await;
+    let csrf = csrf.expect("need csrf");
+    assert!(page.contains("Add photos"));
+    assert!(page.contains("Up to five photos. JPEG, PNG, or WebP."));
+    let posted = post_multipart(
+        world.app.clone(),
+        &miriam,
+        "/needs",
+        &[
+            ("csrf", &csrf),
+            ("church_id", &grace),
+            ("title", "Handrail for the front steps"),
+            ("body", "The old railing came loose last winter."),
+            ("scope", "church"),
+            ("pass", "publish"),
+        ],
+        &[("photos", "steps.jpg", "image/jpeg", jpeg.as_slice())],
+    )
+    .await;
+    assert_eq!(posted.status(), StatusCode::SEE_OTHER);
+    let location = location_of(&posted);
+    assert!(location.contains("ok=need_posted"), "{location}");
+    let miriam = try_cookie_from(&posted).unwrap_or(miriam);
+    let need_id = id_from_location(&location, "/needs/");
+
+    let need = get(&world, &miriam, &format!("/needs/{need_id}")).await;
+    assert!(need.contains("photo-large"));
+    assert!(need.contains("Add a reply"));
+    assert!(need.contains("Mark this need met"));
+    assert!(need.contains("How was the need met?"));
+    let media_id = media_id_from(&need);
+    let photo = authed_get(
+        world.app.clone(),
+        &miriam,
+        &format!("/media/{media_id}/full"),
+    )
+    .await;
+    assert_eq!(photo.0, StatusCode::OK);
+    assert_eq!(
+        photo
+            .1
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("image/webp")
+    );
+    assert!(photo.2.starts_with(b"RIFF"));
+
+    let (need, miriam, csrf) = get_page(
+        world.app.clone(),
+        Some(&miriam),
+        &format!("/needs/{need_id}"),
+    )
+    .await;
+    let csrf = csrf.expect("reply csrf");
+    assert!(need.contains(">MC<"));
+    let replied = post_multipart(
+        world.app.clone(),
+        &miriam,
+        &format!("/needs/{need_id}/replies"),
+        &[
+            ("csrf", &csrf),
+            ("body", "I can measure the steps Thursday afternoon."),
+            ("pass", "publish"),
+        ],
+        &[("photos", "measure.jpg", "image/jpeg", jpeg.as_slice())],
+    )
+    .await;
+    assert_eq!(replied.status(), StatusCode::SEE_OTHER);
+    assert!(location_of(&replied).contains("ok=replied"));
+    let miriam = try_cookie_from(&replied).unwrap_or(miriam);
+
+    let fragment = get(&world, &miriam, &format!("/needs/{need_id}/conversation")).await;
+    assert!(fragment.contains("I can measure the steps Thursday afternoon."));
+    assert!(fragment.contains("data-reply="));
+    assert!(fragment.contains("data-conversation"));
+
+    let events = authed_get(
+        world.app.clone(),
+        &miriam,
+        &format!("/needs/{need_id}/events"),
+    )
+    .await;
+    assert_eq!(events.0, StatusCode::OK);
+    assert_eq!(
+        events
+            .1
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("text/event-stream")
+    );
+
+    let (need, miriam, csrf) = get_page(
+        world.app.clone(),
+        Some(&miriam),
+        &format!("/needs/{need_id}"),
+    )
+    .await;
+    assert!(need.contains("I can measure the steps Thursday afternoon."));
+    let csrf = csrf.expect("complete csrf");
+    let completed = post_multipart(
+        world.app.clone(),
+        &miriam,
+        &format!("/needs/{need_id}/complete"),
+        &[
+            ("csrf", &csrf),
+            ("body", "The new handrail is installed and ready to use."),
+            ("pass", "publish"),
+        ],
+        &[],
+    )
+    .await;
+    assert_eq!(completed.status(), StatusCode::SEE_OTHER);
+    let done = location_of(&completed);
+    assert!(done.contains("ok=need_met"), "{done}");
+    let miriam = try_cookie_from(&completed).unwrap_or(miriam);
+    let met = get(&world, &miriam, &done).await;
+    assert!(met.contains("Need met."));
+    assert!(met.contains("The new handrail is installed and ready to use."));
+    assert!(met.contains("Met"));
+
+    let elena = register(&world, "Elena Vasquez", "elena-media@mercy.test").await;
+    let (_elena, _) = plant(&world, &elena, "New Mercy").await;
+    let hidden = authed_get(
+        world.app.clone(),
+        &elena,
+        &format!("/media/{media_id}/full"),
+    )
+    .await;
+    assert_eq!(hidden.0, StatusCode::FORBIDDEN);
+    let hidden_body = String::from_utf8_lossy(&hidden.2);
+    assert!(hidden_body.contains("That photo couldn't be attached. Add it again."));
+    let outside = get(&world, &elena, &format!("/needs/{need_id}/conversation")).await;
+    assert!(!outside.contains("I can measure the steps Thursday afternoon."));
+    let stream = authed_get(
+        world.app.clone(),
+        &elena,
+        &format!("/needs/{need_id}/events"),
+    )
+    .await;
+    assert_ne!(
+        stream
+            .1
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("text/event-stream")
+    );
+
+    let you = get(&world, &miriam, "/me").await;
+    assert!(you.contains("Profile photo"));
+    assert!(you.contains("avatar-xl"));
+    assert!(you.contains(">MC<"));
+
+    let (fresh, fresh_cookie, fresh_csrf) =
+        get_page(world.app.clone(), Some(&miriam), "/needs/new").await;
+    let fresh_csrf = fresh_csrf.expect("sixth csrf");
+    assert!(fresh.contains("Photos"));
+    let mut files = Vec::new();
+    for index in 0..6 {
+        files.push((
+            "photos",
+            format!("board-{index}.jpg"),
+            "image/jpeg",
+            jpeg.as_slice(),
+        ));
+    }
+    let file_refs: Vec<(&str, &str, &str, &[u8])> = files
+        .iter()
+        .map(|(name, filename, kind, bytes)| (*name, filename.as_str(), *kind, *bytes))
+        .collect();
+    let refused = post_multipart(
+        world.app.clone(),
+        &fresh_cookie,
+        "/needs",
+        &[
+            ("csrf", &fresh_csrf),
+            ("church_id", &grace),
+            ("title", "Six loose boards on the porch"),
+            (
+                "body",
+                "Each one needs a photo before anyone can see the job.",
+            ),
+            ("scope", "church"),
+            ("pass", "publish"),
+        ],
+        &file_refs,
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::SEE_OTHER);
+    let refusal = location_of(&refused);
+    assert!(refusal.contains("err=attachments"), "{refusal}");
+    let shown_cookie = try_cookie_from(&refused).unwrap_or(fresh_cookie);
+    let shown = get(&world, &shown_cookie, &refusal).await;
+    assert!(shown.contains("You can add up to five photos."));
+    let home = get(&world, &miriam, "/home").await;
+    assert!(!home.contains("Six loose boards on the porch"));
+}
+
+fn tiny_jpeg() -> Vec<u8> {
+    let image = image::RgbImage::from_pixel(8, 8, image::Rgb([40, 90, 70]));
+    let mut encoded = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 80)
+        .write_image(image.as_raw(), 8, 8, image::ExtendedColorType::Rgb8)
+        .expect("jpeg");
+    encoded
+}
+
+fn media_id_from(html: &str) -> String {
+    html.split("/media/")
+        .nth(1)
+        .and_then(|rest| rest.split(['/', '"', '?']).next())
+        .expect("media id")
+        .to_string()
+}
+
+async fn post_multipart(
+    app: axum::Router,
+    cookie: &str,
+    uri: &str,
+    fields: &[(&str, &str)],
+    files: &[(&str, &str, &str, &[u8])],
+) -> axum::http::Response<Body> {
+    let boundary = "ecclesia-test-boundary";
+    let mut body = Vec::new();
+    for (name, value) in fields {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    for (name, filename, content_type, bytes) in files {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    app.oneshot(
+        Request::post(uri)
+            .header(header::COOKIE, cookie)
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
+async fn authed_get(
+    app: axum::Router,
+    cookie: &str,
+    uri: &str,
+) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        app.oneshot(
+            Request::get(uri)
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        ),
+    )
+    .await
+    .expect("response")
+    .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = match tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        axum::body::to_bytes(response.into_body(), 64 * 1024),
+    )
+    .await
+    {
+        Ok(Ok(bytes)) => bytes.to_vec(),
+        _ => Vec::new(),
+    };
+    (status, headers, bytes)
 }
