@@ -1973,8 +1973,9 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(landing.contains("Hope Chapel"));
     assert!(landing.contains("Handrail for my front steps"));
     assert!(landing.contains("Licensed contractor"));
-    assert!(landing.contains("A family needs a crib."));
     assert!(landing.contains("Roof repair"));
+    assert!(!landing.contains("The church already has most of what it needs"));
+    assert!(!landing.contains("A family needs a crib."));
     assert!(!landing.contains("She posts a simple request"));
     assert!(!landing.contains("Within the hour, three people respond."));
     assert!(!landing.contains("A member asks"));

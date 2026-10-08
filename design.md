@@ -69,7 +69,7 @@ Hover lift on card links and buttons is inside `@media (hover: hover)`. `prefers
 | Sorry, guest | `Nav::None` | Guest shell, link home |
 | Sorry, member | `Nav::Home` | App chrome stays |
 
-The public landing runs in this order: hero (lockup, title, account actions), Acts 2:44-45, the church-takes-care narrative with the Sarah, David, and handrail phones, the scattered-needs and Covenant phones, the prayer phones, the church map and one body, the account actions, footer. `footer.site-footer` is on the landing and on the privacy and terms pages. Privacy and terms use `main.sheet-legal`.
+The public landing runs in this order: hero (lockup, title, account actions), Acts 2:44-45, the church-takes-care narrative with the Sarah, David, and handrail phones, the prayer phones, the church map and one body, the account actions, footer. `footer.site-footer` is on the landing and on the privacy and terms pages. Privacy and terms use `main.sheet-legal`.
 
 The install bar is the landing seat only. Dismiss stays in `localStorage` under `ecclesia-install-dismissed`.
 

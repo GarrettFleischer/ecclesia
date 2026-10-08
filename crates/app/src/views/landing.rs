@@ -291,11 +291,6 @@ fn narrative() -> Markup {
             p class="landing-sources" {
                 "Justin Martyr, First Apology 67, about 155. Tertullian, Apology 39, about 197. Julian, Letter to Arsacius, 362."
             }
-            h2 { "The church already has most of what it needs" }
-            div class="landing-phones" {
-                (scattered_phone())
-                (covenant_phone())
-            }
             h2 { "Some burdens can only be carried" }
             p { "Not every need can be fixed with a hammer, a meal, or a few hours of work." }
             p { "Some things can only be carried in prayer." }
@@ -450,51 +445,6 @@ fn david_phone() -> Markup {
                     "Ruth Alvarez",
                     "I can sit with her for a few hours so you can get some rest.",
                 ))
-            }
-        },
-    )
-}
-
-fn scattered_phone() -> Markup {
-    demo_phone(
-        PhoneHeight::Fits,
-        html! {
-            div class="stack" {
-                (open_need("A crib", "A family needs a crib."))
-                (open_need(
-                    "A ride to a doctor's appointment",
-                    "An elderly member needs a ride to a doctor's appointment.",
-                ))
-                (open_need(
-                    "A leaking sink",
-                    "A single mother needs help fixing a leaking sink.",
-                ))
-                (open_need(
-                    "Volunteers for a food pantry",
-                    "A church needs volunteers for its food pantry.",
-                ))
-            }
-        },
-    )
-}
-
-fn open_need(title: &'static str, body: &'static str) -> Markup {
-    html! {
-        article class="card need-card" {
-            h3 { (title) }
-            p class="clamp" { (body) }
-        }
-    }
-}
-
-fn covenant_phone() -> Markup {
-    demo_phone(
-        PhoneHeight::Fits,
-        html! {
-            p class="shot-church" { "Covenant Church" }
-            h3 class="shot-title" { "Roof repair" }
-            p class="shot-body" {
-                "A storm has damaged its roof. The sanctuary is still usable, but several families are meeting in classrooms while repairs are underway. What they don't have is enough money to finish the work."
             }
         },
     )
