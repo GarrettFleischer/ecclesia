@@ -294,9 +294,6 @@ fn narrative() -> Markup {
             }
             h2 { "Prayer matters" }
             (prayer_phone())
-            p { "You may never meet these people." }
-            p { "You may never know how their stories turn out." }
-            p { "But for a moment, their burden becomes yours." }
             (scripture::verse(&scripture::GALATIANS_6_2))
             p { "The same body that meets practical needs can carry one another in prayer." }
             h2 { "One Body" }
