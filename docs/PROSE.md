@@ -1,109 +1,105 @@
 # Prose
 
-How to write anything a person reads in Ecclesia: headings, buttons, labels,
-placeholders, flashes, errors, notifications, empty states, seed content, the
-public landing, and the README.
+Ecclesia has two kinds of writing. The app helps someone act. Public pages help
+someone understand why the app is worth their attention. Treating both as terse
+interface copy makes the public writing sound clipped and patronizing.
 
-This is drawn from sites whose copy reads like a person wrote it — Basecamp,
-Are.na, Buttondown, Planning Center — and from the GOV.UK and Apollo writing
-guides. The common thread: say what is here, say what to do next, and stop.
+Write for an adult who can use a website and does not need every control
+narrated.
 
-## The rule
+## Interface copy
 
-> If you find yourself explaining how the interface works, something has gone
-> wrong. Fix the interface. — GOV.UK
+Interface copy belongs to the task in front of the person.
 
-Copy names things and actions. It does not justify the product or tell the
-reader what the product is not.
+- A heading says what the section contains or what the person is doing. Use a
+  noun, a statement, or a direct question according to the page.
+- A button names the result of pressing it: `Post need`, `Accept invite`,
+  `Save profile`.
+- A label names the value. A placeholder shows a plausible value.
+- An error says what happened and what can be done next. Leave out blame,
+  apologies, and internal codes.
+- A confirmation is brief because the changed screen carries the meaning:
+  `Posted.`, `Saved.`, `You're in.`
+- An empty state names the condition or the useful next action.
+- A notification says who did what and where to respond.
 
-## Say it like this
+Do not explain controls that are already clear on screen. Do not describe the
+product on its own working pages. If the interface needs a paragraph before
+someone can use it, improve the interface.
 
-**Name what is on the page.** The heading is the noun. `Open needs`.
-`Churches nearby`. `Inbox`. Not a greeting, not a slogan.
+Plain language is not a sequence of tiny sentences. Keep a sentence intact
+when its ideas naturally belong together. Read it aloud and listen for a human
+rhythm.
 
-**Name what will happen.** The button is the verb plus its object.
-`Post need`. `Accept invite`. `Accept`. `Send invite`. Never `Submit`, `OK`,
-or `Confirm`.
+## Public storytelling
 
-**One idea per sentence.** Short sentences. Plain words. `Join a church first.`
+A public page may persuade. It earns attention with a true, recognizable
+situation rather than an inventory of features.
 
-**Be concrete.** Dinners, a ramp, a ride, Thursday at 6. A specific example
-does more than an adjective. `Dinners for the Okonkwos this week`, not
-`A meaningful need`.
+- Assume the reader understands accounts, links, photos, and replies.
+- Lead with the human problem and show how people respond.
+- Use one believable exchange instead of several generic examples.
+- Include a detail when it changes trust or a decision: cost, privacy,
+  responsibility, or the next action.
+- Leave implementation details in the interface, help, privacy page, or
+  technical documentation. The landing says `nearby`, not the search radius.
+- Vary paragraph and sentence length. Calm writing can still have movement.
+- Let images and working product screens carry facts the prose does not need to
+  repeat.
+- Finish with one useful action.
 
-**Write the way the reader would say it.** Contractions are fine. `You're in.`
-`We couldn't find that church.`
+Public writing should sound like a thoughtful person, not a tour guide walking
+through every control.
 
-**Errors: what happened, then the next step.** No blame, no apology, no code.
-`The form expired. Try again.` `Only members of this church can apply.`
+## Examples and sample content
 
-**Flashes are one to four words.** `Posted.` `Approved.` `Sent.` `You're in.`
-The page already shows the result; the flash confirms it.
+Examples are part of the product. They need ordinary names, credible timing,
+and a reason people would respond.
 
-**Empty states name the next action or the condition.** `No open needs.`
-`Once you're in a church, its needs show up here.`
+Good sample content:
 
-**Notifications: who did what, then where to act.** Title: `Elena Vasquez
-endorsed you for Counseling`. Body: `Accept it from your inbox, or decline.`
+> Handrail for my front steps
+>
+> The old railing came loose last winter. I need a new one before knee surgery
+> next month.
 
-**Seed content sounds like the person typing into the form.** A pastor writes
-`Pastor at Grace Covenant since 2014. Two kids, one very old dog.` She does not
-write a mission statement.
+> I'd love to bring lunch for any volunteers. Let me know the day and how many.
 
-**On the public landing, write paragraphs.** The landing is an essay, not
-flashes. Keep the author's sentences. App chrome still follows the short forms
-below.
+Weak sample content is generic, conspicuously diverse, over-composed, or built
+to mention every feature. A sample should sound like the member who posted it.
 
-**On the app's own pages, do not describe the product.** No lede that explains
-membership, visibility, or approval. The controls show it.
+## Habits to remove
 
-## Never
+- Explaining what something is not when the reader never raised the
+  comparison.
+- Moralizing about need, generosity, belonging, or faith.
+- Restating the first sentence in a second sentence.
+- Narrating obvious mechanics such as scanning, tapping, installing, or
+  checking a box on a public page.
+- Using exact technical limits where the human concept is enough.
+- Padding a claim with hype, applause, or vague adjectives.
+- Chopping a natural thought into staccato fragments to make it feel plain.
+- Choosing a metaphor when the product already has an exact word.
 
-- **Explain what it isn't.** `A people, not a campus.` `Not a marketplace.`
-  `A life, not a compliment.` Say what it is or say nothing.
-- **Moralize or reassure.** `That is allowed.` `That is theirs to decide.`
-  `Go be the hands.` `They have not learned to ask.` The reader did not ask
-  for your opinion of them.
-- **Use metaphor as a noun.** Household, table, seat, door, hands, wear, valley.
-  Use the plain word: church, member, pastor, need, offer, gift, profile.
-- **Pad.** `just`, `simply`, `actually`, `please`, `kindly`, `in order to`,
-  `obviously`, `easy`, `quickly`, `Oops`, `Unfortunately`, `Looks like`.
-- **Sell.** `seamless`, `empower`, `leverage`, `journey`, `elevate`,
-  `we're excited`, `powerful`, `delightful`.
-- **Lean on the em dash.** One clause, one sentence. Use a period.
-- **Ask a rhetorical question in a heading.** `What does the body need?` is
-  a heading that is trying to be clever. `Post a need` is a heading.
-- **Write placeholders as instructions.** A placeholder is an example value.
-  `Hospitality`, not `Type a skill here`.
+Words such as `just`, `actually`, or `powerful` are warnings, not automatic
+failures. Judge the sentence. Remove a word when it weakens the meaning.
 
-## Before and after, from this codebase
+## Review
 
-| Before | After |
-| --- | --- |
-| `Peace, Miriam.` | `Open needs` |
-| `Ask for help. Offer yours.` | `We are the ecclesia, one body called together, bound by a shared inheritance.` |
-| `You have a place at the table.` | `Account created.` |
-| `Your request is with the pastor. They will let you in.` | `Your request to join Grace Fellowship has been sent.` |
-| `No needs posted. Either they are between crises, or they have not learned to ask.` | `No open needs.` |
-| `You let it go. That is allowed.` | `Declined.` |
-| `Something gave way` | `Sorry` |
-| `Be specific. A gift is a life, not a compliment.` | `Something you saw them do.` |
-| `Accept onto my profile` | `Accept` |
+For interface copy:
 
-## Checklist
+1. Does the text help with the task on this screen?
+2. Does the control name the result?
+3. Can the interface carry anything the paragraph is trying to explain?
+4. Does the error give a real next step?
 
-Read the line out loud. Then:
+For public copy:
 
-1. Does it name a thing or an action? If it describes or persuades, cut it.
-   The public landing is the exception: it may be paragraphs. App pages may not.
-2. Is there a `not`, `isn't`, or `rather than` contrasting with something the
-   reader never mentioned? Cut the contrast.
-3. Is there a second sentence that comments on the first? Cut it.
-4. Any word from the pad or sell lists? Cut it.
-5. Any metaphor standing in for a plain noun? Replace it.
-6. Would a person say this to a friend across a table? If not, rewrite.
+1. Would an adult reader learn something they did not already know?
+2. Is the example socially and technically believable?
+3. Does every implementation detail belong here?
+4. Does the prose trust the image or product screen beside it?
+5. Does it sound natural when read aloud?
 
-`us_prose_01` in `src/style.rs` fails the build when user-facing source
-contains a word from the pad or sell lists or a `, not a` contrast. It walks
-`src/views` and the other paths listed in `prose_paths()`, and it skips
-`landing.rs` so the public essay can keep its own words.
+Scripture in `src/views/scripture.rs` stays word for word as quoted from the
+ESV.

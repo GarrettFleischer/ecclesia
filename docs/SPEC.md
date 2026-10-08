@@ -74,7 +74,7 @@ Each story has a Domain function (or a documented skin exception), a unit test, 
 | US-VAL-01 | Empty, overlong, and malformed email values are refused. | `validate` | `us_val_01_*` |
 | US-SEC-01 | A session cookie is HMAC-signed (`v2`, session id in the payload). Tampering or a dead row becomes a guest. | `sdk::session`, `resolve_session` | `us_sec_01_*` |
 | US-SEC-02 | Every POST carries a CSRF token bound to the session. | session + HTTP | `us_sec_02_*` |
-| US-PROSE-01 | User-facing copy follows [PROSE.md](PROSE.md). | `style` | `us_prose_01` |
+| US-PROSE-01 | User-facing copy follows [PROSE.md](PROSE.md). | [PROSE.md](PROSE.md) | docs |
 | US-DOMAIN-01 | Domain does no I/O. | `style` | `us_domain_01` |
 | US-TONE-01 | Posted words must lift people up. The skin weighs them (Jev, OpenRouter, a local model, or the word gate) and Domain refuses `TearsDown`. | `require_uplifting`, `JudgeHub` | `us_tone_01_*` |
 | US-REFINE-01 | I can ask to rewrite a bio, need, reply, prayer, endorsement, gift note, or church description. | `RefineHub`, `/refine` | `us_refine_01_*` |

@@ -41,7 +41,7 @@ Stored in `docs/specs/`. Format: `docs/specs/NNNN-title/` with `index.md`.
 - A story takes values in and returns `Result<Effect, DomainError>`.
 - Do not pass `bool` as a function argument.
 - HTTP loads values, calls one SDK story, paints HTML.
-- Copy follows `docs/PROSE.md`. Run `cargo test style` after copy or Rust changes.
+- Copy follows `docs/PROSE.md`. Run `cargo test style` after changing `crates/`.
 - A public host (`FLY_APP_NAME` or `ECCLESIA_PUBLIC=1`) requires `DATABASE_URL`, `UPSTASH_REDIS_URL`, `RESEND_API_KEY`, `RESEND_FROM`, and `ECCLESIA_PUBLIC_URL`.
 
 ## Agent skills
