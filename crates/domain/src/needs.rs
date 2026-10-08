@@ -1,9 +1,10 @@
 //! Posting needs and receiving offers.
 
 use super::flags::{CatalogPresence, Posture, PriorOffer};
+use super::media::{Attachment, AttachmentRef, accept_attachments};
 use super::model::{
     Application, ApplicationCard, ApplicationStatus, Church, DomainError, Effect, Need, NeedReply,
-    NeedShelf, NeedSight, NeedStatus, User, Viewer, Write,
+    NeedShelf, NeedSight, NeedStatus, ReplyKind, User, Viewer, Write,
 };
 use super::notice::notice;
 use super::person::display_name;
@@ -23,13 +24,54 @@ pub fn post_need(
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
+    post_need_with_attachments(
+        viewer,
+        church_id,
+        title,
+        body,
+        gift_id,
+        gift,
+        scope,
+        posture,
+        &[],
+        id,
+        now,
+    )
+}
+
+/// US-NEED-01 — post a need with up to five photos.
+///
+/// # Parameters
+/// - `attachments`: staged photo ids and optional descriptions, in display order.
+///
+/// # Returns
+/// An effect that inserts the need and then attaches every accepted photo, or an error.
+///
+/// # Notes
+/// An empty slice posts the need alone. `post_need` does that.
+/// A sixth photo, a blank id, a repeated id, or a long description refuses the whole post.
+pub fn post_need_with_attachments(
+    viewer: &Viewer,
+    church_id: &str,
+    title: &str,
+    body: &str,
+    gift_id: Option<&str>,
+    gift: CatalogPresence,
+    scope: &str,
+    posture: Posture,
+    attachments: &[AttachmentRef<'_>],
+    id: String,
+    now: String,
+) -> Result<Effect, DomainError> {
     super::flags::require_uplifting(posture)?;
     if !viewer.is_active_in(church_id) {
         return Err(DomainError::NotInTheBody);
     }
     refuse_unknown_named_gift(gift_id, gift)?;
     let (title, body, parsed_scope) = need_fields(title, body, scope)?;
-    Ok(Effect::write(Write::InsertNeed(Need {
+    let attachments = accept_attachments(attachments)?;
+    let need_id = id.clone();
+    let mut effect = Effect::write(Write::InsertNeed(Need {
         id,
         church_id: church_id.into(),
         author_id: viewer.user.id.clone(),
@@ -42,7 +84,19 @@ pub fn post_need(
         closed_at: None,
         praise: None,
         shelf: NeedShelf::Listed,
-    })))
+    }));
+    push_need_media(&mut effect, &need_id, attachments);
+    Ok(effect)
+}
+
+fn push_need_media(effect: &mut Effect, need_id: &str, attachments: Vec<Attachment>) {
+    if attachments.is_empty() {
+        return;
+    }
+    effect.push(Write::AttachNeedMedia {
+        need_id: need_id.to_string(),
+        attachments,
+    });
 }
 
 fn refuse_unknown_named_gift(
@@ -124,6 +178,13 @@ pub fn close_need(
 }
 
 /// The author opens a met need again, until it is archived.
+///
+/// # Returns
+/// An effect that marks the need open and clears `closing_reply_id`.
+///
+/// # Notes
+/// Praise is cleared with the met status, as before. A completion reply stays
+/// in the conversation. This write does not delete that reply.
 pub fn reopen_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> {
     require_need_author(viewer, need)?;
     if need.shelf == NeedShelf::Archived {
@@ -132,12 +193,17 @@ pub fn reopen_need(viewer: &Viewer, need: &Need) -> Result<Effect, DomainError> 
     if need.status() != Some(NeedStatus::Closed) {
         return Err(open_need_status(need));
     }
-    Ok(Effect::write(Write::SetNeedStatus {
+    let mut effect = Effect::write(Write::SetNeedStatus {
         id: need.id.clone(),
         status: NeedStatus::Open.as_str(),
         closed_at: None,
         praise: None,
-    }))
+    });
+    effect.push(Write::SetClosingReply {
+        need_id: need.id.clone(),
+        reply_id: None,
+    });
+    Ok(effect)
 }
 
 fn open_need_status(need: &Need) -> DomainError {
@@ -159,16 +225,45 @@ pub fn reply_to_need(
     id: String,
     now: String,
 ) -> Result<Effect, DomainError> {
+    reply_to_need_with_attachments(viewer, need, church, approach, body, posture, &[], id, now)
+}
+
+/// A public reply with up to five photos.
+///
+/// # Parameters
+/// - `attachments`: staged photo ids and optional descriptions, in display order.
+///
+/// # Returns
+/// An effect that inserts a [`ReplyKind::Message`] and then attaches its photos.
+///
+/// # Notes
+/// Membership, audience, and posture are the same rules as [`reply_to_need`].
+/// An empty slice inserts the reply alone.
+pub fn reply_to_need_with_attachments(
+    viewer: &Viewer,
+    need: &Need,
+    church: &Church,
+    approach: NeedApproach,
+    body: &str,
+    posture: Posture,
+    attachments: &[AttachmentRef<'_>],
+    id: String,
+    now: String,
+) -> Result<Effect, DomainError> {
     super::flags::require_uplifting(posture)?;
     can_reply(viewer, need.sight(), church, approach)?;
     let body = note_field(body)?;
+    let attachments = accept_attachments(attachments)?;
+    let reply_id = id.clone();
     let mut effect = Effect::write(Write::InsertNeedReply(NeedReply {
         id,
         need_id: need.id.clone(),
         author_id: viewer.user.id.clone(),
+        kind: ReplyKind::Message,
         body,
         created_at: now,
     }));
+    push_reply_media(&mut effect, &reply_id, attachments);
     if viewer.user.id != need.author_id {
         effect = effect.with_notice(notice(
             &need.author_id,
@@ -183,6 +278,91 @@ pub fn reply_to_need(
         ));
     }
     Ok(effect)
+}
+
+/// The author closes an open need with a completion reply.
+///
+/// # Parameters
+/// - `viewer`: must be the need's author.
+/// - `need`: the need being closed. It must be open and not archived.
+/// - `body`: what happened. Required, with the same limits as a reply.
+/// - `posture`: the word gate's judgment of that text.
+/// - `attachments`: zero to five photos of the result.
+/// - `id`: reply id minted by the SDK.
+/// - `now`: timestamp minted by the SDK.
+///
+/// # Returns
+/// One effect, or an error that carries no writes.
+///
+/// # Notes
+/// On success the writes are ordered: insert the completion reply, attach its
+/// photos (an empty list when there are none), mark the need met, then store
+/// `closing_reply_id`. Met is [`NeedStatus::Closed`] (`"closed"`). The reply
+/// body is not copied into `praise`. A legacy praise report still uses [`close_need`].
+pub fn complete_need(
+    viewer: &Viewer,
+    need: &Need,
+    body: &str,
+    posture: Posture,
+    attachments: &[AttachmentRef<'_>],
+    id: String,
+    now: String,
+) -> Result<Effect, DomainError> {
+    require_need_author(viewer, need)?;
+    if need.shelf == NeedShelf::Archived {
+        return Err(DomainError::NeedArchived);
+    }
+    if !need.is_open() {
+        return Err(DomainError::NeedClosed);
+    }
+    super::flags::require_uplifting(posture)?;
+    let body = note_field(body)?;
+    let attachments = accept_attachments(attachments)?;
+    Ok(completion_effect(need, viewer, body, attachments, id, now))
+}
+
+fn completion_effect(
+    need: &Need,
+    viewer: &Viewer,
+    body: String,
+    attachments: Vec<Attachment>,
+    id: String,
+    now: String,
+) -> Effect {
+    let reply_id = id.clone();
+    let mut effect = Effect::write(Write::InsertNeedReply(NeedReply {
+        id,
+        need_id: need.id.clone(),
+        author_id: viewer.user.id.clone(),
+        kind: ReplyKind::Completion,
+        body,
+        created_at: now.clone(),
+    }));
+    effect.push(Write::AttachReplyMedia {
+        reply_id: reply_id.clone(),
+        attachments,
+    });
+    effect.push(Write::SetNeedStatus {
+        id: need.id.clone(),
+        status: NeedStatus::Closed.as_str(),
+        closed_at: Some(now),
+        praise: None,
+    });
+    effect.push(Write::SetClosingReply {
+        need_id: need.id.clone(),
+        reply_id: Some(reply_id),
+    });
+    effect
+}
+
+fn push_reply_media(effect: &mut Effect, reply_id: &str, attachments: Vec<Attachment>) {
+    if attachments.is_empty() {
+        return;
+    }
+    effect.push(Write::AttachReplyMedia {
+        reply_id: reply_id.to_string(),
+        attachments,
+    });
 }
 
 /// Move the author's open needs from a closed church onto a church they belong to.
@@ -212,12 +392,7 @@ fn moved_needs(
 ) -> Result<Vec<Write>, DomainError> {
     let mut writes = Vec::with_capacity(needs.len());
     for need in needs {
-        writes.push(move_open_need(
-            actor,
-            need,
-            closed_church_ids,
-            destination,
-        )?);
+        writes.push(move_open_need(actor, need, closed_church_ids, destination)?);
     }
     Ok(writes)
 }
@@ -611,6 +786,17 @@ mod tests {
         assert!(praise.is_none());
         assert!(closed_at.is_none());
         assert_eq!(
+            effect.writes[1],
+            Write::SetClosingReply {
+                need_id: "need_dinners".into(),
+                reply_id: None,
+            }
+        );
+        assert!(effect.writes.iter().all(|write| !matches!(
+            write,
+            Write::DetachReplyMedia { .. } | Write::InsertNeedReply(_)
+        )));
+        assert_eq!(
             reopen_need(&miriam, &dinner("miriam", "open", NeedShelf::Listed)),
             Err(DomainError::NeedOpen)
         );
@@ -690,5 +876,335 @@ mod tests {
             ),
             Err(DomainError::NotInTheBody)
         );
+    }
+
+    fn photo(media_id: &'static str, description: Option<&'static str>) -> AttachmentRef<'static> {
+        AttachmentRef {
+            media_id,
+            description,
+        }
+    }
+
+    fn counted_photos(count: usize) -> Vec<AttachmentRef<'static>> {
+        let ids = ["m1", "m2", "m3", "m4", "m5", "m6"];
+        ids[..count]
+            .iter()
+            .map(|media_id| photo(media_id, None))
+            .collect()
+    }
+
+    fn author() -> Viewer {
+        viewer_of(
+            user_in_church("miriam", "grace", "owner", "active"),
+            Some(church("grace")),
+        )
+    }
+
+    #[test]
+    fn a_need_accepts_zero_one_or_five_photos_and_refuses_six() {
+        let miriam = author();
+        let none = post_need_with_attachments(
+            &miriam,
+            "grace",
+            "Dinners",
+            "This week.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[],
+            "n0".into(),
+            "t".into(),
+        )
+        .unwrap();
+        assert!(matches!(none.writes[0], Write::InsertNeed(_)));
+        assert_eq!(none.writes.len(), 1);
+
+        let one = post_need_with_attachments(
+            &miriam,
+            "grace",
+            "Dinners",
+            "This week.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[photo("m1", Some("  porch "))],
+            "n1".into(),
+            "t".into(),
+        )
+        .unwrap();
+        let Write::AttachNeedMedia {
+            need_id,
+            attachments,
+        } = &one.writes[1]
+        else {
+            panic!("expected photos");
+        };
+        assert_eq!(need_id, "n1");
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].position, 0);
+        assert_eq!(attachments[0].description.as_deref(), Some("porch"));
+
+        let five = post_need_with_attachments(
+            &miriam,
+            "grace",
+            "Dinners",
+            "This week.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &counted_photos(5),
+            "n5".into(),
+            "t".into(),
+        )
+        .unwrap();
+        let Write::AttachNeedMedia { attachments, .. } = &five.writes[1] else {
+            panic!("expected photos");
+        };
+        assert_eq!(attachments.len(), 5);
+
+        assert_eq!(
+            post_need_with_attachments(
+                &miriam,
+                "grace",
+                "Dinners",
+                "This week.",
+                None,
+                CatalogPresence::Listed,
+                "church",
+                Posture::Lifts,
+                &counted_photos(6),
+                "n6".into(),
+                "t".into(),
+            ),
+            Err(DomainError::TooManyAttachments)
+        );
+    }
+
+    #[test]
+    fn a_reply_keeps_audience_rules_and_accepts_up_to_five_photos() {
+        let grace = church("grace");
+        let miriam = author();
+        let need = dinner("miriam", "open", NeedShelf::Listed);
+        let effect = reply_to_need_with_attachments(
+            &miriam,
+            &need,
+            &grace,
+            NeedApproach::Membership,
+            "Thursday is covered.",
+            Posture::Lifts,
+            &counted_photos(5),
+            "r5".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        let Write::InsertNeedReply(reply) = &effect.writes[0] else {
+            panic!("expected reply");
+        };
+        assert_eq!(reply.kind, ReplyKind::Message);
+        assert_eq!(reply.kind.as_str(), "message");
+        let Write::AttachReplyMedia { attachments, .. } = &effect.writes[1] else {
+            panic!("expected photos");
+        };
+        assert_eq!(attachments.len(), 5);
+        assert!(effect.notices.is_empty());
+
+        assert_eq!(
+            reply_to_need_with_attachments(
+                &miriam,
+                &need,
+                &grace,
+                NeedApproach::Membership,
+                "Thursday is covered.",
+                Posture::Lifts,
+                &counted_photos(6),
+                "r6".into(),
+                "t1".into(),
+            ),
+            Err(DomainError::TooManyAttachments)
+        );
+        assert_eq!(
+            reply_to_need_with_attachments(
+                &miriam,
+                &dinner("miriam", "closed", NeedShelf::Listed),
+                &grace,
+                NeedApproach::Membership,
+                "Thursday is covered.",
+                Posture::Lifts,
+                &[photo("m1", None)],
+                "r7".into(),
+                "t1".into(),
+            ),
+            Err(DomainError::NeedClosed)
+        );
+    }
+
+    #[test]
+    fn completion_is_author_only_and_one_ordered_effect() {
+        let grace = church("grace");
+        let miriam = author();
+        let pastor = viewer_of(
+            user_in_church("peter", "grace", "owner", "active"),
+            Some(grace),
+        );
+        let open = dinner("miriam", "open", NeedShelf::Listed);
+        assert_eq!(
+            complete_need(
+                &pastor,
+                &open,
+                "Thursday's meals are covered.",
+                Posture::Lifts,
+                &[],
+                "c0".into(),
+                "t2".into(),
+            ),
+            Err(DomainError::NotAuthor)
+        );
+        assert_eq!(
+            complete_need(
+                &miriam,
+                &dinner("miriam", "closed", NeedShelf::Listed),
+                "Thursday's meals are covered.",
+                Posture::Lifts,
+                &[],
+                "c1".into(),
+                "t2".into(),
+            ),
+            Err(DomainError::NeedClosed)
+        );
+        assert_eq!(
+            complete_need(
+                &miriam,
+                &dinner("miriam", "closed", NeedShelf::Archived),
+                "Thursday's meals are covered.",
+                Posture::Lifts,
+                &[],
+                "c2".into(),
+                "t2".into(),
+            ),
+            Err(DomainError::NeedArchived)
+        );
+
+        let none = complete_need(
+            &miriam,
+            &open,
+            "Thursday's meals are covered.",
+            Posture::Lifts,
+            &[],
+            "c0".into(),
+            "t2".into(),
+        )
+        .unwrap();
+        assert_completion(&none, "c0", 0);
+        assert!(none.notices.is_empty());
+
+        let five = complete_need(
+            &miriam,
+            &open,
+            "Thursday's meals are covered.",
+            Posture::Lifts,
+            &counted_photos(5),
+            "c5".into(),
+            "t2".into(),
+        )
+        .unwrap();
+        assert_completion(&five, "c5", 5);
+
+        assert_eq!(
+            complete_need(
+                &miriam,
+                &open,
+                "Thursday's meals are covered.",
+                Posture::Lifts,
+                &counted_photos(6),
+                "c6".into(),
+                "t2".into(),
+            ),
+            Err(DomainError::TooManyAttachments)
+        );
+        assert_eq!(
+            complete_need(
+                &miriam,
+                &open,
+                "   ",
+                Posture::Lifts,
+                &[photo("m1", None)],
+                "c7".into(),
+                "t2".into(),
+            ),
+            Err(DomainError::InvalidInput)
+        );
+        assert_eq!(
+            complete_need(
+                &miriam,
+                &open,
+                "Thursday's meals are covered.",
+                Posture::TearsDown,
+                &[],
+                "c8".into(),
+                "t2".into(),
+            ),
+            Err(DomainError::TearsDown)
+        );
+    }
+
+    fn assert_completion(effect: &Effect, reply_id: &str, photos: usize) {
+        assert_eq!(effect.writes.len(), 4);
+        let Write::InsertNeedReply(reply) = &effect.writes[0] else {
+            panic!("expected reply");
+        };
+        assert_eq!(reply.id, reply_id);
+        assert_eq!(reply.kind, ReplyKind::Completion);
+        assert_eq!(reply.kind.as_str(), "completion");
+        assert_eq!(reply.body, "Thursday's meals are covered.");
+        let Write::AttachReplyMedia {
+            reply_id: attached_to,
+            attachments,
+        } = &effect.writes[1]
+        else {
+            panic!("expected photos");
+        };
+        assert_eq!(attached_to, reply_id);
+        assert_eq!(attachments.len(), photos);
+        let Write::SetNeedStatus {
+            id,
+            status,
+            closed_at,
+            praise,
+        } = &effect.writes[2]
+        else {
+            panic!("expected status");
+        };
+        assert_eq!(id, "need_dinners");
+        assert_eq!(*status, "closed");
+        assert_eq!(closed_at.as_deref(), Some("t2"));
+        assert!(praise.is_none());
+        assert_eq!(
+            effect.writes[3],
+            Write::SetClosingReply {
+                need_id: "need_dinners".into(),
+                reply_id: Some(reply_id.into()),
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_praise_still_closes_without_a_reply() {
+        let effect = close_need(
+            &author(),
+            &dinner("miriam", "open", NeedShelf::Listed),
+            "Thursday's meals are covered.",
+            Posture::Lifts,
+            "t2".into(),
+        )
+        .unwrap();
+        assert_eq!(effect.writes.len(), 1);
+        let Write::SetNeedStatus { praise, status, .. } = &effect.writes[0] else {
+            panic!("expected status");
+        };
+        assert_eq!(*status, "closed");
+        assert_eq!(praise.as_deref(), Some("Thursday's meals are covered."));
     }
 }

@@ -1,3 +1,8 @@
+//! Need, reply, and prayer records.
+//!
+//! Stories that change these records live in [`crate::needs`]. Photo limits live
+//! in [`crate::media`].
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -273,21 +278,69 @@ impl Application {
     }
 }
 
+/// Whether a reply is an ordinary message or the author's completion.
+///
+/// # Notes
+/// The store keeps [`ReplyKind::as_str`]: `message` or `completion`.
+/// [`ReplyKind::parse`] is the only conversion. A row written before kinds
+/// existed should be read as `message` when its column is missing.
+///
+/// # Examples
+/// ```
+/// use ecclesia_domain::ReplyKind;
+///
+/// assert_eq!(ReplyKind::parse("message"), Some(ReplyKind::Message));
+/// assert_eq!(ReplyKind::Completion.as_str(), "completion");
+/// assert_eq!(ReplyKind::parse("praise"), None);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplyKind {
+    Message,
+    Completion,
+}
+
+impl ReplyKind {
+    /// Stored text for this kind.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Message => "message",
+            Self::Completion => "completion",
+        }
+    }
+
+    /// Reads stored text. Unknown text is not a kind.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "message" => Some(Self::Message),
+            "completion" => Some(Self::Completion),
+            _ => None,
+        }
+    }
+}
+
+/// A reply stored on a need.
+///
+/// `kind` is [`ReplyKind::Message`] for an ordinary reply and
+/// [`ReplyKind::Completion`] for the author's closing reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NeedReply {
     pub id: String,
     pub need_id: String,
     pub author_id: String,
+    pub kind: ReplyKind,
     pub body: String,
     pub created_at: String,
 }
 
+/// A reply plus the author's name, for a page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NeedReplyCard {
     pub id: String,
     pub need_id: String,
     pub author_id: String,
     pub author_name: String,
+    pub kind: ReplyKind,
     pub body: String,
     pub created_at: String,
 }
@@ -334,6 +387,7 @@ pub struct PrayerCard {
     pub church_name: String,
     pub author_id: Option<String>,
     pub author_name: Option<String>,
+    pub author_avatar_id: Option<String>,
     pub body: String,
     pub status: String,
     pub praise: Option<String>,

@@ -1,6 +1,12 @@
+//! Writes and errors a domain story returns.
+//!
+//! The SDK applies every write in `Effect::writes` order, in one transaction.
+//! Domain does not touch the store.
+
 use std::sync::Arc;
 
 use super::household::Church;
+use super::media::Attachment;
 use super::need::{Application, Need, NeedReply, Prayer, Share};
 use super::person::{Endorsement, User};
 
@@ -74,6 +80,16 @@ pub enum DomainError {
     NotAuthor,
     #[error("This prayer is already answered.")]
     PrayerAnswered,
+    #[error("You can attach at most five photos.")]
+    TooManyAttachments,
+    #[error("Keep the photo description to 300 characters.")]
+    DescriptionTooLong,
+    #[error("That photo is already attached.")]
+    DuplicateAttachment,
+    #[error("Choose a photo.")]
+    InvalidMediaId,
+    #[error("You can only change your own profile photo.")]
+    NotAvatarOwner,
 }
 
 impl DomainError {
@@ -108,6 +124,11 @@ impl DomainError {
             Self::AlreadyMarked => "already",
             Self::NotAuthor => "not_yours",
             Self::PrayerAnswered => "prayer_answered",
+            Self::TooManyAttachments => "attachments",
+            Self::DescriptionTooLong => "description",
+            Self::DuplicateAttachment => "duplicate_attachment",
+            Self::InvalidMediaId => "media",
+            Self::NotAvatarOwner => "not_yours",
         }
     }
 }
@@ -129,6 +150,15 @@ pub enum Write {
         first_name: String,
         last_name: String,
         bio: String,
+    },
+    /// Points a profile at a photo the owner staged.
+    SetAvatar {
+        user_id: String,
+        media_id: String,
+    },
+    /// Clears a profile photo. The person is shown by their initials.
+    ClearAvatar {
+        user_id: String,
     },
     InsertChurch(Church),
     UpsertMembership {
@@ -160,6 +190,25 @@ pub enum Write {
         closed_at: Option<String>,
         praise: Option<String>,
     },
+    /// Stores or clears the reply that closed the need. `None` clears it.
+    ///
+    /// The completion reply itself stays. Reopening uses `None`.
+    SetClosingReply {
+        need_id: String,
+        reply_id: Option<String>,
+    },
+    /// Attaches photos to a need, in `position` order.
+    ///
+    /// An empty list inserts no rows. This write does not store bytes or object keys.
+    AttachNeedMedia {
+        need_id: String,
+        attachments: Vec<Attachment>,
+    },
+    /// Removes one need photo link. The asset stays while anything else references it.
+    DetachNeedMedia {
+        need_id: String,
+        media_id: String,
+    },
     MoveNeed {
         id: String,
         church_id: String,
@@ -184,6 +233,19 @@ pub enum Write {
         gift_id: String,
     },
     InsertNeedReply(NeedReply),
+    /// Attaches photos to a reply, in `position` order.
+    ///
+    /// Completion always includes this write, even when the list is empty.
+    /// A message or a new need includes it only when at least one photo was accepted.
+    AttachReplyMedia {
+        reply_id: String,
+        attachments: Vec<Attachment>,
+    },
+    /// Removes one reply photo link. The asset stays while anything else references it.
+    DetachReplyMedia {
+        reply_id: String,
+        media_id: String,
+    },
     InsertPrayer(Prayer),
     SetPrayerAnswered {
         id: String,

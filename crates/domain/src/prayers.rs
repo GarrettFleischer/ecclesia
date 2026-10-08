@@ -64,12 +64,15 @@ impl PriorPrayerMark {
 pub enum PrayerReach {
     HomeChurch,
     Near(Place),
+    /// An unnamed prayer, open to any member.
+    Pool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrayerSource {
     Church,
     Surrounding,
+    Pool,
 }
 
 pub struct PrayerSight<'a> {
@@ -182,6 +185,15 @@ fn require_prayer_reach(
                 Err(DomainError::OutsideNeighborhood)
             }
         }
+        PrayerReach::Pool => {
+            if !viewer.is_active_anywhere() {
+                Err(DomainError::NotInTheBody)
+            } else if prayer.author_id.is_none() {
+                Ok(())
+            } else {
+                Err(DomainError::OutsideNeighborhood)
+            }
+        }
     }
 }
 
@@ -246,14 +258,21 @@ pub fn pick_daily_prayer<'a>(
         return None;
     }
     if let Some(prayer) = first_ranked(viewer, day, seen, prayers, |sight| {
-        viewer.is_active_in(&sight.prayer.church_id)
+        sight.prayer.author_id.is_some() && viewer.is_active_in(&sight.prayer.church_id)
     }) {
         return Some((prayer, PrayerSource::Church));
     }
+    if let Some(prayer) = first_ranked(viewer, day, seen, prayers, |sight| {
+        sight.prayer.author_id.is_some()
+            && !viewer.is_active_in(&sight.prayer.church_id)
+            && near_a_home_church(viewer, sight)
+    }) {
+        return Some((prayer, PrayerSource::Surrounding));
+    }
     first_ranked(viewer, day, seen, prayers, |sight| {
-        !viewer.is_active_in(&sight.prayer.church_id) && near_a_home_church(viewer, sight)
+        sight.prayer.author_id.is_none()
     })
-    .map(|prayer| (prayer, PrayerSource::Surrounding))
+    .map(|prayer| (prayer, PrayerSource::Pool))
 }
 
 fn near_a_home_church(viewer: &Viewer, sight: &PrayerSight<'_>) -> bool {
@@ -324,6 +343,7 @@ mod tests {
             church_name: "Grace".into(),
             author_id: Some("miriam".into()),
             author_name: Some("Miriam Cole".into()),
+            author_avatar_id: None,
             body: "Pray for the surgery on Thursday.".into(),
             status: "open".into(),
             praise: None,
@@ -431,6 +451,18 @@ mod tests {
         assert!(pick_daily_prayer(&viewer, "2026-10-02", &sights, &["church", "near"]).is_none());
         let guest = viewer_of(user("guest"), None);
         assert!(pick_daily_prayer(&guest, "2026-10-02", &sights, &[]).is_none());
+        let unnamed = prayer("pool", "far", None);
+        let with_pool = [
+            sight(&own, &home),
+            sight(&church_prayer, &home),
+            sight(&near, &mercy),
+            sight(&far, &far_church),
+            sight(&unnamed, &far_church),
+        ];
+        let (picked, source) =
+            pick_daily_prayer(&viewer, "2026-10-02", &with_pool, &["church", "near"]).unwrap();
+        assert_eq!(picked.id, "pool");
+        assert_eq!(source, PrayerSource::Pool);
     }
 
     #[test]

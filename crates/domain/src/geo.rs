@@ -1,9 +1,19 @@
-//! Distance between church buildings. The SDK copies `nearby_km` into SQL.
+//! Distance between church buildings.
+//!
+//! The product nearby cutoff is 25 international miles. Kilometers exist only
+//! because the SQL haversine uses them. The SDK copies `nearby_km` into that SQL.
 
 const EARTH_KM: f64 = 6371.0;
 
+/// One international mile, in kilometers.
+const INTERNATIONAL_MILE_KM: f64 = 1.609344;
+
+/// Product nearby cutoff, in miles.
+const NEARBY_MILES: f64 = 25.0;
+
+/// Kilometer form of the 25 mile cutoff. Callers and SQL keep this name.
 pub fn nearby_km() -> f64 {
-    40.0
+    NEARBY_MILES * INTERNATIONAL_MILE_KM
 }
 
 /// A point the browser shared. Domain does not read a device.
@@ -31,6 +41,12 @@ pub fn distance_km(a_lat: f64, a_lng: f64, b_lat: f64, b_lng: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nearby_cutoff_equals_twenty_five_miles() {
+        assert_eq!(nearby_km(), 25.0 * 1.609344);
+        assert_eq!(nearby_km() / 1.609344, 25.0);
+    }
 
     #[test]
     fn nearer_pair_is_shorter() {

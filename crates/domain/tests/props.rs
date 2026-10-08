@@ -392,6 +392,21 @@ proptest! {
         needs in collection::vec(0i64..10, 1..5),
     ) {
         let len = ids.len().min(addresses.len()).min(members.len()).min(needs.len());
+        prop_assume!(
+            ids[..len]
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                == len
+        );
+        prop_assume!(
+            addresses[..len]
+                .iter()
+                .map(|address| address.trim())
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                == len
+        );
         let churches: Vec<Church> = (0..len)
             .map(|index| church_named(&ids[index], addresses[index].trim()))
             .collect();

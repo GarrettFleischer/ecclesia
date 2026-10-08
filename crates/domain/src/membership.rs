@@ -2,8 +2,7 @@
 
 use super::flags::Posture;
 use super::model::{
-    Church, ChurchLinkStatus, DomainError, Effect, MembershipRole, NoticeDraft, User, Viewer,
-    Write,
+    Church, ChurchLinkStatus, DomainError, Effect, MembershipRole, NoticeDraft, User, Viewer, Write,
 };
 use super::notice::{notice, notice_each_governor};
 use super::person::display_name;
