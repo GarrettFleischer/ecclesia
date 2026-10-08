@@ -89,6 +89,7 @@ pub struct ReplyFace<'a> {
     pub avatar: AvatarFace<'a>,
     pub removal: GalleryRemoval<'a>,
     pub reach: PhotoReach,
+    pub church: Option<&'a str>,
 }
 
 /// Photos already staged, kept on a review of the same form.
@@ -195,6 +196,9 @@ pub fn reply_article(reply: &ReplyFace<'_>) -> Markup {
                 (person_avatar(reply.author_id, reply.author_name, reply.avatar, AvatarSize::Small))
                 p class="meta" {
                     (author_name(reply))
+                    @if let Some(church) = reply.church {
+                        span class="reply-church" { (church) }
+                    }
                     (completion_mark(reply.kind))
                 }
             }
@@ -273,6 +277,7 @@ fn paint_loaded(viewer_id: &str, reply: &LoadedReply) -> Markup {
         avatar: avatar_face(reply.avatar_media_id.as_deref()),
         removal: removal_for(viewer_id, reply),
         reach: PhotoReach::Opens,
+        church: None,
     })
 }
 

@@ -3420,6 +3420,10 @@ blockquote.verse cite {
   line-height: 1.3;
 }
 
+.product-screen .card-foot .byline .meta {
+  margin: 0;
+}
+
 .product-screen .example-with-gift .example-credential {
   order: 2;
   display: flex;

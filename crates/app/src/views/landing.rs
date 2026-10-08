@@ -382,15 +382,17 @@ fn sarah_phone() -> Markup {
                 "I'm having surgery Thursday and could use a ride home afterward, plus maybe a couple of meals while I'm recovering."
             }
             div class="card-foot" {
-                span class="byline" {
-                    (person_avatar("sarah", "Sarah", AvatarFace::Initials, AvatarSize::Small))
-                    "Sarah"
-                }
+                (named_byline("sarah", "Sarah", AvatarFace::Initials, "Covenant Church"))
             }
             div class="stack" {
-                (plain_reply("mark", "Mark", "I can pick you up Thursday."))
-                (plain_reply("rachel", "Rachel", "I'll bring dinner Friday."))
-                (plain_reply("tom", "Tom", "I'll take Saturday. And don't worry about dishes."))
+                (plain_reply("mark", "Mark", "St. Luke\u{2019}s", "I can pick you up Thursday."))
+                (plain_reply("rachel", "Rachel", "Hope Chapel", "I'll bring dinner Friday."))
+                (plain_reply(
+                    "tom",
+                    "Tom",
+                    "Mercy Chapel",
+                    "I'll take Saturday. And don't worry about dishes.",
+                ))
             }
         },
     )
@@ -403,26 +405,36 @@ fn david_phone() -> Markup {
             h3 class="shot-title" { "I haven't seen the Brennans in a while" }
             p class="shot-body" { "It's been some time. Has anyone heard from them?" }
             div class="card-foot" {
-                span class="byline" {
-                    (person_avatar("naomi-ellis", "Naomi Ellis", AvatarFace::Initials, AvatarSize::Small))
-                    "Naomi Ellis"
-                }
+                (named_byline(
+                    "naomi-ellis",
+                    "Naomi Ellis",
+                    AvatarFace::Initials,
+                    "St. Luke\u{2019}s",
+                ))
             }
             div class="stack" {
                 (plain_reply(
                     "david-brennan",
                     "David Brennan",
+                    "Grace Fellowship",
                     "My wife has been very sick. I've been home with her.",
                 ))
-                (plain_reply("peter-lang", "Peter Lang", "I'll bring dinner tomorrow."))
+                (plain_reply(
+                    "peter-lang",
+                    "Peter Lang",
+                    "Hope Chapel",
+                    "I'll bring dinner tomorrow.",
+                ))
                 (plain_reply(
                     "hannah-brooks",
                     "Hannah Brooks",
+                    "Covenant Church",
                     "I can mow the lawn this weekend.",
                 ))
                 (plain_reply(
                     "ruth-alvarez",
                     "Ruth Alvarez",
+                    "Mercy Chapel",
                     "I can sit with her for a few hours so you can get some rest.",
                 ))
             }
@@ -489,15 +501,12 @@ fn handrail_post() -> Markup {
             }
             (photo_gallery(&before, GalleryRemoval::Closed, PhotoReach::Fixed))
             div class="card-foot need-meta" {
-                span class="byline" {
-                    (person_avatar(
-                        "linda-harper",
-                        "Linda Harper",
-                        static_avatar("linda-harper", LINDA_AVATAR),
-                        AvatarSize::Small,
-                    ))
-                    "Linda Harper"
-                }
+                (named_byline(
+                    "linda-harper",
+                    "Linda Harper",
+                    static_avatar("linda-harper", LINDA_AVATAR),
+                    "Grace Fellowship",
+                ))
                 span class="chip" { "Carpentry & repairs" }
                 span class="chip" { "Grace Fellowship" }
             }
@@ -506,6 +515,7 @@ fn handrail_post() -> Markup {
                     "emily-lunch",
                     "emily-carter",
                     "Emily Carter",
+                    "Hope Chapel",
                     ReplyKind::Message,
                     "I'd love to bring lunch for any volunteers. Let me know the day and how many.",
                     EMILY_AVATAR,
@@ -516,6 +526,7 @@ fn handrail_post() -> Markup {
                     "linda-saturday",
                     "linda-harper",
                     "Linda Harper",
+                    "Grace Fellowship",
                     ReplyKind::Message,
                     "Saturday works. Three people would be wonderful. Thank you both.",
                     LINDA_AVATAR,
@@ -525,6 +536,7 @@ fn handrail_post() -> Markup {
                     "linda-met",
                     "linda-harper",
                     "Linda Harper",
+                    "Grace Fellowship",
                     ReplyKind::Completion,
                     "The new handrail is in, and it feels solid. Caleb, Marcus, and Devon finished it before lunch. Emily kept everyone fed. Thank you all.",
                     LINDA_AVATAR,
@@ -540,18 +552,12 @@ fn caleb_reply() -> Markup {
     html! {
         div class="example-with-gift" {
             article class="card" data-reply="caleb-crew" {
-                div class="byline" {
-                    (person_avatar(
-                        "caleb-morgan",
-                        "Caleb Morgan",
-                        static_avatar("caleb-morgan", CALEB_AVATAR),
-                        AvatarSize::Small,
-                    ))
-                    p class="meta" {
-                        "Caleb Morgan"
-                        span class="reply-church" { "Mercy Chapel" }
-                    }
-                }
+                (named_byline(
+                    "caleb-morgan",
+                    "Caleb Morgan",
+                    static_avatar("caleb-morgan", CALEB_AVATAR),
+                    "Mercy Chapel",
+                ))
                 p { "My crew can come Saturday morning. I'll measure first so we bring the right rail and anchors." }
             }
             p class="example-credential" {
@@ -566,6 +572,7 @@ fn example_reply(
     id: &'static str,
     author_id: &'static str,
     author_name: &'static str,
+    church: &'static str,
     kind: ReplyKind,
     body: &'static str,
     avatar: &'static str,
@@ -582,16 +589,37 @@ fn example_reply(
         avatar: static_avatar(author_id, avatar),
         removal: GalleryRemoval::Closed,
         reach: PhotoReach::Fixed,
+        church: Some(church),
     })
 }
 
-fn plain_reply(person_id: &'static str, name: &'static str, body: &'static str) -> Markup {
+/// Name with the church under it, in the same markup as Caleb Morgan.
+fn named_byline(
+    person_id: &'static str,
+    name: &'static str,
+    face: AvatarFace<'static>,
+    church: &'static str,
+) -> Markup {
+    html! {
+        div class="byline" {
+            (person_avatar(person_id, name, face, AvatarSize::Small))
+            p class="meta" {
+                (name)
+                span class="reply-church" { (church) }
+            }
+        }
+    }
+}
+
+fn plain_reply(
+    person_id: &'static str,
+    name: &'static str,
+    church: &'static str,
+    body: &'static str,
+) -> Markup {
     html! {
         article class="card" {
-            div class="byline" {
-                (person_avatar(person_id, name, AvatarFace::Initials, AvatarSize::Small))
-                p class="meta" { (name) }
-            }
+            (named_byline(person_id, name, AvatarFace::Initials, church))
             p { (body) }
         }
     }
