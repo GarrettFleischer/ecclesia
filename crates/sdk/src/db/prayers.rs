@@ -7,6 +7,7 @@ use ecclesia_domain::{Prayer, PrayerCard, nearby_km};
 const PRAYER_CARD_SELECT: &str = r#"
         SELECT p.id, p.church_id, c.name AS church_name, p.author_id,
                u.first_name AS author_first, u.last_name AS author_last,
+               u.avatar_media_id AS author_avatar,
                p.body, p.status, p.praise, p.created_at,
                (SELECT COUNT(*) FROM prayer_marks m WHERE m.prayer_id = p.id AND m.kind = 'prayed') AS prayed_count
         FROM prayers p
@@ -94,8 +95,9 @@ impl Db {
             parts.push(format!("{distance} <= {}", nearby_km()));
         }
         if parts.is_empty() {
-            sql.push_str("1 = 0");
+            sql.push_str("p.author_id IS NULL");
         } else {
+            parts.push("p.author_id IS NULL".into());
             sql.push_str(&parts.join(" OR "));
         }
         sql.push_str(") ORDER BY p.created_at DESC LIMIT 200");

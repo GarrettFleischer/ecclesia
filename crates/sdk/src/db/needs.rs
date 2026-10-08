@@ -1,7 +1,9 @@
 use super::Db;
 use super::bind::{Bind, placeholders};
 use super::distance::haversine_km_sql;
-use super::rows::{ApplicationRow, NeedCardRow, NeedReplyCardRow, NeedRow, map_all};
+use super::rows::{
+    ApplicationRow, NeedCardRow, NeedReplyCardRow, NeedRow, map_all, map_reply_cards,
+};
 use ecclesia_domain::{Application, Need, NeedCard, NeedReplyCard, Viewer, nearby_km};
 
 const NEED_CARD_SELECT: &str = r#"
@@ -194,18 +196,18 @@ impl Db {
     }
 
     pub async fn need_replies(&self, need_id: &str) -> anyhow::Result<Vec<NeedReplyCard>> {
-        Ok(map_all(
-            self.fetch_all::<NeedReplyCardRow>(
+        let rows = self
+            .fetch_all::<NeedReplyCardRow>(
                 "SELECT r.id, r.need_id, r.author_id, u.first_name AS author_first,
-                        u.last_name AS author_last, r.body, r.created_at
+                        u.last_name AS author_last, r.kind, r.body, r.created_at
                  FROM need_replies r
                  JOIN users u ON u.id = r.author_id
                  WHERE r.need_id = ?
                  ORDER BY r.created_at ASC, r.id ASC",
                 &[Bind::Text(need_id)],
             )
-            .await?,
-        ))
+            .await?;
+        Ok(map_reply_cards(rows)?)
     }
 
     pub async fn needs_near(&self, latitude: f64, longitude: f64) -> anyhow::Result<Vec<NeedCard>> {

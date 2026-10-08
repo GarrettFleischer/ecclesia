@@ -1,7 +1,20 @@
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Membership, Need, NeedReply, NeedShelf, Notification,
-    Prayer, Share, User, Write,
+    Application, Attachment, Church, Effect, Endorsement, Membership, Need, NeedReply, NeedShelf,
+    Notification, Prayer, Share, User, Write,
 };
+
+/// A photo link stored on a need or a reply.
+///
+/// # Notes
+/// `owner_id` is the need id or the reply id, depending on which list holds the link.
+/// Detach removes this link. It does not remove a [`MemoryWorld::media_assets`] id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryAttachment {
+    pub owner_id: String,
+    pub media_id: String,
+    pub position: i64,
+    pub description: Option<String>,
+}
 
 /// In-process world. The SDK applies Domain effects here so stories can be
 /// confirmed without SQLite or HTTP.
@@ -16,6 +29,14 @@ pub struct MemoryWorld {
     pub shares: Vec<Share>,
     pub applications: Vec<Application>,
     pub need_replies: Vec<NeedReply>,
+    /// `user_id`, `media_id`. No entry means the profile shows initials.
+    pub avatars: Vec<(String, String)>,
+    /// `need_id`, `reply_id` for the reply that closed the need.
+    pub closing_replies: Vec<(String, String)>,
+    pub need_media: Vec<MemoryAttachment>,
+    pub reply_media: Vec<MemoryAttachment>,
+    /// Asset ids already stored. Attachment writes do not add or remove these.
+    pub media_assets: Vec<String>,
     pub prayers: Vec<Prayer>,
     pub prayer_marks: Vec<(String, String, String, String)>,
     pub endorsements: Vec<Endorsement>,
@@ -57,6 +78,8 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
             last_name,
             bio,
         } => update_user(world, id, first_name, last_name, bio),
+        Write::SetAvatar { user_id, media_id } => set_avatar(world, user_id, media_id),
+        Write::ClearAvatar { user_id } => clear_avatar(world, user_id),
         Write::InsertChurch(church) => world.churches.push(church),
         Write::UpsertMembership {
             user_id,
@@ -89,6 +112,14 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
             closed_at,
             praise,
         } => set_need_status(world, id, status, closed_at, praise),
+        Write::SetClosingReply { need_id, reply_id } => set_closing_reply(world, need_id, reply_id),
+        Write::AttachNeedMedia {
+            need_id,
+            attachments,
+        } => push_attachments(&mut world.need_media, need_id, attachments),
+        Write::DetachNeedMedia { need_id, media_id } => {
+            detach_attachment(&mut world.need_media, &need_id, &media_id)
+        }
         Write::MoveNeed { id, church_id } => move_need(world, id, church_id),
         Write::InsertApplication(application) => world.applications.push(application),
         Write::SetApplicationStatus { id, status } => set_application_status(world, id, status),
@@ -101,6 +132,13 @@ fn apply_write(world: &mut MemoryWorld, write: Write) {
         } => upsert_member_gift(world, user_id, gift_id, note),
         Write::RemoveMemberGift { user_id, gift_id } => remove_member_gift(world, user_id, gift_id),
         Write::InsertNeedReply(reply) => world.need_replies.push(reply),
+        Write::AttachReplyMedia {
+            reply_id,
+            attachments,
+        } => push_attachments(&mut world.reply_media, reply_id, attachments),
+        Write::DetachReplyMedia { reply_id, media_id } => {
+            detach_attachment(&mut world.reply_media, &reply_id, &media_id)
+        }
         Write::InsertPrayer(prayer) => world.prayers.push(prayer),
         Write::SetPrayerAnswered {
             id,
@@ -169,6 +207,50 @@ fn delete_membership(world: &mut MemoryWorld, user_id: String, church_id: String
         return;
     };
     user.memberships.retain(|link| link.church_id != church_id);
+}
+
+fn set_avatar(world: &mut MemoryWorld, user_id: String, media_id: String) {
+    if let Some(avatar) = world.avatars.iter_mut().find(|(id, _)| id == &user_id) {
+        avatar.1 = media_id;
+        return;
+    }
+    world.avatars.push((user_id, media_id));
+}
+
+fn clear_avatar(world: &mut MemoryWorld, user_id: String) {
+    world.avatars.retain(|(id, _)| id != &user_id);
+}
+
+fn set_closing_reply(world: &mut MemoryWorld, need_id: String, reply_id: Option<String>) {
+    world.closing_replies.retain(|(id, _)| id != &need_id);
+    if let Some(reply_id) = reply_id {
+        world.closing_replies.push((need_id, reply_id));
+    }
+}
+
+fn push_attachments(
+    links: &mut Vec<MemoryAttachment>,
+    owner_id: String,
+    attachments: Vec<Attachment>,
+) {
+    for attachment in attachments {
+        links.push(MemoryAttachment {
+            owner_id: owner_id.clone(),
+            media_id: attachment.media_id,
+            position: attachment.position,
+            description: attachment.description,
+        });
+    }
+}
+
+fn detach_attachment(links: &mut Vec<MemoryAttachment>, owner_id: &str, media_id: &str) {
+    let Some(index) = links
+        .iter()
+        .position(|link| link.owner_id == owner_id && link.media_id == media_id)
+    else {
+        return;
+    };
+    links.remove(index);
 }
 
 fn set_need_status(
@@ -297,9 +379,11 @@ fn push_notice(world: &mut MemoryWorld, notice: ecclesia_domain::NoticeDraft, no
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecclesia_domain::sample::{church, user_in_church, user_named};
+    use ecclesia_domain::sample::{church, user_in_church, user_named, viewer_of};
     use ecclesia_domain::{
-        Viewer, accept_endorsement, accept_invite, approve_membership, replace_with_pending,
+        AttachmentRef, CatalogPresence, Posture, PriorOffer, ReplyKind, Viewer, accept_endorsement,
+        accept_invite, apply_to_need, approve_membership, complete_need,
+        post_need_with_attachments, reopen_need, replace_with_pending,
     };
 
     fn user(id: &str, first: &str) -> User {
@@ -376,5 +460,211 @@ mod tests {
         };
         let target = user_in_church("peter", "grace", "member", "pending");
         assert!(approve_membership(&viewer, &target, &church("grace")).is_err());
+    }
+
+    fn author() -> Viewer {
+        viewer_of(
+            user_in_church("ada", "grace", "member", "active"),
+            Some(church("grace")),
+        )
+    }
+
+    #[test]
+    fn completion_applies_reply_media_status_and_closing_reply_in_order() {
+        let viewer = author();
+        let mut world = MemoryWorld::default();
+        world.media_assets.push("m1".into());
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[AttachmentRef {
+                media_id: "m1",
+                description: Some("west slope"),
+            }],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        world.apply(posted, "t0");
+        let need = world.needs[0].clone();
+        let completed = complete_need(
+            &viewer,
+            &need,
+            "The roof is dry.",
+            Posture::Lifts,
+            &[AttachmentRef {
+                media_id: "m1",
+                description: None,
+            }],
+            "reply-1".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        assert!(matches!(completed.writes[0], Write::InsertNeedReply(_)));
+        assert!(matches!(
+            completed.writes[1],
+            Write::AttachReplyMedia { .. }
+        ));
+        assert!(matches!(completed.writes[2], Write::SetNeedStatus { .. }));
+        assert!(matches!(completed.writes[3], Write::SetClosingReply { .. }));
+        world.apply(completed, "t1");
+        assert_eq!(world.need_replies[0].kind, ReplyKind::Completion);
+        assert_eq!(world.reply_media.len(), 1);
+        assert_eq!(world.needs[0].status, "closed");
+        assert_eq!(world.needs[0].praise, None);
+        assert_eq!(
+            world.closing_replies,
+            vec![("need-1".into(), "reply-1".into())]
+        );
+        assert_eq!(world.media_assets, vec!["m1".to_string()]);
+        let reopened = reopen_need(&viewer, &world.needs[0]).unwrap();
+        world.apply(reopened, "t2");
+        assert_eq!(world.needs[0].status, "open");
+        assert!(world.closing_replies.is_empty());
+        assert_eq!(world.need_replies.len(), 1);
+        assert_eq!(world.need_replies[0].kind, ReplyKind::Completion);
+    }
+
+    #[test]
+    fn empty_attachment_writes_insert_no_links() {
+        let viewer = author();
+        let mut world = MemoryWorld::default();
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        world.apply(posted, "t0");
+        let completed = complete_need(
+            &viewer,
+            &world.needs[0],
+            "The roof is dry.",
+            Posture::Lifts,
+            &[],
+            "reply-1".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        let Write::AttachReplyMedia { attachments, .. } = &completed.writes[1] else {
+            panic!("completion attaches photos even when there are none");
+        };
+        assert!(attachments.is_empty());
+        world.apply(completed, "t1");
+        assert!(world.need_media.is_empty());
+        assert!(world.reply_media.is_empty());
+        assert_eq!(world.need_replies[0].kind, ReplyKind::Completion);
+    }
+
+    #[test]
+    fn detach_removes_the_link_and_keeps_the_asset() {
+        let mut world = MemoryWorld::default();
+        world.media_assets.push("m1".into());
+        world.apply(
+            Effect {
+                writes: vec![
+                    Write::AttachNeedMedia {
+                        need_id: "need-1".into(),
+                        attachments: vec![Attachment {
+                            media_id: "m1".into(),
+                            position: 0,
+                            description: Some("porch".into()),
+                        }],
+                    },
+                    Write::DetachNeedMedia {
+                        need_id: "need-1".into(),
+                        media_id: "m1".into(),
+                    },
+                ],
+                notices: vec![],
+            },
+            "t",
+        );
+        assert!(world.need_media.is_empty());
+        assert_eq!(world.media_assets, vec!["m1".to_string()]);
+    }
+
+    #[test]
+    fn avatar_set_replaces_and_clear_removes() {
+        let mut world = MemoryWorld::default();
+        world.apply(
+            Effect::write(Write::SetAvatar {
+                user_id: "ada".into(),
+                media_id: "m1".into(),
+            }),
+            "t",
+        );
+        world.apply(
+            Effect::write(Write::SetAvatar {
+                user_id: "ada".into(),
+                media_id: "m2".into(),
+            }),
+            "t",
+        );
+        assert_eq!(world.avatars, vec![("ada".into(), "m2".into())]);
+        world.apply(
+            Effect::write(Write::ClearAvatar {
+                user_id: "ada".into(),
+            }),
+            "t",
+        );
+        assert!(world.avatars.is_empty());
+    }
+
+    #[test]
+    fn an_offer_does_not_become_a_public_reply() {
+        let viewer = author();
+        let helper = viewer_of(
+            user_in_church("bea", "grace", "member", "active"),
+            Some(church("grace")),
+        );
+        let grace = church("grace");
+        let mut world = MemoryWorld::default();
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        world.apply(posted, "t0");
+        let offer = apply_to_need(
+            &helper,
+            &world.needs[0],
+            &grace,
+            PriorOffer::Fresh,
+            "I can bring soup on Thursday evening.",
+            Posture::Lifts,
+            "app-1".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        world.apply(offer, "t1");
+        assert!(world.need_replies.is_empty());
+        assert_eq!(
+            world.applications[0].message,
+            "I can bring soup on Thursday evening."
+        );
     }
 }

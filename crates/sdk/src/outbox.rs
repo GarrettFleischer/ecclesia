@@ -24,6 +24,9 @@ pub async fn poll_once(db: &Db, push: &PushHub) {
         tracing::warn!("need archive failed: {error:#}");
     }
     let now = now_iso();
+    if let Err(error) = crate::media::sweep_stale_staged(db, &now).await {
+        tracing::warn!("stale media sweep failed: {error:#}");
+    }
     match db.outbox_lag_seconds(&now).await {
         Ok(Some(lag)) => {
             tracing::info!(ecclesia_outbox_lag_seconds = lag, "outbox lag");
@@ -48,6 +51,7 @@ async fn deliver_row(db: &Db, push: &PushHub, row: OutboxRow) {
     let result = match row.kind.as_str() {
         "push" => deliver_push(db, push, &row).await,
         "mail" => deliver_mail(&row).await,
+        "media_promote" | "media_delete" => deliver_media(db, &row).await,
         other => {
             tracing::warn!(outbox_id = %row.id, kind = other, "outbox kind skipped");
             Ok(())
@@ -68,6 +72,12 @@ async fn deliver_row(db: &Db, push: &PushHub, row: OutboxRow) {
             }
         }
     }
+}
+
+async fn deliver_media(db: &Db, row: &OutboxRow) -> anyhow::Result<()> {
+    let store = crate::media::open_configured_store()?;
+    crate::media::perform_media_job(db, &store, &row.kind, &row.payload).await?;
+    Ok(())
 }
 
 async fn deliver_push(db: &Db, push: &PushHub, row: &OutboxRow) -> anyhow::Result<()> {

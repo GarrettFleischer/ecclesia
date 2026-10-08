@@ -13,6 +13,8 @@ pub mod host;
 pub mod identity;
 pub mod judge;
 pub mod limit;
+pub mod live;
+pub mod media;
 pub mod memory;
 pub mod outbox;
 pub mod password;

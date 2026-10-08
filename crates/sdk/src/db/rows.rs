@@ -2,8 +2,57 @@
 
 use ecclesia_domain::{
     Application, Church, ChurchMember, Endorsement, EndorsementCard, Gift, MemberGift, Need,
-    NeedCard, NeedReplyCard, NeedShelf, Notification, Prayer, PrayerCard, Share, User, display_name,
+    NeedCard, NeedReply, NeedReplyCard, NeedShelf, Notification, Prayer, PrayerCard, ReplyKind,
+    Share, User, display_name,
 };
+
+/// Stored reply kind text that is not `message` or `completion`.
+///
+/// # Notes
+/// A missing column or SQL `NULL` is not this error. Those are a legacy row
+/// and read as [`ReplyKind::Message`]. A nonempty unknown value is refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownReplyKind {
+    pub value: String,
+}
+
+impl std::fmt::Display for UnknownReplyKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "unknown reply kind")
+    }
+}
+
+impl std::error::Error for UnknownReplyKind {}
+
+/// Reads `need_replies.kind`.
+///
+/// # Parameters
+/// - `value`: the column text. `None` means the column was missing or `NULL`.
+///
+/// # Returns
+/// [`ReplyKind::Message`] for a missing value, the parsed kind, or [`UnknownReplyKind`].
+///
+/// # Examples
+/// ```
+/// use ecclesia_domain::ReplyKind;
+/// use ecclesia_sdk::db::reply_kind_from_column;
+///
+/// assert_eq!(reply_kind_from_column(None).unwrap(), ReplyKind::Message);
+/// assert_eq!(
+///     reply_kind_from_column(Some("completion")).unwrap(),
+///     ReplyKind::Completion
+/// );
+/// assert!(reply_kind_from_column(Some("note")).is_err());
+/// assert!(reply_kind_from_column(Some("")).is_err());
+/// ```
+pub fn reply_kind_from_column(value: Option<&str>) -> Result<ReplyKind, UnknownReplyKind> {
+    let Some(text) = value else {
+        return Ok(ReplyKind::Message);
+    };
+    ReplyKind::parse(text).ok_or_else(|| UnknownReplyKind {
+        value: text.to_string(),
+    })
+}
 
 #[derive(sqlx::FromRow)]
 pub struct UserRow {
@@ -170,6 +219,43 @@ where
     T: From<R>,
 {
     rows.into_iter().map(T::from).collect()
+}
+
+/// Maps reply rows, refusing an unknown nonempty kind.
+///
+/// # Returns
+/// Cards in the same order, or the first [`UnknownReplyKind`].
+pub fn map_reply_cards(
+    rows: Vec<NeedReplyCardRow>,
+) -> Result<Vec<NeedReplyCard>, UnknownReplyKind> {
+    let mut cards = Vec::with_capacity(rows.len());
+    for row in rows {
+        cards.push(reply_card_from_row(row)?);
+    }
+    Ok(cards)
+}
+
+fn reply_card_from_row(row: NeedReplyCardRow) -> Result<NeedReplyCard, UnknownReplyKind> {
+    Ok(NeedReplyCard {
+        id: row.id,
+        need_id: row.need_id,
+        author_id: row.author_id,
+        author_name: display_name(&row.author_first, &row.author_last),
+        kind: reply_kind_from_column(row.kind.as_deref())?,
+        body: row.body,
+        created_at: row.created_at,
+    })
+}
+
+pub(crate) fn need_reply_from_row(row: NeedReplyRow) -> Result<NeedReply, UnknownReplyKind> {
+    Ok(NeedReply {
+        id: row.id,
+        need_id: row.need_id,
+        author_id: row.author_id,
+        kind: reply_kind_from_column(row.kind.as_deref())?,
+        body: row.body,
+        created_at: row.created_at,
+    })
 }
 
 impl From<UserRow> for User {
@@ -349,8 +435,37 @@ pub struct NeedReplyCardRow {
     pub author_id: String,
     pub author_first: String,
     pub author_last: String,
+    /// Missing on a row written before `kind` existed. `NULL` uses the same path.
+    #[sqlx(default)]
+    pub kind: Option<String>,
     pub body: String,
     pub created_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct NeedReplyRow {
+    pub id: String,
+    pub need_id: String,
+    pub author_id: String,
+    pub body: String,
+    pub created_at: String,
+    /// Missing on a row written before `kind` existed. `NULL` uses the same path.
+    #[sqlx(default)]
+    pub kind: Option<String>,
+}
+
+/// One `need_media` or `reply_media` row, in display order.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct AttachmentRow {
+    pub media_id: String,
+    pub position: i64,
+    pub description: Option<String>,
+}
+
+/// A single nullable text column selected as `value`.
+#[derive(sqlx::FromRow)]
+pub(crate) struct OptionalTextRow {
+    pub value: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -374,6 +489,7 @@ pub struct PrayerCardRow {
     pub author_id: Option<String>,
     pub author_first: Option<String>,
     pub author_last: Option<String>,
+    pub author_avatar: Option<String>,
     pub body: String,
     pub status: String,
     pub praise: Option<String>,
@@ -400,19 +516,6 @@ pub struct PrayerLocatedRow {
 pub struct MarkRow {
     pub prayer_id: String,
     pub kind: String,
-}
-
-impl From<NeedReplyCardRow> for NeedReplyCard {
-    fn from(row: NeedReplyCardRow) -> Self {
-        Self {
-            id: row.id,
-            need_id: row.need_id,
-            author_id: row.author_id,
-            author_name: display_name(&row.author_first, &row.author_last),
-            body: row.body,
-            created_at: row.created_at,
-        }
-    }
 }
 
 impl From<PrayerRow> for Prayer {
@@ -443,6 +546,7 @@ impl From<PrayerCardRow> for PrayerCard {
             church_name: row.church_name,
             author_id: row.author_id,
             author_name,
+            author_avatar_id: row.author_avatar,
             body: row.body,
             status: row.status,
             praise: row.praise,
@@ -490,5 +594,43 @@ impl From<PrayerLocatedRow> for (Prayer, f64, f64) {
             latitude,
             longitude,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card(kind: Option<&str>) -> NeedReplyCardRow {
+        NeedReplyCardRow {
+            id: "r".into(),
+            need_id: "n".into(),
+            author_id: "ada".into(),
+            author_first: "Ada".into(),
+            author_last: "Lane".into(),
+            kind: kind.map(str::to_string),
+            body: "Saturday.".into(),
+            created_at: "t".into(),
+        }
+    }
+
+    #[test]
+    fn missing_kind_is_a_message_and_unknown_kind_is_refused() {
+        assert_eq!(reply_kind_from_column(None).unwrap(), ReplyKind::Message);
+        assert_eq!(
+            reply_kind_from_column(Some("message")).unwrap(),
+            ReplyKind::Message
+        );
+        assert_eq!(
+            reply_kind_from_column(Some("completion")).unwrap(),
+            ReplyKind::Completion
+        );
+        let unknown = reply_kind_from_column(Some("note")).unwrap_err();
+        assert_eq!(unknown.value, "note");
+        assert!(reply_kind_from_column(Some("")).is_err());
+        let cards = map_reply_cards(vec![card(None), card(Some("completion"))]).unwrap();
+        assert_eq!(cards[0].kind, ReplyKind::Message);
+        assert_eq!(cards[1].kind, ReplyKind::Completion);
+        assert!(map_reply_cards(vec![card(Some("praise"))]).is_err());
     }
 }

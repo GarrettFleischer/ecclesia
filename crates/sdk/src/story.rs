@@ -1,26 +1,31 @@
 //! One function per user story. HTTP extracts a form and calls one of these.
 
 use ecclesia_domain::{
-    CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect, EndorsementQueue, Gift,
-    GiftOnProfile, MET_NEED_DAYS, Need, NeedApproach, NeedCard, Place, PrayerByline, PrayerCard,
-    PrayerMarkKind, PrayerProof, PrayerReach, PrayerSight, PrayerSource, PriorOffer,
-    PriorPrayerMark, Share, ShareKind, SkillSource, User, Viewer, VoiceKind, Write,
+    AttachmentRef, CatalogPresence, Church, ChurchCard, ChurchMember, DomainError, Effect,
+    EndorsementQueue, Gift, GiftOnProfile, MET_NEED_DAYS, Need, NeedApproach, NeedCard, Place,
+    PrayerByline, PrayerCard, PrayerMarkKind, PrayerProof, PrayerReach, PrayerSight, PrayerSource,
+    PriorOffer, PriorPrayerMark, Share, ShareKind, SkillSource, User, Viewer, VoiceKind, Write,
     accept_application as domain_accept_application,
     accept_endorsement as domain_accept_endorsement, accept_invite as domain_accept_invite,
     add_gift as domain_add_gift, answer_prayer as domain_answer_prayer,
     apply_to_need as domain_apply_to_need, approve_membership as domain_approve_membership,
-    can_view_need_near, churches_with_counts,     close_church as domain_close_church,
-    close_need as domain_close_need, coordinates,
+    can_view_need_near, churches_with_counts, close_church as domain_close_church,
+    close_need as domain_close_need, complete_need as domain_complete_need, coordinates,
     decline_application as domain_decline_application,
     decline_endorsement as domain_decline_endorsement,
     decline_membership as domain_decline_membership, endorse as domain_endorse,
-    import_open_needs as domain_import_open_needs, leave_church as domain_leave_church, mark_prayer as domain_mark_prayer, parse_invite_email,
-    pick_daily_prayer, plant_church as domain_plant_church, post_need as domain_post_need,
-    post_prayer as domain_post_prayer, remove_gift as domain_remove_gift,
-    reopen_need as domain_reopen_need, replace_with_code, replace_with_pending,
-    reply_to_need as domain_reply_to_need, require_need_view, share_expires_on,
-    transfer_church as domain_transfer_church, update_profile as domain_update_profile,
-    visible_need_cards, visible_needs_near, visible_prayers_near,
+    import_open_needs as domain_import_open_needs, leave_church as domain_leave_church,
+    mark_prayer as domain_mark_prayer, parse_invite_email, pick_daily_prayer,
+    plant_church as domain_plant_church,
+    post_need_with_attachments as domain_post_need_with_attachments,
+    post_prayer as domain_post_prayer, remove_avatar_photo as domain_remove_avatar_photo,
+    remove_gift as domain_remove_gift, remove_need_photo as domain_remove_need_photo,
+    remove_reply_photo as domain_remove_reply_photo, reopen_need as domain_reopen_need,
+    replace_avatar_photo as domain_replace_avatar_photo, replace_with_code, replace_with_pending,
+    reply_to_need_with_attachments as domain_reply_to_need_with_attachments, require_need_view,
+    share_expires_on, transfer_church as domain_transfer_church,
+    update_profile as domain_update_profile, visible_need_cards, visible_needs_near,
+    visible_prayers_near,
 };
 
 use crate::cache::Cache;
@@ -28,6 +33,7 @@ use crate::clock::{new_id, nonce, now_iso, shift_days, today_utc};
 use crate::db::{Db, StoryExtras};
 use crate::judge::JudgeHub;
 use crate::limit::RateGate;
+use crate::live::{ReplyHub, publish_committed_reply};
 use crate::places::PlaceBook;
 use crate::push::PushHub;
 use crate::refine::RefineHub;
@@ -37,6 +43,11 @@ pub use crate::identity::{
     DeviceMeta, MailOrigin, api_logout_bearer, api_me_profile, change_password, complete_reset,
     consume_magic, logout, logout_all, refresh_api, register, request_magic, request_reset,
     reset_form_ok, resolve_bearer, resolve_session, revoke_session, sign_in, sign_in_api,
+};
+pub use crate::media::{
+    ConfiguredStore, DeclaredFormat, MediaCaching, MediaDelivery, MediaError, MediaVariant,
+    ObjectStore, PRESIGN_SECONDS, StagedMedia, UploadLength, WEBP_CONTENT_TYPE,
+    authorize_media_read, discard_staged, open_configured_store, stage_media, staged_ids,
 };
 
 #[derive(Clone)]
@@ -48,6 +59,8 @@ pub struct Sdk {
     pub push: PushHub,
     pub gate: RateGate,
     pub places: PlaceBook,
+    /// Reply notices for open need watches. Every clone of this SDK shares it.
+    pub(crate) replies: ReplyHub,
 }
 
 impl Sdk {
@@ -66,6 +79,7 @@ impl Sdk {
             refine,
             push,
             places: PlaceBook::Census,
+            replies: ReplyHub::open(),
         }
     }
 
@@ -289,11 +303,7 @@ pub async fn close_church(
         return Ok(Err(DomainError::NotFound));
     };
     let members = sdk.db.member_releases(church_id).await?;
-    finish(
-        sdk,
-        domain_close_church(user, &church, &members, now_iso()),
-    )
-    .await
+    finish(sdk, domain_close_church(user, &church, &members, now_iso())).await
 }
 
 pub async fn import_open_needs(
@@ -366,13 +376,77 @@ pub async fn post_need(
     gift_id: Option<&str>,
     scope: &str,
 ) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    finish(
+        sdk,
+        posted_need(sdk, viewer, church_id, title, body, gift_id, scope, &[]).await?,
+    )
+    .await
+}
+
+/// Posts a need with up to five staged photos.
+///
+/// # Parameters
+/// - `attachments`: photo ids and descriptions, in display order. Empty posts text only.
+/// - `sight`: staged ids the media store has granted to this viewer.
+///
+/// # Returns
+/// The posted need, a domain refusal, or [`ConversationError::UngrantedMedia`]
+/// when a photo was not granted. Nothing is committed on either refusal.
+///
+/// # Notes
+/// Descriptions are weighed with the title and body before Domain runs.
+/// The need, its share code, and its photo links commit in one transaction.
+/// That transaction marks each photo `attached`, sets `attached_at`, and inserts
+/// one promotion outbox row.
+pub async fn post_need_with_attachments(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    church_id: &str,
+    title: &str,
+    body: &str,
+    gift_id: Option<&str>,
+    scope: &str,
+    attachments: &[AttachmentRef<'_>],
+    sight: &StagedMediaSight<'_>,
+) -> anyhow::Result<Result<StoryOk, ConversationError>> {
+    if let Some(media_id) = ungranted_media(&viewer.user.id, sight, attachments) {
+        return Ok(Err(ConversationError::UngrantedMedia { media_id }));
+    }
+    match posted_need(
+        sdk,
+        viewer,
+        church_id,
+        title,
+        body,
+        gift_id,
+        scope,
+        attachments,
+    )
+    .await?
+    {
+        Ok(effect) => Ok(Ok(commit_story(sdk, effect).await?)),
+        Err(error) => Ok(Err(ConversationError::Domain(error))),
+    }
+}
+
+async fn posted_need(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    church_id: &str,
+    title: &str,
+    body: &str,
+    gift_id: Option<&str>,
+    scope: &str,
+    attachments: &[AttachmentRef<'_>],
+) -> anyhow::Result<Result<Effect, DomainError>> {
     let presence = match gift_id {
         Some(id) => CatalogPresence::of_lookup(sdk.db.gift(id).await?),
         None => CatalogPresence::Listed,
     };
-    let posture = sdk.weigh(VoiceKind::Need, &[title, body]).await;
+    let words = need_words(title, body, attachments);
+    let posture = sdk.weigh(VoiceKind::Need, &words).await;
     let id = new_id();
-    let posted = match domain_post_need(
+    match domain_post_need_with_attachments(
         viewer,
         church_id,
         title,
@@ -381,22 +455,39 @@ pub async fn post_need(
         presence,
         scope,
         posture,
-        id.clone(),
+        attachments,
+        id,
         now_iso(),
     ) {
-        Ok(mut effect) => {
-            let code = sdk.db.fresh_share_code(ShareKind::Need, &id).await?;
-            effect.push(Write::InsertShare(Share {
-                code,
-                kind: ShareKind::Need.as_str().into(),
-                target_id: id,
-                expires_at: None,
-            }));
-            Ok(effect)
-        }
-        Err(error) => Err(error),
+        Ok(effect) => Ok(Ok(include_need_share(sdk, effect).await?)),
+        Err(error) => Ok(Err(error)),
+    }
+}
+
+async fn include_need_share(sdk: &Sdk, mut effect: Effect) -> anyhow::Result<Effect> {
+    let Some(id) = effect.inserted_need_id().map(str::to_owned) else {
+        return Ok(effect);
     };
-    finish(sdk, posted).await
+    let code = sdk.db.fresh_share_code(ShareKind::Need, &id).await?;
+    effect.push(Write::InsertShare(Share {
+        code,
+        kind: ShareKind::Need.as_str().into(),
+        target_id: id,
+        expires_at: None,
+    }));
+    Ok(effect)
+}
+
+fn need_words<'a>(
+    title: &'a str,
+    body: &'a str,
+    attachments: &'a [AttachmentRef<'a>],
+) -> Vec<&'a str> {
+    let mut words = Vec::with_capacity(2 + attachments.len());
+    words.push(title);
+    words.push(body);
+    push_descriptions(&mut words, attachments);
+    words
 }
 
 pub async fn apply_to_need(
@@ -1859,6 +1950,247 @@ mod tests {
         assert!(!next.needs.is_empty());
         assert!(next.needs.len() < 20);
     }
+
+    async fn pastor(sdk: &Sdk) -> (Viewer, String) {
+        let user = register_named(sdk, "Miriam Cole", "miriam@grace.test").await;
+        let planted = plant_church(
+            sdk,
+            &user,
+            "Grace Covenant",
+            "100 Main Street",
+            42.53,
+            -92.45,
+            "A church on Main Street.",
+            "Sunday at 10.",
+            "12-3456789",
+            "IA",
+            "123456",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let church_id = planted.church_id.expect("church");
+        let user = sdk.db.user(&user.id).await.unwrap().expect("member");
+        (sdk.viewer(user).await.unwrap(), church_id)
+    }
+
+    async fn stage_photo(sdk: &Sdk, id: &str, owner: &str) {
+        let full = format!("stage/full/{id}");
+        let thumb = format!("stage/thumb/{id}");
+        sdk.db
+            .execute(
+                "INSERT INTO media_assets (
+                    id, owner_id, state, staging_full_key, staging_thumb_key,
+                    width, height, full_bytes, thumb_bytes, created_at
+                 ) VALUES (?, ?, 'staged', ?, ?, 800, 600, 1000, 400, '2026-10-07T12:00:00Z')",
+                &[
+                    crate::db::Bind::Text(id),
+                    crate::db::Bind::Text(owner),
+                    crate::db::Bind::Text(&full),
+                    crate::db::Bind::Text(&thumb),
+                ],
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_ungranted_photo_does_not_post() {
+        let sdk = fresh_sdk().await;
+        let (viewer, church_id) = pastor(&sdk).await;
+        let grants = [StagedGrant {
+            media_id: "photo-1",
+        }];
+        let sight = StagedMediaSight::granted("someone-else", &grants);
+        let refused = post_need_with_attachments(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Porch boards",
+            "The boards are soft.",
+            None,
+            "church",
+            &[AttachmentRef {
+                media_id: "photo-1",
+                description: Some("west slope"),
+            }],
+            &sight,
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert_eq!(
+            refused,
+            ConversationError::UngrantedMedia {
+                media_id: "photo-1".into()
+            }
+        );
+        assert_eq!(
+            sdk.db
+                .fetch_scalar_i64("SELECT COUNT(*) FROM needs", &[])
+                .await
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn a_photo_description_is_weighed_before_the_need_is_posted() {
+        let path = std::env::temp_dir().join(format!(
+            "ecclesia-story-gate-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db = Db::connect(&format!("sqlite://{}", path.display()))
+            .await
+            .unwrap();
+        let sdk = Sdk::assemble(
+            db,
+            JudgeHub::word_gate(),
+            RefineHub::silent(),
+            PushHub::silent(),
+            Cache::memory(),
+        );
+        let (viewer, church_id) = pastor(&sdk).await;
+        stage_photo(&sdk, "photo-1", &viewer.user.id).await;
+        let grants = [StagedGrant {
+            media_id: "photo-1",
+        }];
+        let sight = StagedMediaSight::granted(&viewer.user.id, &grants);
+        let refused = post_need_with_attachments(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Porch boards",
+            "The boards are soft.",
+            None,
+            "church",
+            &[AttachmentRef {
+                media_id: "photo-1",
+                description: Some("what an idiot"),
+            }],
+            &sight,
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert_eq!(refused, ConversationError::Domain(DomainError::TearsDown));
+        assert_eq!(
+            sdk.db
+                .fetch_scalar_i64("SELECT COUNT(*) FROM needs", &[])
+                .await
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn a_granted_photo_posts_and_an_empty_completion_closes() {
+        let sdk = fresh_sdk().await;
+        let (viewer, church_id) = pastor(&sdk).await;
+        stage_photo(&sdk, "photo-1", &viewer.user.id).await;
+        let grants = [StagedGrant {
+            media_id: "photo-1",
+        }];
+        let sight = StagedMediaSight::granted(&viewer.user.id, &grants);
+        let posted = post_need_with_attachments(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Porch boards",
+            "The boards are soft.",
+            None,
+            "church",
+            &[AttachmentRef {
+                media_id: "photo-1",
+                description: Some("west slope"),
+            }],
+            &sight,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let need_id = posted.need_id.expect("need");
+        let photos = sdk.db.need_attachments(&need_id).await.unwrap();
+        assert_eq!(photos.len(), 1);
+        assert_eq!(photos[0].description.as_deref(), Some("west slope"));
+        complete_need(
+            &sdk,
+            &viewer,
+            &need_id,
+            "The boards are firm.",
+            &[],
+            &StagedMediaSight::none(&viewer.user.id),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let replies = sdk.db.need_replies(&need_id).await.unwrap();
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0].kind, ecclesia_domain::ReplyKind::Completion);
+        assert!(
+            sdk.db
+                .reply_attachments(&replies[0].id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            sdk.db.closing_reply_reference(&need_id).await.unwrap(),
+            Some(crate::db::ClosingReplyReference::Reply(
+                replies[0].id.clone()
+            ))
+        );
+        let need = sdk.db.need(&need_id).await.unwrap().unwrap();
+        assert_eq!(need.status, "closed");
+        assert!(need.praise.is_none());
+    }
+
+    #[tokio::test]
+    async fn offer_text_is_not_copied_into_replies_on_migrate() {
+        let sdk = fresh_sdk().await;
+        let (viewer, church_id) = pastor(&sdk).await;
+        let posted = post_need(
+            &sdk,
+            &viewer,
+            &church_id,
+            "Porch boards",
+            "The boards are soft.",
+            None,
+            "church",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let need_id = posted.need_id.expect("need");
+        let message = "I can bring soup on Thursday evening.";
+        sdk.db
+            .apply(&Effect::write(Write::InsertApplication(
+                ecclesia_domain::Application {
+                    id: "offer-1".into(),
+                    need_id: need_id.clone(),
+                    user_id: viewer.user.id.clone(),
+                    message: message.into(),
+                    status: "pending".into(),
+                    created_at: "t".into(),
+                },
+            )))
+            .await
+            .unwrap();
+        sdk.db.migrate().await.unwrap();
+        let replies = sdk.db.need_replies(&need_id).await.unwrap();
+        assert!(replies.iter().all(|reply| reply.body != message));
+        let offer = sdk
+            .db
+            .application_pair(&need_id, &viewer.user.id)
+            .await
+            .unwrap()
+            .expect("offer");
+        assert_eq!(offer.message, message);
+    }
 }
 
 pub enum PrayerName {
@@ -1974,7 +2306,7 @@ pub async fn mark_prayer(
     let Some(church) = sdk.db.church(&prayer.church_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let reach = match prayer_reach(viewer, &church, place) {
+    let reach = match prayer_reach(viewer, &prayer, &church, place) {
         Ok(reach) => reach,
         Err(error) => return Ok(Err(error)),
     };
@@ -2010,6 +2342,14 @@ pub async fn answer_prayer(
     .await
 }
 
+/// Replies on an open need.
+///
+/// # Returns
+/// The committed reply, or a domain refusal.
+///
+/// # Notes
+/// After the commit succeeds, the need id and reply id are published.
+/// A Redis failure leaves the reply in place.
 pub async fn reply_to_need(
     sdk: &Sdk,
     viewer: &Viewer,
@@ -2023,28 +2363,347 @@ pub async fn reply_to_need(
     let Some(church) = sdk.db.church(&need.church_id).await? else {
         return Ok(Err(DomainError::NotFound));
     };
-    let approach = if ecclesia_domain::can_view_need(viewer, need.sight(), &church) {
+    let approach = approach_for(viewer, &need, &church, place);
+    match reply_effect(sdk, viewer, &need, &church, approach, body, &[]).await? {
+        Ok(effect) => Ok(Ok(commit_reply(sdk, effect).await?)),
+        Err(error) => Ok(Err(error)),
+    }
+}
+
+/// Replies on a need with up to five staged photos.
+///
+/// # Parameters
+/// - `attachments`: photo ids and descriptions, in display order.
+/// - `sight`: staged ids the media store has granted to this viewer.
+///
+/// # Returns
+/// The committed reply, a domain refusal, or [`ConversationError::UngrantedMedia`].
+///
+/// # Notes
+/// Descriptions are weighed with the reply before Domain runs. An empty photo
+/// list commits the reply alone. Photo links, `attached` state, and the promotion
+/// outbox row commit in the same transaction. After that commit succeeds, the
+/// need id and reply id are published. A Redis failure leaves the reply in place.
+pub async fn reply_to_need_with_attachments(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need_id: &str,
+    body: &str,
+    place: Option<Place>,
+    attachments: &[AttachmentRef<'_>],
+    sight: &StagedMediaSight<'_>,
+) -> anyhow::Result<Result<StoryOk, ConversationError>> {
+    if let Some(media_id) = ungranted_media(&viewer.user.id, sight, attachments) {
+        return Ok(Err(ConversationError::UngrantedMedia { media_id }));
+    }
+    let Some(need) = sdk.db.need(need_id).await? else {
+        return Ok(Err(ConversationError::Domain(DomainError::NotFound)));
+    };
+    let Some(church) = sdk.db.church(&need.church_id).await? else {
+        return Ok(Err(ConversationError::Domain(DomainError::NotFound)));
+    };
+    let approach = approach_for(viewer, &need, &church, place);
+    match reply_effect(sdk, viewer, &need, &church, approach, body, attachments).await? {
+        Ok(effect) => Ok(Ok(commit_reply(sdk, effect).await?)),
+        Err(error) => Ok(Err(ConversationError::Domain(error))),
+    }
+}
+
+/// The author closes an open need with a completion reply.
+///
+/// # Parameters
+/// - `body`: what happened.
+/// - `attachments`: zero to five photos of the result.
+/// - `sight`: staged ids granted to this viewer.
+///
+/// # Returns
+/// The committed completion, or a refusal that leaves the need open.
+///
+/// # Notes
+/// Domain orders the writes: insert the completion, attach its photos (an empty
+/// list inserts no rows), mark the need met, then store the closing reply.
+/// This function commits that effect in one transaction, including each photo's
+/// `attached` state and promotion outbox row. Praise is not written. After that
+/// commit succeeds, the need id and reply id are published. A Redis failure
+/// leaves the completion in place.
+pub async fn complete_need(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need_id: &str,
+    body: &str,
+    attachments: &[AttachmentRef<'_>],
+    sight: &StagedMediaSight<'_>,
+) -> anyhow::Result<Result<StoryOk, ConversationError>> {
+    if let Some(media_id) = ungranted_media(&viewer.user.id, sight, attachments) {
+        return Ok(Err(ConversationError::UngrantedMedia { media_id }));
+    }
+    let Some(need) = sdk.db.need(need_id).await? else {
+        return Ok(Err(ConversationError::Domain(DomainError::NotFound)));
+    };
+    let words = reply_words(body, attachments);
+    let posture = sdk.weigh(VoiceKind::Reply, &words).await;
+    match domain_complete_need(
+        viewer,
+        &need,
+        body,
+        posture,
+        attachments,
+        new_id(),
+        now_iso(),
+    ) {
+        Ok(effect) => Ok(Ok(commit_reply(sdk, effect).await?)),
+        Err(error) => Ok(Err(ConversationError::Domain(error))),
+    }
+}
+
+/// The author detaches one photo from their need.
+///
+/// # Notes
+/// The write removes the link. The asset row stays. When no need, reply, or
+/// avatar still points at it, the same transaction queues object deletion.
+pub async fn remove_need_photo(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need_id: &str,
+    media_id: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(need) = sdk.db.need(need_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    finish(sdk, domain_remove_need_photo(viewer, &need, media_id)).await
+}
+
+/// The reply's author detaches one photo from that reply.
+///
+/// # Notes
+/// The write removes the link. The asset row stays. When no need, reply, or
+/// avatar still points at it, the same transaction queues object deletion.
+pub async fn remove_reply_photo(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    reply_id: &str,
+    media_id: &str,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    let Some(reply) = sdk.db.need_reply(reply_id).await? else {
+        return Ok(Err(DomainError::NotFound));
+    };
+    finish(sdk, domain_remove_reply_photo(viewer, &reply, media_id)).await
+}
+
+/// The profile owner replaces their photo with one they staged.
+///
+/// # Parameters
+/// - `media_id`: the staged photo to show.
+/// - `sight`: staged ids the media store granted to this viewer.
+///
+/// # Returns
+/// The committed profile pointer, or a refusal that leaves the previous photo.
+///
+/// # Notes
+/// The new photo is marked `attached` in that transaction. The previous photo
+/// is queued for deletion only when no need, reply, or avatar still uses it.
+pub async fn replace_avatar_photo(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    media_id: &str,
+    sight: &StagedMediaSight<'_>,
+) -> anyhow::Result<Result<StoryOk, ConversationError>> {
+    let drafts = [AttachmentRef {
+        media_id,
+        description: None,
+    }];
+    if let Some(media_id) = ungranted_media(&viewer.user.id, sight, &drafts) {
+        return Ok(Err(ConversationError::UngrantedMedia { media_id }));
+    }
+    match domain_replace_avatar_photo(viewer, &viewer.user.id, media_id) {
+        Ok(effect) => Ok(Ok(commit_story(sdk, effect).await?)),
+        Err(error) => Ok(Err(ConversationError::Domain(error))),
+    }
+}
+
+/// The profile owner removes their photo and returns to initials.
+pub async fn remove_avatar_photo(
+    sdk: &Sdk,
+    viewer: &Viewer,
+) -> anyhow::Result<Result<StoryOk, DomainError>> {
+    finish(sdk, domain_remove_avatar_photo(viewer, &viewer.user.id)).await
+}
+
+async fn reply_effect(
+    sdk: &Sdk,
+    viewer: &Viewer,
+    need: &Need,
+    church: &Church,
+    approach: NeedApproach,
+    body: &str,
+    attachments: &[AttachmentRef<'_>],
+) -> anyhow::Result<Result<Effect, DomainError>> {
+    let words = reply_words(body, attachments);
+    let posture = sdk.weigh(VoiceKind::Reply, &words).await;
+    Ok(domain_reply_to_need_with_attachments(
+        viewer,
+        need,
+        church,
+        approach,
+        body,
+        posture,
+        attachments,
+        new_id(),
+        now_iso(),
+    ))
+}
+
+fn approach_for(
+    viewer: &Viewer,
+    need: &Need,
+    church: &Church,
+    place: Option<Place>,
+) -> NeedApproach {
+    if ecclesia_domain::can_view_need(viewer, need.sight(), church) {
         NeedApproach::Membership
     } else if let Some(place) = place {
         NeedApproach::Near(place)
     } else {
         NeedApproach::Membership
-    };
-    let posture = sdk.weigh(VoiceKind::Reply, &[body]).await;
-    finish(
-        sdk,
-        domain_reply_to_need(
-            viewer,
-            &need,
-            &church,
-            approach,
-            body,
-            posture,
-            new_id(),
-            now_iso(),
-        ),
-    )
-    .await
+    }
+}
+
+fn reply_words<'a>(body: &'a str, attachments: &'a [AttachmentRef<'a>]) -> Vec<&'a str> {
+    let mut words = Vec::with_capacity(1 + attachments.len());
+    words.push(body);
+    push_descriptions(&mut words, attachments);
+    words
+}
+
+fn push_descriptions<'a>(words: &mut Vec<&'a str>, attachments: &'a [AttachmentRef<'a>]) {
+    for attachment in attachments {
+        if let Some(description) = attachment.description {
+            words.push(description);
+        }
+    }
+}
+
+fn ungranted_media(
+    viewer_id: &str,
+    sight: &StagedMediaSight<'_>,
+    attachments: &[AttachmentRef<'_>],
+) -> Option<String> {
+    for attachment in attachments {
+        let media_id = attachment.media_id.trim();
+        if media_id.is_empty() {
+            continue;
+        }
+        if !sight.allows(viewer_id, media_id) {
+            return Some(media_id.to_string());
+        }
+    }
+    None
+}
+
+async fn commit_story(sdk: &Sdk, effect: Effect) -> anyhow::Result<StoryOk> {
+    if !effect.writes.is_empty() {
+        sdk.commit(&effect).await?;
+    }
+    Ok(StoryOk::from_effect(&effect))
+}
+
+/// Commits a reply or completion, then publishes its ids.
+///
+/// # Notes
+/// The publish runs only after the commit returns. Redis trouble does not
+/// change this function's `Result`.
+async fn commit_reply(sdk: &Sdk, effect: Effect) -> anyhow::Result<StoryOk> {
+    if !effect.writes.is_empty() {
+        sdk.commit(&effect).await?;
+    }
+    if let Some((need_id, reply_id)) = committed_reply(&effect) {
+        publish_committed_reply(sdk, need_id, reply_id).await;
+    }
+    Ok(StoryOk::from_effect(&effect))
+}
+
+fn committed_reply(effect: &Effect) -> Option<(&str, &str)> {
+    effect.writes.iter().find_map(|write| match write {
+        Write::InsertNeedReply(reply) => Some((reply.need_id.as_str(), reply.id.as_str())),
+        _ => None,
+    })
+}
+
+/// A staged photo the media store says one viewer may attach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StagedGrant<'a> {
+    pub media_id: &'a str,
+}
+
+/// Staged photos the media store has already granted to one viewer.
+///
+/// # Notes
+/// The store loads `media_assets` and passes only rows in state `staged`
+/// owned by `owner_id`. This sight does not query the store. A story refuses
+/// an attachment whose id is not granted to the signed-in viewer.
+///
+/// # Examples
+/// ```
+/// use ecclesia_sdk::story::{StagedGrant, StagedMediaSight};
+///
+/// let grants = [StagedGrant { media_id: "m1" }];
+/// let sight = StagedMediaSight::granted("ada", &grants);
+/// assert!(sight.allows("ada", " m1 "));
+/// assert!(!sight.allows("bea", "m1"));
+/// assert!(!sight.allows("ada", "m2"));
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct StagedMediaSight<'a> {
+    owner_id: &'a str,
+    grants: &'a [StagedGrant<'a>],
+}
+
+impl<'a> StagedMediaSight<'a> {
+    /// # Parameters
+    /// - `owner_id`: the user the store loaded these staged rows for.
+    /// - `grants`: staged ids that user may attach.
+    ///
+    /// # Returns
+    /// A sight stories can check without reading `media_assets`.
+    pub fn granted(owner_id: &'a str, grants: &'a [StagedGrant<'a>]) -> Self {
+        Self { owner_id, grants }
+    }
+
+    /// No staged photos. Text-only stories use this.
+    ///
+    /// # Parameters
+    /// - `owner_id`: the signed-in viewer. An empty grant list still names them.
+    pub fn none(owner_id: &'a str) -> Self {
+        Self {
+            owner_id,
+            grants: &[],
+        }
+    }
+
+    /// Whether `viewer_id` may attach `media_id`.
+    ///
+    /// # Notes
+    /// Compares trimmed ids. A different viewer is never allowed, even when
+    /// the grant list contains the id.
+    pub fn allows(&self, viewer_id: &str, media_id: &str) -> bool {
+        viewer_id == self.owner_id && grant_covers(self.grants, media_id)
+    }
+}
+
+fn grant_covers(grants: &[StagedGrant<'_>], media_id: &str) -> bool {
+    let media_id = media_id.trim();
+    grants.iter().any(|grant| grant.media_id.trim() == media_id)
+}
+
+/// A story refusal before or from Domain.
+///
+/// # Notes
+/// [`ConversationError::UngrantedMedia`] means the media store did not grant
+/// that staged id to this viewer. Domain never sees the attachment.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConversationError {
+    Domain(DomainError),
+    UngrantedMedia { media_id: String },
 }
 
 pub async fn nearby_feed(sdk: &Sdk, viewer: &Viewer, place: Place) -> anyhow::Result<NearbyFeed> {
@@ -2077,9 +2736,16 @@ pub async fn nearby_feed(sdk: &Sdk, viewer: &Viewer, place: Place) -> anyhow::Re
 
 fn prayer_reach(
     viewer: &Viewer,
+    prayer: &ecclesia_domain::Prayer,
     church: &Church,
     place: Option<Place>,
 ) -> Result<PrayerReach, DomainError> {
+    if prayer.author_id.is_none() {
+        if viewer.is_active_anywhere() {
+            return Ok(PrayerReach::Pool);
+        }
+        return Err(DomainError::NotInTheBody);
+    }
     if viewer.is_active_in(&church.id) {
         return Ok(PrayerReach::HomeChurch);
     }

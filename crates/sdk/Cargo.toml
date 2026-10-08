@@ -8,6 +8,9 @@ description = "Store, session, clock, and stories that call Domain."
 [dependencies]
 ecclesia-domain = { path = "../domain" }
 anyhow = { workspace = true }
+image = { workspace = true }
+rusty-s3 = { workspace = true }
+url = { workspace = true }
 axum-extra = { workspace = true }
 aes-gcm = { workspace = true }
 base64 = { workspace = true }
@@ -15,6 +18,7 @@ base64ct = { workspace = true }
 chrono = { workspace = true }
 cookie = { workspace = true }
 encoding_rs = { workspace = true }
+futures = { package = "futures-util", version = "=0.3.34" }
 hex = { workspace = true }
 hkdf = { workspace = true }
 hmac = { workspace = true }

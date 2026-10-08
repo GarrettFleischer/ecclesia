@@ -1,8 +1,8 @@
 use sqlx::{PgPool, SqlitePool};
 
 use ecclesia_domain::{
-    Application, Church, Effect, Endorsement, Need, NeedReply, NoticeDraft, Prayer, Share, User,
-    Write,
+    Application, Attachment, Church, Effect, Endorsement, Need, NeedReply, NoticeDraft, Prayer,
+    Share, User, Write,
 };
 
 use crate::cache::keys_for_write;
@@ -275,15 +275,35 @@ async fn church_id_for(exec: &mut impl Exec, write: &Write) -> anyhow::Result<Op
         Write::UpsertMembership { church_id, .. } | Write::DeleteMembership { church_id, .. } => {
             Ok(Some(church_id.clone()))
         }
-        Write::MoveNeed { id, .. } | Write::SetNeedStatus { id, .. } => {
-            exec.fetch_text(
-                "SELECT church_id FROM needs WHERE id = ?",
-                &[Bind::Text(id)],
-            )
-            .await
+        Write::MoveNeed { id, .. }
+        | Write::SetNeedStatus { id, .. }
+        | Write::AttachNeedMedia { need_id: id, .. }
+        | Write::DetachNeedMedia { need_id: id, .. }
+        | Write::SetClosingReply { need_id: id, .. } => church_of_need(exec, id).await,
+        Write::InsertNeedReply(reply) => church_of_need(exec, &reply.need_id).await,
+        Write::AttachReplyMedia { reply_id, .. } | Write::DetachReplyMedia { reply_id, .. } => {
+            church_of_reply(exec, reply_id).await
         }
         _ => Ok(None),
     }
+}
+
+async fn church_of_need(exec: &mut impl Exec, need_id: &str) -> anyhow::Result<Option<String>> {
+    exec.fetch_text(
+        "SELECT church_id FROM needs WHERE id = ?",
+        &[Bind::Text(need_id)],
+    )
+    .await
+}
+
+async fn church_of_reply(exec: &mut impl Exec, reply_id: &str) -> anyhow::Result<Option<String>> {
+    exec.fetch_text(
+        "SELECT n.church_id FROM need_replies r
+         JOIN needs n ON n.id = r.need_id
+         WHERE r.id = ?",
+        &[Bind::Text(reply_id)],
+    )
+    .await
 }
 
 fn push_unique_keys(keys: &mut Vec<String>, next: Vec<String>) {
@@ -310,6 +330,8 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
             last_name,
             bio,
         } => update_user(exec, id, first_name, last_name, bio).await,
+        Write::SetAvatar { user_id, media_id } => set_avatar(exec, user_id, media_id).await,
+        Write::ClearAvatar { user_id } => clear_avatar(exec, user_id).await,
         Write::InsertChurch(church) => insert_church(exec, church).await,
         Write::UpsertMembership {
             user_id,
@@ -334,6 +356,16 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
             closed_at,
             praise,
         } => set_need_status(exec, id, status, closed_at.as_deref(), praise.as_deref()).await,
+        Write::SetClosingReply { need_id, reply_id } => {
+            set_closing_reply(exec, need_id, reply_id.as_deref()).await
+        }
+        Write::AttachNeedMedia {
+            need_id,
+            attachments,
+        } => attach_media(exec, MediaLink::Need, need_id, attachments).await,
+        Write::DetachNeedMedia { need_id, media_id } => {
+            detach_media(exec, MediaLink::Need, need_id, media_id).await
+        }
         Write::MoveNeed { id, church_id } => move_need(exec, id, church_id).await,
         Write::InsertApplication(application) => insert_application(exec, application).await,
         Write::SetApplicationStatus { id, status } => {
@@ -352,6 +384,13 @@ async fn apply_write(exec: &mut impl Exec, write: &Write) -> anyhow::Result<()> 
             remove_member_gift(exec, user_id, gift_id).await
         }
         Write::InsertNeedReply(reply) => insert_need_reply(exec, reply).await,
+        Write::AttachReplyMedia {
+            reply_id,
+            attachments,
+        } => attach_media(exec, MediaLink::Reply, reply_id, attachments).await,
+        Write::DetachReplyMedia { reply_id, media_id } => {
+            detach_media(exec, MediaLink::Reply, reply_id, media_id).await
+        }
         Write::InsertPrayer(prayer) => insert_prayer(exec, prayer).await,
         Write::SetPrayerAnswered {
             id,
@@ -562,6 +601,276 @@ async fn delete_need_share(exec: &mut impl Exec, target_id: &str) -> anyhow::Res
     .await
 }
 
+/// Which conversation row an attachment belongs to.
+///
+/// # Notes
+/// Detach deletes the link only. The asset row stays. When nothing else
+/// references it, the same transaction marks it deleting and enqueues deletion.
+#[derive(Clone, Copy)]
+enum MediaLink {
+    Need,
+    Reply,
+}
+
+impl MediaLink {
+    fn insert_sql(self) -> &'static str {
+        match self {
+            Self::Need => {
+                "INSERT INTO need_media (need_id, media_id, position, description) VALUES (?, ?, ?, ?)"
+            }
+            Self::Reply => {
+                "INSERT INTO reply_media (reply_id, media_id, position, description) VALUES (?, ?, ?, ?)"
+            }
+        }
+    }
+
+    fn delete_sql(self) -> &'static str {
+        match self {
+            Self::Need => "DELETE FROM need_media WHERE need_id = ? AND media_id = ?",
+            Self::Reply => "DELETE FROM reply_media WHERE reply_id = ? AND media_id = ?",
+        }
+    }
+}
+
+async fn set_avatar(exec: &mut impl Exec, user_id: &str, media_id: &str) -> anyhow::Result<()> {
+    let previous = exec
+        .fetch_text(
+            "SELECT avatar_media_id FROM users WHERE id = ?",
+            &[Bind::Text(user_id)],
+        )
+        .await?;
+    let user = exec
+        .fetch_text("SELECT id FROM users WHERE id = ?", &[Bind::Text(user_id)])
+        .await?;
+    if user.is_none() {
+        anyhow::bail!(crate::media::MediaError::NotOwned);
+    }
+    exec.exec(
+        "UPDATE users SET avatar_media_id = ? WHERE id = ?",
+        &[Bind::Text(media_id), Bind::Text(user_id)],
+    )
+    .await?;
+    attach_owned_asset(exec, media_id, user_id).await?;
+    if let Some(previous) = previous {
+        if previous != media_id {
+            release_unreferenced(exec, &previous).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn clear_avatar(exec: &mut impl Exec, user_id: &str) -> anyhow::Result<()> {
+    let previous = exec
+        .fetch_text(
+            "SELECT avatar_media_id FROM users WHERE id = ?",
+            &[Bind::Text(user_id)],
+        )
+        .await?;
+    exec.exec(
+        "UPDATE users SET avatar_media_id = NULL WHERE id = ?",
+        &[Bind::Text(user_id)],
+    )
+    .await?;
+    if let Some(previous) = previous {
+        release_unreferenced(exec, &previous).await?;
+    }
+    Ok(())
+}
+
+async fn set_closing_reply(
+    exec: &mut impl Exec,
+    need_id: &str,
+    reply_id: Option<&str>,
+) -> anyhow::Result<()> {
+    let Some(reply_id) = reply_id else {
+        return exec
+            .exec(
+                "UPDATE needs SET closing_reply_id = NULL WHERE id = ?",
+                &[Bind::Text(need_id)],
+            )
+            .await;
+    };
+    let on_need = exec
+        .fetch_text(
+            "SELECT need_id FROM need_replies WHERE id = ?",
+            &[Bind::Text(reply_id)],
+        )
+        .await?;
+    if on_need.as_deref() != Some(need_id) {
+        anyhow::bail!(crate::media::MediaError::ClosingReplyNotOnNeed);
+    }
+    exec.exec(
+        "UPDATE needs SET closing_reply_id = ? WHERE id = ?",
+        &[Bind::Text(reply_id), Bind::Text(need_id)],
+    )
+    .await
+}
+
+/// Inserts attachment rows in `position` order.
+///
+/// # Parameters
+/// - `attachments`: accepted photos. An empty slice inserts nothing.
+///
+/// # Returns
+/// `Ok` after every row in the slice is inserted, or the first store error.
+///
+/// # Notes
+/// Each photo link and that asset's `attached` state, `attached_at`, and
+/// promotion outbox row commit together. An empty slice inserts nothing.
+async fn attach_media(
+    exec: &mut impl Exec,
+    link: MediaLink,
+    parent_id: &str,
+    attachments: &[Attachment],
+) -> anyhow::Result<()> {
+    for attachment in attachments {
+        insert_attachment(exec, link, parent_id, attachment).await?;
+    }
+    Ok(())
+}
+
+async fn insert_attachment(
+    exec: &mut impl Exec,
+    link: MediaLink,
+    parent_id: &str,
+    attachment: &Attachment,
+) -> anyhow::Result<()> {
+    exec.exec(
+        link.insert_sql(),
+        &[
+            Bind::Text(parent_id),
+            Bind::Text(&attachment.media_id),
+            Bind::I64(attachment.position),
+            Bind::OptText(attachment.description.as_deref()),
+        ],
+    )
+    .await?;
+    let author = match link {
+        MediaLink::Need => {
+            exec.fetch_text(
+                "SELECT author_id FROM needs WHERE id = ?",
+                &[Bind::Text(parent_id)],
+            )
+            .await?
+        }
+        MediaLink::Reply => {
+            exec.fetch_text(
+                "SELECT author_id FROM need_replies WHERE id = ?",
+                &[Bind::Text(parent_id)],
+            )
+            .await?
+        }
+    };
+    let Some(author) = author else {
+        anyhow::bail!(crate::media::MediaError::NotOwned);
+    };
+    attach_owned_asset(exec, &attachment.media_id, &author).await
+}
+
+async fn detach_media(
+    exec: &mut impl Exec,
+    link: MediaLink,
+    parent_id: &str,
+    media_id: &str,
+) -> anyhow::Result<()> {
+    exec.exec(
+        link.delete_sql(),
+        &[Bind::Text(parent_id), Bind::Text(media_id)],
+    )
+    .await?;
+    release_unreferenced(exec, media_id).await
+}
+
+async fn attach_owned_asset(
+    exec: &mut impl Exec,
+    media_id: &str,
+    owner_id: &str,
+) -> anyhow::Result<()> {
+    let stored = exec
+        .fetch_text(
+            "SELECT owner_id FROM media_assets
+             WHERE id = ? AND deleted_at IS NULL AND state IN ('staged', 'attached')",
+            &[Bind::Text(media_id)],
+        )
+        .await?;
+    if stored.as_deref() != Some(owner_id) {
+        anyhow::bail!(crate::media::MediaError::NotOwned);
+    }
+    let now = now_iso();
+    exec.exec(
+        crate::media::commit::MARK_ATTACHED_SQL,
+        &[Bind::Text(&now), Bind::Text(media_id)],
+    )
+    .await?;
+    let (full_key, thumb_key) = crate::media::commit::stable_keys();
+    let payload = crate::media::commit::promote_payload(media_id, &full_key, &thumb_key);
+    let job_id = crate::media::commit::promote_job_id(media_id);
+    exec.exec(
+        crate::media::commit::INSERT_PROMOTE_SQL,
+        &[Bind::Text(&job_id), Bind::Text(&payload), Bind::Text(&now)],
+    )
+    .await
+}
+
+async fn release_unreferenced(exec: &mut impl Exec, media_id: &str) -> anyhow::Result<()> {
+    let referenced = exec
+        .fetch_text(
+            crate::media::commit::REFERENCE_SQL,
+            &[
+                Bind::Text(media_id),
+                Bind::Text(media_id),
+                Bind::Text(media_id),
+            ],
+        )
+        .await?;
+    if referenced.is_some() {
+        return Ok(());
+    }
+    let exists = exec
+        .fetch_text(
+            "SELECT id FROM media_assets WHERE id = ?",
+            &[Bind::Text(media_id)],
+        )
+        .await?;
+    if exists.is_none() {
+        return Ok(());
+    }
+    let now = now_iso();
+    exec.exec(
+        crate::media::commit::MARK_DELETING_SQL,
+        &[Bind::Text(&now), Bind::Text(media_id)],
+    )
+    .await?;
+    let payload = crate::media::commit::delete_payload(media_id);
+    let job_id = crate::media::commit::delete_job_id(media_id);
+    exec.exec(
+        crate::media::commit::INSERT_DELETE_SQL,
+        &[Bind::Text(&job_id), Bind::Text(&payload), Bind::Text(&now)],
+    )
+    .await
+}
+
+impl Db {
+    /// Marks `media_id` deleting when no need, reply, or avatar points at it,
+    /// and enqueues one idempotent delete job. A remaining reference is a no-op.
+    pub(crate) async fn release_unreferenced_media(&self, media_id: &str) -> anyhow::Result<()> {
+        match &self.inner {
+            Inner::Sqlite(pool) => {
+                let mut tx = pool.begin().await?;
+                release_unreferenced(&mut SqliteExec(&mut tx), media_id).await?;
+                tx.commit().await?;
+                Ok(())
+            }
+            Inner::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                release_unreferenced(&mut PostgresExec(&mut tx), media_id).await?;
+                tx.commit().await?;
+                Ok(())
+            }
+        }
+    }
+}
+
 async fn set_need_status(
     exec: &mut impl Exec,
     id: &str,
@@ -628,11 +937,12 @@ async fn insert_application(exec: &mut impl Exec, application: &Application) -> 
 
 async fn insert_need_reply(exec: &mut impl Exec, reply: &NeedReply) -> anyhow::Result<()> {
     exec.exec(
-        "INSERT INTO need_replies (id, need_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO need_replies (id, need_id, author_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         &[
             Bind::Text(&reply.id),
             Bind::Text(&reply.need_id),
             Bind::Text(&reply.author_id),
+            Bind::Text(reply.kind.as_str()),
             Bind::Text(&reply.body),
             Bind::Text(&reply.created_at),
         ],
@@ -753,4 +1063,364 @@ async fn remove_member_gift(
         ],
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{AvatarReference, ClosingReplyReference, Db};
+    use ecclesia_domain::sample::{church, user_in_church, viewer_of};
+    use ecclesia_domain::{
+        AttachmentRef, CatalogPresence, NeedReply, NeedStatus, Posture, ReplyKind, Viewer,
+        complete_need, post_need_with_attachments,
+    };
+
+    async fn open_db() -> Db {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "ecclesia-apply-{}-{}-{}.db",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        Db::connect(&format!("sqlite://{}", path.display()))
+            .await
+            .expect("test database")
+    }
+
+    fn author() -> Viewer {
+        viewer_of(
+            user_in_church("ada", "grace", "member", "active"),
+            Some(church("grace")),
+        )
+    }
+
+    async fn save_author(db: &Db, viewer: &Viewer) {
+        db.apply(&Effect::write(Write::InsertUser(viewer.user.clone())))
+            .await
+            .unwrap();
+    }
+
+    async fn stage(db: &Db, id: &str, owner: &str) {
+        let full = format!("stage/full/{id}");
+        let thumb = format!("stage/thumb/{id}");
+        db.execute(
+            "INSERT INTO media_assets (
+                id, owner_id, state, staging_full_key, staging_thumb_key,
+                width, height, full_bytes, thumb_bytes, created_at
+             ) VALUES (?, ?, 'staged', ?, ?, 800, 600, 1000, 400, '2026-10-07T12:00:00Z')",
+            &[
+                Bind::Text(id),
+                Bind::Text(owner),
+                Bind::Text(&full),
+                Bind::Text(&thumb),
+            ],
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn count(db: &Db, sql: &str, id: &str) -> i64 {
+        db.fetch_scalar_i64(sql, &[Bind::Text(id)]).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn completion_persists_kind_photos_and_closing_reply_together() {
+        let db = open_db().await;
+        let viewer = author();
+        save_author(&db, &viewer).await;
+        stage(&db, "m0", "ada").await;
+        stage(&db, "m1", "ada").await;
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[
+                AttachmentRef {
+                    media_id: "m0",
+                    description: Some("  west slope  "),
+                },
+                AttachmentRef {
+                    media_id: "m1",
+                    description: None,
+                },
+            ],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        db.apply(&posted).await.unwrap();
+        let photos = db.need_attachments("need-1").await.unwrap();
+        assert_eq!(photos.len(), 2);
+        assert_eq!(photos[0].media_id, "m0");
+        assert_eq!(photos[0].position, 0);
+        assert_eq!(photos[0].description.as_deref(), Some("west slope"));
+        assert_eq!(photos[1].description, None);
+        let need = ecclesia_domain::Need {
+            id: "need-1".into(),
+            church_id: "grace".into(),
+            author_id: "ada".into(),
+            title: "Roof".into(),
+            body: "It leaked.".into(),
+            gift_id: None,
+            scope: "church".into(),
+            status: "open".into(),
+            created_at: "t0".into(),
+            closed_at: None,
+            praise: None,
+            shelf: ecclesia_domain::NeedShelf::Listed,
+        };
+        let completed = complete_need(
+            &viewer,
+            &need,
+            "The roof is dry.",
+            Posture::Lifts,
+            &[AttachmentRef {
+                media_id: "m1",
+                description: Some("after"),
+            }],
+            "reply-1".into(),
+            "t1".into(),
+        )
+        .unwrap();
+        let keys = db.apply(&completed).await.unwrap();
+        assert_eq!(
+            keys,
+            vec!["church:grace".to_string(), "directory".to_string()]
+        );
+        let reply = db.need_reply("reply-1").await.unwrap().unwrap();
+        assert_eq!(reply.kind, ReplyKind::Completion);
+        let attached = db.reply_attachments("reply-1").await.unwrap();
+        assert_eq!(attached.len(), 1);
+        assert_eq!(attached[0].description.as_deref(), Some("after"));
+        assert_eq!(
+            db.closing_reply_reference("need-1").await.unwrap(),
+            Some(ClosingReplyReference::Reply("reply-1".into()))
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM needs WHERE id = ? AND status = 'closed' AND praise IS NULL",
+                "need-1",
+            )
+            .await,
+            1
+        );
+        let message = db
+            .apply(&Effect::write(Write::InsertNeedReply(NeedReply {
+                id: "reply-msg".into(),
+                need_id: "need-1".into(),
+                author_id: "ada".into(),
+                kind: ReplyKind::Message,
+                body: "I can come Saturday.".into(),
+                created_at: "t2".into(),
+            })))
+            .await
+            .unwrap();
+        assert_eq!(
+            message,
+            vec!["church:grace".to_string(), "directory".to_string()]
+        );
+        assert_eq!(
+            db.need_reply("reply-msg").await.unwrap().unwrap().kind,
+            ReplyKind::Message
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_closing_reply_leaves_the_need_unchanged() {
+        let db = open_db().await;
+        let viewer = author();
+        save_author(&db, &viewer).await;
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        db.apply(&posted).await.unwrap();
+        let mut effect = Effect::write(Write::SetClosingReply {
+            need_id: "need-1".into(),
+            reply_id: Some("missing".into()),
+        });
+        effect.push(Write::InsertNeedReply(NeedReply {
+            id: "reply-bad".into(),
+            need_id: "need-1".into(),
+            author_id: "ada".into(),
+            kind: ReplyKind::Completion,
+            body: "This should roll back.".into(),
+            created_at: "t1".into(),
+        }));
+        effect.push(Write::SetNeedStatus {
+            id: "need-1".into(),
+            status: NeedStatus::Closed.as_str(),
+            closed_at: Some("t1".into()),
+            praise: None,
+        });
+        assert!(db.apply(&effect).await.is_err());
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM needs WHERE id = ? AND status = 'open'",
+                "need-1",
+            )
+            .await,
+            1
+        );
+        assert!(db.need_reply("reply-bad").await.unwrap().is_none());
+        assert_eq!(
+            db.closing_reply_reference("need-1").await.unwrap(),
+            Some(ClosingReplyReference::Unset)
+        );
+    }
+
+    #[tokio::test]
+    async fn detach_and_empty_attach_leave_assets_and_insert_no_rows() {
+        let db = open_db().await;
+        let viewer = author();
+        save_author(&db, &viewer).await;
+        stage(&db, "m1", "ada").await;
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[AttachmentRef {
+                media_id: "m1",
+                description: None,
+            }],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        db.apply(&posted).await.unwrap();
+        db.apply(&Effect::write(Write::AttachNeedMedia {
+            need_id: "need-1".into(),
+            attachments: vec![],
+        }))
+        .await
+        .unwrap();
+        db.apply(&Effect::write(Write::AttachReplyMedia {
+            reply_id: "missing-reply".into(),
+            attachments: vec![],
+        }))
+        .await
+        .unwrap();
+        assert_eq!(db.need_attachments("need-1").await.unwrap().len(), 1);
+        db.apply(&Effect::write(Write::DetachNeedMedia {
+            need_id: "need-1".into(),
+            media_id: "m1".into(),
+        }))
+        .await
+        .unwrap();
+        assert!(db.need_attachments("need-1").await.unwrap().is_empty());
+        assert_eq!(
+            count(&db, "SELECT COUNT(*) FROM media_assets WHERE id = ?", "m1").await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn avatar_set_replaces_and_clear_returns_to_initials() {
+        let db = open_db().await;
+        let viewer = author();
+        save_author(&db, &viewer).await;
+        stage(&db, "m1", "ada").await;
+        stage(&db, "m2", "ada").await;
+        let first = db
+            .apply(&Effect::write(Write::SetAvatar {
+                user_id: "ada".into(),
+                media_id: "m1".into(),
+            }))
+            .await
+            .unwrap();
+        assert!(first.is_empty());
+        assert_eq!(
+            db.avatar_reference("ada").await.unwrap(),
+            Some(AvatarReference::Photo("m1".into()))
+        );
+        db.apply(&Effect::write(Write::SetAvatar {
+            user_id: "ada".into(),
+            media_id: "m2".into(),
+        }))
+        .await
+        .unwrap();
+        assert_eq!(
+            db.avatar_reference("ada").await.unwrap(),
+            Some(AvatarReference::Photo("m2".into()))
+        );
+        db.apply(&Effect::write(Write::ClearAvatar {
+            user_id: "ada".into(),
+        }))
+        .await
+        .unwrap();
+        assert_eq!(
+            db.avatar_reference("ada").await.unwrap(),
+            Some(AvatarReference::Initials)
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM media_assets WHERE owner_id = ?",
+                "ada"
+            )
+            .await,
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reply_inserted_without_kind_loads_as_message() {
+        let db = open_db().await;
+        let viewer = author();
+        save_author(&db, &viewer).await;
+        let posted = post_need_with_attachments(
+            &viewer,
+            "grace",
+            "Roof",
+            "It leaked.",
+            None,
+            CatalogPresence::Listed,
+            "church",
+            Posture::Lifts,
+            &[],
+            "need-1".into(),
+            "t0".into(),
+        )
+        .unwrap();
+        db.apply(&posted).await.unwrap();
+        db.execute(
+            "INSERT INTO need_replies (id, need_id, author_id, body, created_at)
+             VALUES ('reply-old', 'need-1', 'ada', 'I can help Saturday.', 't1')",
+            &[],
+        )
+        .await
+        .unwrap();
+        let reply = db.need_reply("reply-old").await.unwrap().unwrap();
+        assert_eq!(reply.kind, ReplyKind::Message);
+        let cards = db.need_replies("need-1").await.unwrap();
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].kind, ReplyKind::Message);
+    }
 }

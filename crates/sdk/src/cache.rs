@@ -269,7 +269,9 @@ pub fn keys_for_write(write: &Write, church_id: Option<&str>) -> Vec<String> {
         Write::InsertNeed(need) => {
             vec![format!("church:{}", need.church_id), "directory".into()]
         }
-        Write::MoveNeed { church_id: next, .. } => {
+        Write::MoveNeed {
+            church_id: next, ..
+        } => {
             let mut keys = vec![format!("church:{next}"), "directory".into()];
             if let Some(previous) = church_id {
                 if previous != next.as_str() {
@@ -279,28 +281,41 @@ pub fn keys_for_write(write: &Write, church_id: Option<&str>) -> Vec<String> {
             keys
         }
         Write::InsertShare(_) | Write::DeleteNeedShare { .. } => Vec::new(),
-        Write::SetNeedStatus { .. } => church_id
-            .map(|id| vec![format!("church:{id}"), "directory".into()])
-            .unwrap_or_default(),
+        Write::SetNeedStatus { .. }
+        | Write::SetClosingReply { .. }
+        | Write::AttachNeedMedia { .. }
+        | Write::DetachNeedMedia { .. }
+        | Write::InsertNeedReply(_)
+        | Write::AttachReplyMedia { .. }
+        | Write::DetachReplyMedia { .. } => church_fragment(church_id),
         Write::InsertUser(_)
         | Write::UpdateUser { .. }
+        | Write::SetAvatar { .. }
+        | Write::ClearAvatar { .. }
         | Write::InsertApplication(_)
         | Write::SetApplicationStatus { .. }
         | Write::InsertEndorsement(_)
         | Write::SetEndorsementStatus { .. }
         | Write::UpsertMemberGift { .. }
         | Write::RemoveMemberGift { .. }
-        | Write::InsertNeedReply(_)
         | Write::InsertPrayer(_)
         | Write::SetPrayerAnswered { .. }
         | Write::UpsertPrayerMark { .. } => Vec::new(),
     }
 }
 
+/// Church card and directory, the fragments a need already invalidates.
+fn church_fragment(church_id: Option<&str>) -> Vec<String> {
+    match church_id {
+        Some(id) => vec![format!("church:{id}"), "directory".into()],
+        None => Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecclesia_domain::Church;
+    use ecclesia_domain::{Church, NeedReply, ReplyKind};
 
     fn church(id: &str) -> Church {
         Church {
@@ -398,5 +413,121 @@ mod tests {
                 offenders.push(format!("{}:{}: {}", path.display(), index + 1, trimmed));
             }
         }
+    }
+
+    fn fragment(church_id: &str) -> Vec<String> {
+        vec![format!("church:{church_id}"), "directory".into()]
+    }
+
+    fn reply(kind: ReplyKind) -> NeedReply {
+        NeedReply {
+            id: "r".into(),
+            need_id: "n".into(),
+            author_id: "ada".into(),
+            kind,
+            body: "Saturday.".into(),
+            created_at: "t".into(),
+        }
+    }
+
+    #[test]
+    fn need_media_reply_and_closing_reply_invalidate_the_church_fragment() {
+        let church = Some("grace");
+        let keys = fragment("grace");
+        assert_eq!(
+            keys_for_write(
+                &Write::AttachNeedMedia {
+                    need_id: "n".into(),
+                    attachments: vec![],
+                },
+                church,
+            ),
+            keys
+        );
+        assert_eq!(
+            keys_for_write(
+                &Write::DetachNeedMedia {
+                    need_id: "n".into(),
+                    media_id: "m".into(),
+                },
+                church,
+            ),
+            keys
+        );
+        assert_eq!(
+            keys_for_write(
+                &Write::SetClosingReply {
+                    need_id: "n".into(),
+                    reply_id: None,
+                },
+                church,
+            ),
+            keys
+        );
+        assert_eq!(
+            keys_for_write(&Write::InsertNeedReply(reply(ReplyKind::Message)), church),
+            keys
+        );
+        assert_eq!(
+            keys_for_write(
+                &Write::AttachReplyMedia {
+                    reply_id: "r".into(),
+                    attachments: vec![],
+                },
+                church,
+            ),
+            keys
+        );
+        assert_eq!(
+            keys_for_write(
+                &Write::DetachReplyMedia {
+                    reply_id: "r".into(),
+                    media_id: "m".into(),
+                },
+                church,
+            ),
+            keys
+        );
+        assert_eq!(
+            keys_for_write(
+                &Write::SetNeedStatus {
+                    id: "n".into(),
+                    status: "closed",
+                    closed_at: None,
+                    praise: None,
+                },
+                church,
+            ),
+            keys
+        );
+        assert!(
+            keys_for_write(
+                &Write::AttachNeedMedia {
+                    need_id: "n".into(),
+                    attachments: vec![],
+                },
+                None,
+            )
+            .is_empty()
+        );
+        assert!(
+            keys_for_write(
+                &Write::SetAvatar {
+                    user_id: "ada".into(),
+                    media_id: "m".into(),
+                },
+                church,
+            )
+            .is_empty()
+        );
+        assert!(
+            keys_for_write(
+                &Write::ClearAvatar {
+                    user_id: "ada".into(),
+                },
+                church,
+            )
+            .is_empty()
+        );
     }
 }

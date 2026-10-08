@@ -173,10 +173,7 @@ impl Db {
         self.church_members_page(church_id, None).await
     }
 
-    pub async fn member_releases(
-        &self,
-        church_id: &str,
-    ) -> anyhow::Result<Vec<MemberRelease>> {
+    pub async fn member_releases(&self, church_id: &str) -> anyhow::Result<Vec<MemberRelease>> {
         let rows = self
             .fetch_all::<ReleaseRow>(
                 r#"
