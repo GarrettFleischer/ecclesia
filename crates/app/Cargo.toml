@@ -14,6 +14,7 @@ axum = { workspace = true }
 axum-extra = { workspace = true }
 maud = { workspace = true }
 qrcode = { workspace = true }
+futures-util = { version = "=0.3.34", default-features = false, features = ["std"] }
 serde = { workspace = true }
 tokio = { workspace = true }
 tower-http = { workspace = true }
@@ -26,6 +27,7 @@ tower-livereload = { workspace = true, optional = true }
 live-reload = ["dep:notify", "dep:tower-livereload"]
 
 [dev-dependencies]
+image = { workspace = true }
 proptest = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

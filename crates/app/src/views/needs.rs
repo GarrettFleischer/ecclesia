@@ -1,15 +1,18 @@
 use maud::{Markup, html};
 
+use ecclesia_sdk::db::AttachmentRow;
 use ecclesia_sdk::prelude::{
-    Church, DomainError, Gift, NeedCard, NeedReplyCard, NeedShelf, NeedStatus, Viewer, VoiceKind,
+    Church, DomainError, Gift, NeedCard, NeedShelf, NeedStatus, Viewer, VoiceKind,
 };
 
 use super::cards::{church_options, gift_options, scope_label, scope_mark};
+use super::conversation::{
+    AvatarSize, GalleryRemoval, KeptPhoto, LoadedReply, PhotoReach, avatar_face, conversation_fragment,
+    person_avatar, photo_fields, photo_gallery, photo_viewer, photos_from,
+};
 use super::draft::{NeedDraft, OfferDraft, ReplyIntent, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{
-    Monogram, Nav, csrf_input, detail_lead, monogram, page, page_lead, rewrite_row, share_button,
-};
+use super::layout::{Nav, csrf_input, detail_lead, page, page_lead, rewrite_row, share_button};
 
 pub fn need_new(
     viewer: &Viewer,
@@ -18,6 +21,7 @@ pub fn need_new(
     flash: Option<Flash>,
     csrf: &str,
     draft: &NeedDraft<'_>,
+    kept: &[KeptPhoto<'_>],
 ) -> Markup {
     page(
         "Post a need",
@@ -28,7 +32,7 @@ pub fn need_new(
         csrf,
         html! {
             (page_lead("Post a need"))
-            (need_form_or_empty(viewer, gifts, csrf, draft))
+            (need_form_or_empty(viewer, gifts, csrf, draft, kept))
         },
     )
 }
@@ -38,6 +42,7 @@ fn need_form_or_empty(
     gifts: &[Gift],
     csrf: &str,
     draft: &NeedDraft<'_>,
+    kept: &[KeptPhoto<'_>],
 ) -> Markup {
     let churches: Vec<_> = viewer.active_churches().collect();
     if churches.is_empty() {
@@ -49,7 +54,7 @@ fn need_form_or_empty(
         };
     }
     html! {
-        form class="stack" method="post" action="/needs" {
+        form class="stack" method="post" action="/needs" enctype="multipart/form-data" {
             (csrf_input(csrf))
             (voice_pass_input(draft.kind))
             (review_banner(draft.kind))
@@ -87,6 +92,7 @@ fn need_form_or_empty(
                     span { strong { "Everyone" } }
                 }
             }
+            (photo_fields(kept))
             button class="btn" type="submit" { (draft.kind.submit_label("Post need")) }
         }
     }
@@ -96,18 +102,21 @@ pub fn need_show(
     viewer: &Viewer,
     need: &NeedCard,
     church: &Church,
-    replies: &[NeedReplyCard],
+    need_photos: &[AttachmentRow],
+    author_avatar: Option<&str>,
+    replies: &[LoadedReply],
     can_reply: Result<(), DomainError>,
     unread: i64,
     flash: Option<Flash>,
     csrf: &str,
     draft: &OfferDraft<'_>,
+    kept: &[KeptPhoto<'_>],
     place: Option<(&str, &str)>,
     share_url: &str,
     share_mint: &str,
     mark: NeedMark,
 ) -> Markup {
-    let actions = reply_actions(viewer, need, can_reply);
+    let photos = photos_from(need_photos);
     page(
         &need.title,
         Some(&viewer.user),
@@ -126,9 +135,10 @@ pub fn need_show(
             }
             (detail_lead(&need.title))
             p class="lede" { (need.body) }
+            (photo_gallery(&photos, need_removal(viewer, need), PhotoReach::Opens))
             div class="card-foot need-meta" {
                 span class="byline" {
-                    (monogram(&need.author_id, &need.author_name, Monogram::PersonSmall))
+                    (person_avatar(&need.author_id, &need.author_name, avatar_face(author_avatar), AvatarSize::Small))
                     span { "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) } }
                 }
                 @if let Some(gift) = &need.gift_name { span class="chip" { (gift) } }
@@ -140,19 +150,25 @@ pub fn need_show(
             div class="page-actions" {
                 (share_button("Share", &need.title, &need.body, share_url, share_mint))
             }
-            (reply_panel(need, actions, csrf, draft, place))
+            (reply_panel(viewer, need, can_reply, csrf, draft, kept, place))
             (need_return_script())
-            section {
-                h2 { "Replies" }
-                (reply_list(replies))
-            }
+            (conversation_fragment(&need.id, &viewer.user.id, replies, place))
+            (photo_viewer())
         },
     )
 }
 
+fn need_removal<'a>(viewer: &Viewer, need: &'a NeedCard) -> GalleryRemoval<'a> {
+    if viewer.user.id == need.author_id {
+        GalleryRemoval::FromNeed { need_id: &need.id }
+    } else {
+        GalleryRemoval::Closed
+    }
+}
+
 fn closed_chip(need: &NeedCard) -> Markup {
     if need.status() == Some(NeedStatus::Closed) {
-        html! { span class="chip chip-closed" { "Closed" } }
+        html! { span class="chip chip-closed" { "Met" } }
     } else {
         html! {}
     }
@@ -169,67 +185,129 @@ fn matching_gift_pill(viewer: &Viewer, need: &NeedCard) -> Markup {
 }
 
 fn reply_panel(
+    viewer: &Viewer,
     need: &NeedCard,
-    actions: Result<ReplyActions, DomainError>,
+    can_reply: Result<(), DomainError>,
     csrf: &str,
     draft: &OfferDraft<'_>,
+    kept: &[KeptPhoto<'_>],
     place: Option<(&str, &str)>,
 ) -> Markup {
     if !need.is_open() || need.shelf == NeedShelf::Archived {
         return html! {};
     }
-    match actions {
-        Ok(actions) => reply_form(need, actions, csrf, draft, place),
+    let (reply_kept, completion_kept) = kept_for(draft.intent, kept);
+    html! {
+        (reply_slot(viewer, need, can_reply, csrf, draft, reply_kept, place))
+        (completion_slot(viewer, need, csrf, draft, completion_kept))
+    }
+}
+
+fn kept_for<'a>(
+    intent: ReplyIntent,
+    kept: &'a [KeptPhoto<'a>],
+) -> (&'a [KeptPhoto<'a>], &'a [KeptPhoto<'a>]) {
+    match intent {
+        ReplyIntent::Met => (&[], kept),
+        ReplyIntent::Reply => (kept, &[]),
+    }
+}
+
+fn reply_slot(
+    viewer: &Viewer,
+    need: &NeedCard,
+    can_reply: Result<(), DomainError>,
+    csrf: &str,
+    draft: &OfferDraft<'_>,
+    kept: &[KeptPhoto<'_>],
+    place: Option<(&str, &str)>,
+) -> Markup {
+    match can_reply {
+        Ok(()) => reply_form(need, csrf, draft, kept, place),
+        Err(_) if viewer.user.id == need.author_id => html! {},
         Err(reason) => html! {
             p class="muted" { (reason) }
         },
     }
 }
 
-fn reply_form(
+fn completion_slot(
+    viewer: &Viewer,
     need: &NeedCard,
-    actions: ReplyActions,
     csrf: &str,
     draft: &OfferDraft<'_>,
+    kept: &[KeptPhoto<'_>],
+) -> Markup {
+    if viewer.user.id != need.author_id {
+        return html! {};
+    }
+    completion_form(need, csrf, draft, kept)
+}
+
+fn reply_form(
+    need: &NeedCard,
+    csrf: &str,
+    draft: &OfferDraft<'_>,
+    kept: &[KeptPhoto<'_>],
     place: Option<(&str, &str)>,
 ) -> Markup {
     let action = format!("/needs/{}/replies", need.id);
-    let (heading, placeholder) = match actions {
-        ReplyActions::Met => ("Praise report", "The dinners are covered."),
-        ReplyActions::Reply | ReplyActions::ReplyAndMet => {
-            ("Reply", "I can bring dinner Thursday.")
-        }
-    };
     html! {
         section class="panel" {
-            h2 { (heading) }
-            form class="stack" method="post" action=(action) data-reply-form {
+            form class="stack" method="post" action=(action) enctype="multipart/form-data" data-reply-form {
                 (csrf_input(csrf))
                 (place_fields(place))
                 (voice_pass_input(draft.kind))
                 (review_banner(draft.kind))
-                label { (heading)
-                    textarea name="body" rows="3" required maxlength="600" placeholder=(placeholder) { (draft.message) }
-                    (rewrite_row(box_voice(actions)))
+                label { "Add a reply"
+                    textarea name="body" rows="3" required maxlength="600" placeholder="I can measure the steps Thursday afternoon." { (reply_message(draft)) }
+                    (rewrite_row(VoiceKind::Reply))
                 }
+                (photo_fields(kept))
                 div class="reply-actions" {
-                    @if matches!(actions, ReplyActions::Met | ReplyActions::ReplyAndMet) {
-                        label class="met-check" {
-                            input type="checkbox" name="met" value="1" data-mark-met checked[draft.intent == ReplyIntent::Met] required[matches!(actions, ReplyActions::Met)];
-                            span { "This need has been met" }
-                        }
-                    }
-                    button class="btn" type="submit" { (draft.kind.submit_label("Reply")) }
+                    button class="btn" type="submit" { (draft.kind.submit_label("Post reply")) }
                 }
             }
         }
     }
 }
 
-fn box_voice(actions: ReplyActions) -> VoiceKind {
-    match actions {
-        ReplyActions::Met => VoiceKind::Praise,
-        ReplyActions::Reply | ReplyActions::ReplyAndMet => VoiceKind::Reply,
+fn completion_form(
+    need: &NeedCard,
+    csrf: &str,
+    draft: &OfferDraft<'_>,
+    kept: &[KeptPhoto<'_>],
+) -> Markup {
+    let action = format!("/needs/{}/complete", need.id);
+    html! {
+        details class="mark-met" open[draft.intent == ReplyIntent::Met] {
+            summary class="btn btn-quiet" { "Mark this need met" }
+            form class="stack" method="post" action=(action) enctype="multipart/form-data" data-reply-form {
+                (csrf_input(csrf))
+                (voice_pass_input(draft.kind))
+                (review_banner(draft.kind))
+                label { "How was the need met?"
+                    textarea name="body" rows="3" required maxlength="600" placeholder="The new handrail is installed and ready to use." { (completion_message(draft)) }
+                    (rewrite_row(VoiceKind::Reply))
+                }
+                (photo_fields(kept))
+                button class="btn" type="submit" { (draft.kind.submit_label("Post completion")) }
+            }
+        }
+    }
+}
+
+fn reply_message<'a>(draft: &'a OfferDraft<'a>) -> &'a str {
+    match draft.intent {
+        ReplyIntent::Reply => draft.message,
+        ReplyIntent::Met => "",
+    }
+}
+
+fn completion_message<'a>(draft: &'a OfferDraft<'a>) -> &'a str {
+    match draft.intent {
+        ReplyIntent::Met => draft.message,
+        ReplyIntent::Reply => "",
     }
 }
 
@@ -240,26 +318,6 @@ fn place_fields(place: Option<(&str, &str)>) -> Markup {
     html! {
         input type="hidden" name="lat" value=(lat);
         input type="hidden" name="lng" value=(lng);
-    }
-}
-
-fn reply_list(replies: &[NeedReplyCard]) -> Markup {
-    if replies.is_empty() {
-        return html! {
-            div class="empty" { p { "No replies yet." } }
-        };
-    }
-    html! {
-        div class="stack" {
-            @for reply in replies {
-                article class="card" {
-                    p class="meta" {
-                        a href={ "/members/" (reply.author_id) } { (reply.author_name) }
-                    }
-                    p { (reply.body) }
-                }
-            }
-        }
     }
 }
 
@@ -326,31 +384,6 @@ const NEED_RETURN_SCRIPT: &str = r#"(function () {
     try { sessionStorage.setItem(key, JSON.stringify(saved)); } catch (error) {}
   }
 })();"#;
-
-#[derive(Clone, Copy)]
-enum ReplyActions {
-    Reply,
-    ReplyAndMet,
-    Met,
-}
-
-fn reply_actions(
-    viewer: &Viewer,
-    need: &NeedCard,
-    can_reply: Result<(), DomainError>,
-) -> Result<ReplyActions, DomainError> {
-    if viewer.user.id == need.author_id {
-        return Ok(author_actions(can_reply));
-    }
-    can_reply.map(|()| ReplyActions::Reply)
-}
-
-fn author_actions(can_reply: Result<(), DomainError>) -> ReplyActions {
-    match can_reply {
-        Ok(()) => ReplyActions::ReplyAndMet,
-        Err(_) => ReplyActions::Met,
-    }
-}
 
 pub enum NeedMark {
     None,

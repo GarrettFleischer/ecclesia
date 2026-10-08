@@ -354,12 +354,9 @@ async fn us_chaos_03_author_can_reply_on_their_need() {
         &format!("/needs/{need_id}"),
     )
     .await;
-    let actions = page.split("reply-actions").nth(1).expect("reply actions");
-    let check = actions
-        .find("This need has been met")
-        .expect("met checkbox");
-    let reply = actions.find(">Reply</button>").expect("reply button");
-    assert!(check < reply, "the reply button sits to the right of the checkbox");
+    assert!(page.contains("Post reply"));
+    assert!(page.contains("Mark this need met"));
+    assert!(!page.contains("This need has been met"));
     assert!(!page.contains("Mark met"));
     let location = post_location(
         world.app.clone(),
@@ -376,11 +373,11 @@ async fn us_chaos_03_author_can_reply_on_their_need() {
         world.app.clone(),
         &cookie,
         &csrf,
-        &format!("/needs/{need_id}/replies"),
-        "body=The+dinners+are+covered&met=1&pass=publish",
+        &format!("/needs/{need_id}/complete"),
+        "body=The+dinners+are+covered&pass=publish",
     )
     .await;
-    assert!(closed.contains("ok=need_closed"), "got {closed}");
+    assert!(closed.contains("ok=need_met"), "got {closed}");
     let (met_page, _, _) = get_ok(world.app.clone(), Some(&cookie), &closed).await;
     assert!(met_page.contains("The dinners are covered"));
 }

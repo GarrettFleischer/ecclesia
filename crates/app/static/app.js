@@ -29,6 +29,10 @@
   hookAuthForms();
   hookMarkMet();
   hookNeedReturn();
+  hookPhotos(csrf);
+  hookPhotoViewer();
+  hookConversation();
+  hookAvatar(csrf);
   hookHaptics(native);
   hookAlerts(csrf, native);
   hookJoinAlerts(csrf, native);
@@ -2274,4 +2278,339 @@ function rememberNeedMark(link) {
       return;
     }
   }
+}
+
+function hookPhotos(csrf) {
+  document.addEventListener("change", (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== "file") {
+      return;
+    }
+    const field = input.closest("[data-photo-field]");
+    if (!field || !csrf) {
+      return;
+    }
+    void stageSelection(csrf, field, input);
+  });
+  document.addEventListener("click", (event) => {
+    const discard = event.target.closest("[data-discard-staged]");
+    if (discard) {
+      event.preventDefault();
+      void discardStaged(csrf, discard);
+      return;
+    }
+    const remove = event.target.closest("[data-remove-photo]");
+    if (!remove) {
+      return;
+    }
+    event.preventDefault();
+    void removeAttached(csrf, remove);
+  });
+}
+
+async function stageSelection(csrf, field, input) {
+  const files = [...input.files];
+  input.value = "";
+  const form = field.closest("form");
+  setSubmitBusy(form, true);
+  try {
+    for (const file of files) {
+      if (stagedCount(field) >= 5) {
+        showPhotoError(field, "You can add up to five photos.");
+        break;
+      }
+      const staged = await stageFile(csrf, file);
+      if (staged.error) {
+        showPhotoError(field, staged.error);
+        continue;
+      }
+      showPhotoError(field, "");
+      const previews = field.querySelector("[data-photo-previews]");
+      if (previews) {
+        previews.append(previewNode(staged));
+      }
+    }
+  } finally {
+    setSubmitBusy(form, false);
+  }
+}
+
+function stagedCount(field) {
+  return field.querySelectorAll("[data-staged]").length;
+}
+
+function showPhotoError(field, sentence) {
+  const node = field.querySelector("[data-photo-error]");
+  if (!node) {
+    return;
+  }
+  node.textContent = sentence;
+  node.hidden = sentence.length === 0;
+}
+
+function setSubmitBusy(form, busy) {
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  form.setAttribute("aria-busy", busy ? "true" : "false");
+  form.querySelectorAll('button[type="submit"]').forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+async function stageFile(csrf, file) {
+  const body = new FormData();
+  body.set("csrf", csrf);
+  body.set("photo", file);
+  const response = await fetch("/media/stage", { method: "POST", body });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || !payload.id) {
+    return { error: payload && payload.error ? payload.error : "" };
+  }
+  return payload;
+}
+
+function previewNode(staged) {
+  const figure = document.createElement("figure");
+  figure.className = "photo-preview";
+  figure.dataset.staged = staged.id;
+  const img = document.createElement("img");
+  img.src = staged.thumb;
+  img.alt = "";
+  const id = document.createElement("input");
+  id.type = "hidden";
+  id.name = "staged_id";
+  id.value = staged.id;
+  const label = document.createElement("label");
+  label.append(document.createTextNode("Photo description (optional)"));
+  const desc = document.createElement("input");
+  desc.name = "description";
+  desc.maxLength = 300;
+  desc.placeholder = "Loose railing beside the front steps";
+  desc.addEventListener("input", () => {
+    img.alt = desc.value.trim();
+  });
+  label.append(desc);
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "btn btn-quiet";
+  remove.dataset.discardStaged = "";
+  remove.textContent = "Remove photo";
+  figure.append(img, id, label, remove);
+  return figure;
+}
+
+async function discardStaged(csrf, button) {
+  const figure = button.closest("[data-staged]");
+  if (!figure || !csrf) {
+    return;
+  }
+  const id = figure.getAttribute("data-staged") || "";
+  const response = await fetch(`/media/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "x-csrf": csrf },
+  });
+  if (response.ok) {
+    figure.remove();
+    return;
+  }
+  const payload = await response.json().catch(() => null);
+  const field = figure.closest("[data-photo-field]");
+  if (field && payload && payload.error) {
+    showPhotoError(field, payload.error);
+  }
+}
+
+async function removeAttached(csrf, button) {
+  const id = button.getAttribute("data-media") || "";
+  const kind = button.getAttribute("data-parent-kind") === "reply" ? "reply" : "need";
+  const parent = button.getAttribute("data-parent") || "";
+  const response = await fetch(
+    `/media/${encodeURIComponent(id)}?${kind}=${encodeURIComponent(parent)}`,
+    { method: "DELETE", headers: { "x-csrf": csrf } },
+  );
+  if (response.redirected) {
+    window.location = response.url;
+    return;
+  }
+  if (response.ok) {
+    const frame = button.closest("figure");
+    if (frame) {
+      frame.remove();
+    }
+  }
+}
+
+function hookPhotoViewer() {
+  const dialog = document.querySelector("[data-photo-viewer]");
+  if (!(dialog instanceof HTMLDialogElement)) {
+    return;
+  }
+  const frame = dialog.querySelector("[data-photo-frame]");
+  const count = dialog.querySelector("[data-photo-count]");
+  const prev = dialog.querySelector("[data-photo-prev]");
+  const next = dialog.querySelector("[data-photo-next]");
+  if (!(frame instanceof HTMLImageElement) || !count || !prev || !next) {
+    return;
+  }
+  let photos = [];
+  let index = 0;
+
+  const show = (nextIndex) => {
+    if (!photos.length) {
+      return;
+    }
+    index = Math.max(0, Math.min(photos.length - 1, nextIndex));
+    const photo = photos[index];
+    frame.src = photo.full;
+    frame.alt = photo.alt;
+    count.textContent = `Photo ${index + 1} of ${photos.length}`;
+    prev.disabled = index === 0;
+    next.disabled = index === photos.length - 1;
+  };
+
+  document.addEventListener("click", (event) => {
+    const open = event.target.closest("[data-photo-open]");
+    if (open) {
+      const set = open.closest("[data-photo-set]");
+      if (!set) {
+        return;
+      }
+      photos = [...set.querySelectorAll("[data-photo-open]")].map((button) => ({
+        full: button.getAttribute("data-full") || "",
+        alt: button.getAttribute("data-alt") || "",
+      }));
+      show(Number(open.getAttribute("data-index") || "0"));
+      if (typeof dialog.showModal === "function" && !dialog.open) {
+        dialog.showModal();
+      }
+      return;
+    }
+    if (event.target.closest("[data-photo-close]")) {
+      dialog.close();
+      return;
+    }
+    if (event.target.closest("[data-photo-prev]")) {
+      show(index - 1);
+      return;
+    }
+    if (event.target.closest("[data-photo-next]")) {
+      show(index + 1);
+    }
+  });
+}
+
+function hookConversation() {
+  const root = document.querySelector("[data-conversation]");
+  if (!root || typeof EventSource === "undefined") {
+    return;
+  }
+  const source = new EventSource(needPath(root, "events"));
+  source.onmessage = (event) => {
+    const notice = readNotice(event.data);
+    if (!notice || replyPresent(notice.reply_id)) {
+      return;
+    }
+    const current = document.querySelector("[data-conversation]");
+    if (!current) {
+      return;
+    }
+    void replaceConversation(needPath(current, "conversation"));
+  };
+  source.addEventListener("refresh", () => {
+    const current = document.querySelector("[data-conversation]");
+    if (!current) {
+      return;
+    }
+    void replaceConversation(needPath(current, "conversation"));
+  });
+}
+
+function needPath(root, leaf) {
+  const need = root.getAttribute("data-need") || "";
+  const params = new URLSearchParams();
+  const lat = root.getAttribute("data-lat");
+  const lng = root.getAttribute("data-lng");
+  if (lat && lng) {
+    params.set("lat", lat);
+    params.set("lng", lng);
+  }
+  const query = params.toString();
+  return `/needs/${encodeURIComponent(need)}/${leaf}${query ? `?${query}` : ""}`;
+}
+
+function readNotice(raw) {
+  try {
+    const data = JSON.parse(raw);
+    if (!data || typeof data.reply_id !== "string" || !data.reply_id) {
+      return null;
+    }
+    return data;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function replyPresent(id) {
+  const nodes = document.querySelectorAll("[data-reply]");
+  for (const node of nodes) {
+    if (node.getAttribute("data-reply") === id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function replaceConversation(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    return;
+  }
+  const html = await response.text();
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const next = parsed.querySelector("[data-conversation]");
+  const current = document.querySelector("[data-conversation]");
+  if (!next || !current) {
+    return;
+  }
+  current.replaceWith(next);
+}
+
+function hookAvatar(csrf) {
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-avatar-remove]");
+    if (!button || !csrf) {
+      return;
+    }
+    event.preventDefault();
+    void fetch("/me/avatar", { method: "DELETE", headers: { "x-csrf": csrf } }).then((response) => {
+      if (response.redirected) {
+        window.location = response.url;
+      }
+    });
+  });
+  const input = document.querySelector("[data-avatar-form] input[type=file]");
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    if (!file) {
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const head = document.querySelector(".profile-head img.avatar, .profile-head .avatar");
+    if (head instanceof HTMLImageElement) {
+      head.src = url;
+      return;
+    }
+    if (!head) {
+      return;
+    }
+    const img = document.createElement("img");
+    img.className = head.className;
+    img.alt = "";
+    img.src = url;
+    head.replaceWith(img);
+  });
 }

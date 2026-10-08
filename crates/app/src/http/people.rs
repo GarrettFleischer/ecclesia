@@ -1,7 +1,8 @@
-use axum::extract::{Form, Path, Query, State};
-use axum::http::StatusCode;
+use axum::extract::{Form, Path, Query, Request, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::CookieJar;
+use serde::Deserialize;
 
 use crate::views;
 use ecclesia_sdk::prelude::{SkillSource, User, VoiceKind};
@@ -47,11 +48,13 @@ pub async fn member_show(
     let declined = state.sdk.db.declined_endorsements_for(&person.id).await?;
     let catalog = story::gift_catalog(&state.sdk).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
+    let avatar = avatar_media_id(&state.sdk.db, &person.id).await?;
     Ok(with_cookie(
         signed.jar,
         html(views::member_show(
             &viewer,
             &person,
+            avatar.as_deref(),
             &churches,
             &gifts,
             &endorsements,
@@ -232,10 +235,12 @@ pub async fn me(
         .db
         .open_needs_from_closed_churches(&viewer.user.id)
         .await?;
+    let avatar = avatar_media_id(&state.sdk.db, &viewer.user.id).await?;
     Ok(with_cookie(
         signed.jar,
         html(views::me(
             &viewer,
+            avatar.as_deref(),
             &gifts,
             &catalog,
             &devices,
@@ -471,11 +476,13 @@ async fn paint_member(
     let declined = state.sdk.db.declined_endorsements_for(&person.id).await?;
     let catalog = story::gift_catalog(&state.sdk).await?;
     let count = unread(&state.sdk.db, &viewer.user.id).await?;
+    let avatar = avatar_media_id(&state.sdk.db, &person.id).await?;
     Ok(with_cookie(
         jar,
         html(views::member_show(
             &viewer,
             person,
+            avatar.as_deref(),
             &churches,
             &gifts,
             &endorsements,
@@ -507,10 +514,12 @@ async fn paint_me(
         .db
         .open_needs_from_closed_churches(&viewer.user.id)
         .await?;
+    let avatar = avatar_media_id(&state.sdk.db, &viewer.user.id).await?;
     Ok(with_cookie(
         jar,
         html(views::me(
             viewer,
+            avatar.as_deref(),
             &gifts,
             &catalog,
             &devices,
@@ -523,4 +532,108 @@ async fn paint_me(
             &movable,
         )),
     ))
+}
+
+#[derive(Deserialize, Default)]
+pub(crate) struct AvatarDeleteQuery {
+    #[serde(default)]
+    csrf: String,
+}
+
+pub async fn replace_avatar_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    request: Request,
+) -> Result<Response, AppError> {
+    let (parts, body) = request.into_parts();
+    let signed = match signed_in(&state, jar).await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    if !super::needs::is_multipart(&parts.headers) {
+        return Ok(with_cookie(signed.jar, redirect_err("/me", "missing")));
+    }
+    let form = match super::needs::read_multipart_body(
+        &parts.headers,
+        body,
+        super::needs::AVATAR_BYTE_LIMIT,
+    )
+    .await
+    {
+        Ok(form) => form,
+        Err(error) => {
+            return Ok(with_cookie(
+                signed.jar,
+                redirect_err("/me", views::media_flash_code(&error)),
+            ));
+        }
+    };
+    if !signed
+        .session
+        .check_csrf(super::needs::field(&form, "csrf"))
+    {
+        return Ok(with_cookie(signed.jar, redirect_err("/me", "csrf")));
+    }
+    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    let media_id = match super::needs::one_staged_photo(&state.sdk.db, &viewer.user.id, &form).await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => return Ok(with_cookie(signed.jar, redirect_err("/me", "missing"))),
+        Err(error) => {
+            return Ok(with_cookie(
+                signed.jar,
+                redirect_err("/me", views::media_flash_code(&error)),
+            ));
+        }
+    };
+    let listed = match super::needs::GrantList::load(&state.sdk.db, &viewer.user.id).await {
+        Ok(listed) => listed,
+        Err(error) => {
+            return Ok(with_cookie(
+                signed.jar,
+                redirect_err("/me", views::media_flash_code(&error)),
+            ));
+        }
+    };
+    let grants = listed.grants();
+    let sight = ecclesia_sdk::story::StagedMediaSight::granted(&viewer.user.id, &grants);
+    match story::replace_avatar_photo(&state.sdk, &viewer, &media_id, &sight).await? {
+        Ok(_) => Ok(with_cookie(signed.jar, redirect_ok("/me", "photo_updated"))),
+        Err(ecclesia_sdk::story::ConversationError::Domain(error)) => {
+            Ok(with_cookie(signed.jar, leaf_err("/me", error)))
+        }
+        Err(ecclesia_sdk::story::ConversationError::UngrantedMedia { .. }) => {
+            Ok(with_cookie(signed.jar, redirect_err("/me", "not_owned")))
+        }
+    }
+}
+
+pub async fn remove_avatar_http(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Query(query): Query<AvatarDeleteQuery>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let csrf = super::needs::csrf_from_request(&headers, &query.csrf);
+    let signed = match signed_form(&state, jar, &csrf, "/me").await {
+        Ok(signed) => signed,
+        Err(response) => return Ok(response),
+    };
+    let viewer = viewer_for(&state.sdk.db, signed.user).await?;
+    story_redirect(
+        signed.jar,
+        "/me",
+        story::remove_avatar_photo(&state.sdk, &viewer).await?,
+        "photo_removed",
+    )
+}
+
+async fn avatar_media_id(
+    db: &ecclesia_sdk::db::Db,
+    user_id: &str,
+) -> Result<Option<String>, AppError> {
+    Ok(match db.avatar_reference(user_id).await? {
+        Some(ecclesia_sdk::db::AvatarReference::Photo(id)) => Some(id),
+        _ => None,
+    })
 }

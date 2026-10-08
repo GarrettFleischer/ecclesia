@@ -3,7 +3,7 @@ use maud::{Markup, html};
 use ecclesia_sdk::db::ClosedNeedGroup;
 use ecclesia_sdk::prelude::{Church, NeedCard, Viewer, visible_need_cards};
 
-use super::cards::{NeedCardPlace, need_card_stack, movable_needs_section, waiting_church_card};
+use super::cards::{NeedCardPlace, movable_needs_section, need_card_stack, waiting_church_card};
 use super::flash::Flash;
 use super::layout::{Icon, Nav, icon, page, page_lead};
 

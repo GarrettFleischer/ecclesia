@@ -11,15 +11,15 @@ use super::cards::{
     declined_endorsement_cards, member_gift_cards, movable_needs_section, my_gift_cards,
     notice_cards, pending_endorsement_cards, unused_gift_options,
 };
+use super::conversation::{AvatarFace, AvatarSize, avatar_face, person_avatar};
 use super::draft::{EndorseDraft, GiftDraft, ProfileDraft, review_banner, voice_pass_input};
 use super::flash::Flash;
-use super::layout::{
-    Monogram, Nav, csrf_input, detail_lead, monogram, page, page_lead, rewrite_row, shown_name,
-};
+use super::layout::{Nav, csrf_input, detail_lead, page, page_lead, rewrite_row, shown_name};
 
 pub fn member_show(
     viewer: &Viewer,
     person: &User,
+    avatar_media_id: Option<&str>,
     churches: &[Church],
     gifts: &[MemberGift],
     endorsements: &[EndorsementCard],
@@ -40,7 +40,7 @@ pub fn member_show(
         flash,
         csrf,
         html! {
-            (profile_head(person))
+            (profile_head(person, avatar_face(avatar_media_id)))
             (bio_lede(person))
             section {
                 h2 { "Churches" }
@@ -57,23 +57,53 @@ pub fn member_show(
     )
 }
 
-fn profile_head(person: &User) -> Markup {
-    named_head(person, detail_lead(&shown_name(person)))
+fn profile_head(person: &User, face: AvatarFace<'_>) -> Markup {
+    named_head(person, detail_lead(&shown_name(person)), face)
 }
 
-fn you_head(person: &User) -> Markup {
-    named_head(person, page_lead(&shown_name(person)))
+fn you_head(person: &User, face: AvatarFace<'_>) -> Markup {
+    named_head(person, page_lead(&shown_name(person)), face)
 }
 
-fn named_head(person: &User, title: Markup) -> Markup {
+fn named_head(person: &User, title: Markup, face: AvatarFace<'_>) -> Markup {
     let name = shown_name(person);
     html! {
         div class="profile-head" {
-            (monogram(&person.id, &name, Monogram::PersonLarge))
+            (person_avatar(&person.id, &name, face, AvatarSize::Large))
             div {
                 (title)
             }
         }
+    }
+}
+
+fn profile_photo(face: AvatarFace<'_>, csrf: &str) -> Markup {
+    html! {
+        section class="panel" {
+            h2 { "Profile photo" }
+            form class="stack" method="post" action="/me/avatar" enctype="multipart/form-data" data-avatar-form {
+                (csrf_input(csrf))
+                input type="file" name="photo" accept="image/jpeg,image/png,image/webp" aria-label=(avatar_action(face));
+                button class="btn" type="submit" { (avatar_action(face)) }
+            }
+            (remove_avatar(face))
+        }
+    }
+}
+
+fn avatar_action(face: AvatarFace<'_>) -> &'static str {
+    match face {
+        AvatarFace::Photo(_) => "Change photo",
+        AvatarFace::Initials => "Add profile photo",
+    }
+}
+
+fn remove_avatar(face: AvatarFace<'_>) -> Markup {
+    match face {
+        AvatarFace::Photo(_) => html! {
+            button type="button" class="btn btn-quiet" data-avatar-remove { "Remove photo" }
+        },
+        AvatarFace::Initials => html! {},
     }
 }
 
@@ -291,6 +321,7 @@ fn endorsement_prompt(note: &Notification) -> bool {
 
 pub fn me(
     viewer: &Viewer,
+    avatar_media_id: Option<&str>,
     gifts: &[MemberGift],
     catalog: &[Gift],
     devices: &[SessionRow],
@@ -310,7 +341,8 @@ pub fn me(
         flash,
         csrf,
         html! {
-            (you_head(&viewer.user))
+            (you_head(&viewer.user, avatar_face(avatar_media_id)))
+            (profile_photo(avatar_face(avatar_media_id), csrf))
             section {
                 h2 { "Profile" }
                 form class="stack" method="post" action="/me" {
