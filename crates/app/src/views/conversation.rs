@@ -277,7 +277,7 @@ fn paint_loaded(viewer_id: &str, reply: &LoadedReply) -> Markup {
         avatar: avatar_face(reply.avatar_media_id.as_deref()),
         removal: removal_for(viewer_id, reply),
         reach: PhotoReach::Opens,
-        church: None,
+        church: reply.card.author_church.as_deref(),
     })
 }
 

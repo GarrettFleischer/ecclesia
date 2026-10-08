@@ -1179,9 +1179,10 @@ main > .card-top {
 
 .prayer-react {
   display: flex;
+  flex-direction: column;
   flex: none;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.05rem;
   margin-left: auto;
 }
 
@@ -3411,7 +3412,7 @@ blockquote.verse cite {
   order: 1;
 }
 
-.product-screen .byline .reply-church {
+.byline .reply-church {
   display: block;
   margin-top: 0.12rem;
   color: var(--ink-2);
@@ -3420,14 +3421,8 @@ blockquote.verse cite {
   line-height: 1.3;
 }
 
-.product-screen .card-foot .byline .meta {
+.card-foot .byline .meta {
   margin: 0;
-}
-
-.product-screen .prayer-card .prayer-react {
-  flex-direction: column;
-  align-items: center;
-  gap: 0.05rem;
 }
 
 .product-screen .example-with-gift .example-credential {

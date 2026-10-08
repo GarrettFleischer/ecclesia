@@ -199,7 +199,15 @@ impl Db {
         let rows = self
             .fetch_all::<NeedReplyCardRow>(
                 "SELECT r.id, r.need_id, r.author_id, u.first_name AS author_first,
-                        u.last_name AS author_last, r.kind, r.body, r.created_at
+                        u.last_name AS author_last, r.kind, r.body, r.created_at,
+                        (
+                            SELECT c.name
+                            FROM memberships_live m
+                            JOIN churches_live c ON c.id = m.church_id
+                            WHERE m.user_id = r.author_id AND m.status = 'active'
+                            ORDER BY m.created_at ASC, c.name ASC
+                            LIMIT 1
+                        ) AS author_church
                  FROM need_replies r
                  JOIN users u ON u.id = r.author_id
                  WHERE r.need_id = ?

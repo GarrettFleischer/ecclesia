@@ -241,6 +241,7 @@ fn reply_card_from_row(row: NeedReplyCardRow) -> Result<NeedReplyCard, UnknownRe
         need_id: row.need_id,
         author_id: row.author_id,
         author_name: display_name(&row.author_first, &row.author_last),
+        author_church: row.author_church,
         kind: reply_kind_from_column(row.kind.as_deref())?,
         body: row.body,
         created_at: row.created_at,
@@ -435,6 +436,7 @@ pub struct NeedReplyCardRow {
     pub author_id: String,
     pub author_first: String,
     pub author_last: String,
+    pub author_church: Option<String>,
     /// Missing on a row written before `kind` existed. `NULL` uses the same path.
     #[sqlx(default)]
     pub kind: Option<String>,
@@ -608,6 +610,7 @@ mod tests {
             author_id: "ada".into(),
             author_first: "Ada".into(),
             author_last: "Lane".into(),
+            author_church: None,
             kind: kind.map(str::to_string),
             body: "Saturday.".into(),
             created_at: "t".into(),

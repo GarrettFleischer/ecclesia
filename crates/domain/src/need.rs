@@ -340,6 +340,8 @@ pub struct NeedReplyCard {
     pub need_id: String,
     pub author_id: String,
     pub author_name: String,
+    /// The replier's active church, when they have one.
+    pub author_church: Option<String>,
     pub kind: ReplyKind,
     pub body: String,
     pub created_at: String,

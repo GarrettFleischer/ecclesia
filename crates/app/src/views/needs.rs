@@ -137,9 +137,13 @@ pub fn need_show(
             p class="lede" { (need.body) }
             (photo_gallery(&photos, need_removal(viewer, need), PhotoReach::Opens))
             div class="card-foot need-meta" {
-                span class="byline" {
+                div class="byline" {
                     (person_avatar(&need.author_id, &need.author_name, avatar_face(author_avatar), AvatarSize::Small))
-                    span { "Posted by " a href={ "/members/" (need.author_id) } { (need.author_name) } }
+                    p class="meta" {
+                        "Posted by "
+                        a href={ "/members/" (need.author_id) } { (need.author_name) }
+                        span class="reply-church" { (church.name) }
+                    }
                 }
                 @if let Some(gift) = &need.gift_name { span class="chip" { (gift) } }
                 (closed_chip(need))

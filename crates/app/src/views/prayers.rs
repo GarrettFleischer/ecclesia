@@ -201,8 +201,8 @@ fn prayer_face(
                     }
                     @if can_pray {
                         div class="prayer-react" {
-                            (pray_others(tally))
                             (pray_control(PrayHands::from_count(tally), card, csrf, place))
+                            (pray_others(tally))
                         }
                     }
                 }
