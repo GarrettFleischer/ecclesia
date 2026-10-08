@@ -291,13 +291,8 @@ fn narrative() -> Markup {
             p class="landing-sources" {
                 "Justin Martyr, First Apology 67, about 155. Tertullian, Apology 39, about 197. Julian, Letter to Arsacius, 362."
             }
-            h2 { "Some burdens can only be carried" }
-            p { "Not every need can be fixed with a hammer, a meal, or a few hours of work." }
-            p { "Some things can only be carried in prayer." }
-            div class="landing-phones" {
-                (essay_prayers())
-                (prayer_frame())
-            }
+            h2 { "Prayer matters" }
+            (prayer_phone())
             p { "You may never meet these people." }
             p { "You may never know how their stories turn out." }
             p { "But for a moment, their burden becomes yours." }
@@ -450,32 +445,44 @@ fn david_phone() -> Markup {
     )
 }
 
-fn essay_prayers() -> Markup {
+fn prayer_phone() -> Markup {
     demo_phone(
         PhoneHeight::Fits,
         html! {
             div class="prayer-stack" {
                 (prayer_card(
-                    None,
-                    "Please pray for my daughter. She hasn't spoken to us in six months. I don't know what to do anymore.",
-                    None,
-                    SampleHands::Quiet,
+                    Some("Grace Fellowship"),
+                    "My daughter hasn't spoken to us in six months. I don't know what to do anymore.",
+                    Some(("margaret-hale", "Margaret Hale")),
+                    SampleHands::Counted("4"),
                 ))
                 (prayer_card(
                     None,
-                    "Please pray for our church. We've lost several families this year, and our pastor is exhausted.",
+                    "We've lost several families this year, and our pastor is exhausted.",
                     None,
-                    SampleHands::Quiet,
+                    SampleHands::Counted("8"),
+                ))
+                (prayer_card(
+                    Some("St. Luke\u{2019}s"),
+                    "Their son died this week.",
+                    Some(("james-porter", "James Porter")),
+                    SampleHands::Counted("15"),
                 ))
                 (prayer_card(
                     None,
-                    "Please pray for the family at St. Luke's. Their son died this week.",
+                    "I'm trying to keep everything together, but I'm running out of strength.",
                     None,
-                    SampleHands::Quiet,
+                    SampleHands::Counted("2"),
+                ))
+                (prayer_card(
+                    Some("Hope Chapel"),
+                    "My husband starts treatment on Monday. I need him to sleep, and I need to keep the house steady while he is there.",
+                    Some(("claire-bennett", "Claire Bennett")),
+                    SampleHands::Counted("6"),
                 ))
                 (prayer_card(
                     None,
-                    "Please pray for me. I'm trying to keep everything together, but I'm running out of strength.",
+                    "My son has stopped coming. He is angry, and I do not want to make it worse by putting my name on this.",
                     None,
                     SampleHands::Quiet,
                 ))
@@ -599,38 +606,10 @@ fn plain_reply(person_id: &'static str, name: &'static str, body: &'static str) 
     }
 }
 
-fn prayer_frame() -> Markup {
-    demo_phone(
-        PhoneHeight::Tall,
-        html! {
-            div class="prayer-stack" {
-                (prayer_card(
-                    Some("Grace Fellowship"),
-                    "My husband starts treatment on Monday. Pray that he can sleep, and that I can keep the house steady while he is there.",
-                    Some(("helen-price", "Helen Price")),
-                    SampleHands::Quiet,
-                ))
-                (prayer_card(
-                    None,
-                    "Pray for a son who has stopped coming. He is angry, and I do not want to make it worse by putting my name on this.",
-                    None,
-                    SampleHands::Pressed,
-                ))
-                (prayer_card(
-                    Some("Covenant Church"),
-                    "Our roof took on water in the storm. Pray for the families who are meeting downstairs until it is repaired.",
-                    Some(("david-cole", "David Cole")),
-                    SampleHands::Quiet,
-                ))
-            }
-        },
-    )
-}
-
 #[derive(Clone, Copy)]
 enum SampleHands {
     Quiet,
-    Pressed,
+    Counted(&'static str),
 }
 
 fn prayer_card(
@@ -653,8 +632,8 @@ fn prayer_card(
                     }
                 }
                 div class="prayer-react" {
-                    @if matches!(hands, SampleHands::Pressed) {
-                        span class="pray-count" { "3" }
+                    @if let SampleHands::Counted(count) = hands {
+                        span class="pray-count" { (count) }
                     }
                     (sample_hands(hands))
                 }
@@ -668,7 +647,7 @@ fn sample_hands(hands: SampleHands) -> Markup {
         SampleHands::Quiet => html! {
             span class="pray-mark" aria-hidden="true" { (icon(Icon::Pray)) }
         },
-        SampleHands::Pressed => html! {
+        SampleHands::Counted(_) => html! {
             span class="pray-mark is-pressed" aria-hidden="true" { (icon(Icon::Pray)) }
         },
     }

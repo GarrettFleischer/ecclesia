@@ -1959,7 +1959,10 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(landing.contains("I haven't seen the Brennans in a while"));
     assert!(landing.contains("My wife has been very sick. I've been home with her."));
     assert!(!landing.contains("Help while my wife is sick"));
-    assert!(landing.contains("Please pray for my daughter."));
+    assert!(landing.contains("Prayer matters"));
+    assert!(landing.contains("My daughter hasn't spoken to us in six months."));
+    assert!(!landing.contains("Please pray"));
+    assert!(!landing.contains("please pray"));
     assert!(landing.contains("They just need to find each other."));
     assert!(landing.contains("One Body"));
     assert!(!landing.contains("Ecclesia is free for churches and their members."));
