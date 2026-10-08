@@ -1156,6 +1156,19 @@ main > .card-top {
   font-weight: 600;
 }
 
+.prayer-card > .prayer-request,
+.prayer-card > .lede {
+  margin-bottom: 0;
+}
+
+.prayer-card .prayer-foot {
+  margin-top: 0.85rem;
+}
+
+.prayer-card {
+  padding-bottom: 0.7rem;
+}
+
 .prayer-foot {
   display: flex;
   flex-wrap: wrap;
@@ -3328,6 +3341,10 @@ blockquote.verse cite {
 
 .product-screen .card {
   padding: 0.85rem 0.9rem;
+}
+
+.product-screen .card.prayer-card {
+  padding-bottom: 0.45rem;
 }
 
 .product-screen .stack,

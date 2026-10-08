@@ -1985,7 +1985,7 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("A Need, Answered Together"));
     assert!(!landing.contains("data-photo-viewer"));
     assert!(!landing.contains("data-photo-open"));
-    assert!(landing.contains("/static/app.css?v=47"));
+    assert!(landing.contains("/static/app.css?v=48"));
     assert!(landing.contains("landing-phones"));
     assert!(!landing.contains("<input"));
     assert!(landing.contains("Create an account"));

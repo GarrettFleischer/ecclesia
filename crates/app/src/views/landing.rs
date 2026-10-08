@@ -212,12 +212,18 @@ fn narrative() -> Markup {
     html! {
         section class="landing-narrative" aria-labelledby="story-title" {
             (scripture::verse(&scripture::ACTS_2_44))
+            div class="landing-phones" {
+                (handrail_post())
+            }
             h2 id="story-title" { "The Church Takes Care of Its Own" }
             p {
                 "The church was a community before it was an organization."
             }
             p {
                 "From the beginning, Christians understood that they belonged to one another. When someone was in need, the rest of the church did not simply offer sympathy and move on. They stepped in. What one person lacked, another could provide. What one household could not carry, the wider body helped carry."
+            }
+            div class="landing-phones" {
+                (sarah_phone())
             }
             p { "Paul gave that relationship a name:" }
             (scripture::verse(&scripture::FIRST_CORINTHIANS_12_27_YOU))
@@ -245,15 +251,13 @@ fn narrative() -> Markup {
             p {
                 "A church can be passionate about reaching its community while quietly overlooking the person sitting in the next pew. It can organize ministries for the city while a widow, a single parent, an elderly member, or a family facing a crisis goes without help."
             }
+            div class="landing-phones" {
+                (david_phone())
+            }
             p {
                 "The early church understood that caring for its own was not a distraction from its mission."
             }
             p strong { "It was part of the mission." }
-            div class="landing-phones" {
-                (sarah_phone())
-                (handrail_post())
-                (david_phone())
-            }
             h2 { "One church, not a collection of islands" }
             p { "There is another problem that is easy to overlook." }
             p {
