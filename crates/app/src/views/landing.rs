@@ -219,38 +219,39 @@ fn narrative() -> Markup {
             p {
                 "The church was a community before it was an organization."
             }
-            p {
-                "From the beginning, Christians understood that they belonged to one another. When someone was in need, the rest of the church did not simply offer sympathy and move on. They stepped in. What one person lacked, another could provide. What one household could not carry, the wider body helped carry."
-            }
+            p { "From the beginning, Christians understood that they belonged to one another." }
+            p { "When someone was in need, the rest of the church did not simply offer sympathy and move on." }
+            p { "They stepped in." }
+            p { "What one person lacked, another could provide." }
+            p { "What one household could not carry, the wider body helped carry." }
             div class="landing-phones" {
                 (sarah_phone())
             }
             p { "Paul gave that relationship a name:" }
             (scripture::verse(&scripture::FIRST_CORINTHIANS_12_27_YOU))
-            p {
-                "He went on to explain what that means in practice. The members of a body cannot be indifferent to one another. When one suffers, the others suffer with them. When one is honored, the others rejoice."
-            }
+            p { "He went on to explain what that means in practice." }
+            p { "The members of a body cannot be indifferent to one another." }
+            p { "When one suffers, the others suffer with them." }
+            p { "When one is honored, the others rejoice." }
             (scripture::verse(&scripture::FIRST_CORINTHIANS_12_26))
             p { "That kind of care sounds simple. Living it out is harder." }
             h3 { "When someone is overlooked, the church responds" }
             p {
                 "The need became obvious as the first church in Jerusalem grew."
             }
-            p {
-                "The Greek-speaking widows among the believers were being overlooked in the daily distribution of food. The problem was not a lack of activity. The church was growing, preaching, gathering, and serving. But some of its own people were being missed."
-            }
-            p {
-                "The apostles did not treat that as someone else's problem. They appointed others to take responsibility for the daily distribution so that no one in the church would be neglected."
-            }
+            p { "The Greek-speaking widows among the believers were being overlooked in the daily distribution of food." }
+            p { "The problem was not a lack of activity." }
+            p { "The church was growing, preaching, gathering, and serving." }
+            p { "But some of its own people were being missed." }
+            p { "The apostles did not treat that as someone else's problem." }
+            p { "They appointed others to take responsibility for the daily distribution so that no one in the church would be neglected." }
             (scripture::verse(&scripture::ACTS_6_1_NEGLECT))
             p { "That is an important picture of what the church is meant to be." }
-            p {
-                "There will always be people outside the church who need to hear the gospel, receive help, and experience the love of Christ. That work matters enormously."
-            }
+            p { "There will always be people outside the church who need to hear the gospel, receive help, and experience the love of Christ." }
+            p { "That work matters enormously." }
             p { "But the people already sitting beside us matter too." }
-            p {
-                "A church can be passionate about reaching its community while quietly overlooking the person sitting in the next pew. It can organize ministries for the city while a widow, a single parent, an elderly member, or a family facing a crisis goes without help."
-            }
+            p { "A church can be passionate about reaching its community while quietly overlooking the person sitting in the next pew." }
+            p { "It can organize ministries for the city while a widow, a single parent, an elderly member, or a family facing a crisis goes without help." }
             div class="landing-phones" {
                 (david_phone())
             }
@@ -263,9 +264,9 @@ fn narrative() -> Markup {
             p {
                 "A congregation can love its people, serve faithfully, and still become an island."
             }
-            p {
-                "The church down the road may have families who need help. Another congregation may have volunteers with skills that could make a difference. One church may have resources sitting unused while another is struggling to meet a need."
-            }
+            p { "The church down the road may have families who need help." }
+            p { "Another congregation may have volunteers with skills that could make a difference." }
+            p { "One church may have resources sitting unused while another is struggling to meet a need." }
             p { "But if they never know about one another, none of that matters." }
             p {
                 "The New Testament gives us a picture of a church where people shared what they had so that no one was left in need."
@@ -282,13 +283,11 @@ fn narrative() -> Markup {
             blockquote class="verse" {
                 p { "\u{201c}See how they love one another.\u{201d}" }
             }
-            p {
-                "The care of its own members was something the world did not do. That care was a light, and a witness, before anyone outside had to be told."
-            }
+            p { "The care of its own members was something the world did not do." }
+            p { "That care was a light, and a witness, before anyone outside had to be told." }
             (scripture::verse(&scripture::FIRST_CORINTHIANS_12_26))
-            p {
-                "When a congregation knows its people, notices when something is wrong, and responds when someone needs help, fellowship becomes more than a Sunday gathering. It becomes a community."
-            }
+            p { "When a congregation knows its people, notices when something is wrong, and responds when someone needs help, fellowship becomes more than a Sunday gathering." }
+            p { "It becomes a community." }
             p {
                 "And that kind of love is still one of the clearest ways the church can show the world who Christ is."
             }
@@ -445,76 +444,41 @@ fn prayer_phone() -> Markup {
         html! {
             div class="prayer-stack" {
                 (prayer_card(
-                    "Grace Fellowship",
+                    SampleByline::Named {
+                        church: "Grace Fellowship",
+                        name: "Margaret Hale",
+                    },
                     "My daughter called last night. We're having a hard time understanding each other right now. I don't know whether to give her space or reach out again.",
-                    "Margaret Hale",
-                    "4",
+                    SampleHands::Quiet,
                 ))
                 (prayer_card(
-                    "Grace Fellowship",
-                    "Our pastor has been carrying a lot this year. He's doing his best, but I can tell he's tired.",
-                    "David Morrison",
-                    "8",
+                    SampleByline::Anonymous,
+                    "I lost my job on Friday. I've been applying all week, but nothing has come through, and I'm trying to figure out what we do next.",
+                    SampleHands::Prayed("11"),
                 ))
                 (prayer_card(
-                    "Hope Chapel",
+                    SampleByline::Named {
+                        church: "Hope Chapel",
+                        name: "Claire Bennett",
+                    },
                     "My husband starts treatment Monday. I'm trying to keep everything at home running normally for him and the kids.",
-                    "Claire Bennett",
-                    "6",
+                    SampleHands::Quiet,
                 ))
                 (prayer_card(
-                    "Grace Fellowship",
-                    "My son hasn't been coming to church lately. I don't want to push him away, but I also don't want to stop reaching out.",
-                    "Anonymous",
-                    "11",
-                ))
-                (prayer_card(
-                    "Covenant Church",
-                    "We're still getting things back in order after the storm. A lot of little repairs have turned into a pretty long list.",
-                    "Rachel Thompson",
-                    "3",
-                ))
-                (prayer_card(
-                    "Hope Chapel",
-                    "We've been trying to stretch our budget a little further than usual. I'm trusting that things will work out, but I'd appreciate some prayer for wisdom.",
-                    "Anonymous",
-                    "19",
-                ))
-                (prayer_card(
-                    "St. Luke\u{2019}s",
+                    SampleByline::Named {
+                        church: "St. Luke\u{2019}s",
+                        name: "Mary Collins",
+                    },
                     "One of our older members has been feeling pretty isolated lately. I keep thinking about how easy it is for someone to slip through the cracks.",
-                    "Mary Collins",
-                    "7",
+                    SampleHands::Prayed("7"),
                 ))
                 (prayer_card(
-                    "Grace Fellowship",
-                    "We have our community food drive this weekend. We could use a few more volunteers, and I'm praying we have a good turnout.",
-                    "Pastor Daniel Reed",
-                    "12",
-                ))
-                (prayer_card(
-                    "Covenant Church",
-                    "We've got several families who need help with projects around their homes. We have people willing to help\u{2014}we're just trying to get everyone connected.",
-                    "James Cole",
-                    "9",
-                ))
-                (prayer_card(
-                    "Grace Fellowship",
-                    "We're starting a new small group this month. I'm excited about it, but honestly a little nervous about whether people will show up.",
-                    "Anonymous",
-                    "23",
-                ))
-                (prayer_card(
-                    "Hope Chapel",
-                    "I start a new job next week. Excited about the opportunity, but definitely feeling a little nervous about getting up to speed.",
-                    "Emily Parker",
-                    "14",
-                ))
-                (prayer_card(
-                    "Grace Fellowship",
-                    "I've been putting off a conversation with a friend because I don't know how to start it. I could really use some wisdom.",
-                    "Anonymous",
-                    "17",
+                    SampleByline::Named {
+                        church: "Covenant Church",
+                        name: "Rachel Thompson",
+                    },
+                    "We're still getting things back in order after the storm. A lot of little repairs have turned into a pretty long list.",
+                    SampleHands::Prayed("3"),
                 ))
             }
         },
@@ -526,7 +490,6 @@ fn handrail_post() -> Markup {
     demo_phone(
         PhoneHeight::Tall,
         html! {
-            p class="shot-church" { "Grace Fellowship" }
             p class="shot-time" { "Tuesday at 9:14 AM" }
             h3 class="shot-title" { "Handrail for my front steps" }
             p class="shot-body" {
@@ -541,7 +504,6 @@ fn handrail_post() -> Markup {
                     "Grace Fellowship",
                 ))
                 span class="chip" { "Carpentry & repairs" }
-                span class="chip" { "Grace Fellowship" }
             }
             div class="stack" {
                 (example_reply(
@@ -658,27 +620,58 @@ fn plain_reply(
     }
 }
 
-fn prayer_card(
-    church: &'static str,
-    request: &'static str,
-    name: &'static str,
-    count: &'static str,
-) -> Markup {
+/// A named sample prayer shows its church once. An unnamed prayer shows neither church nor a name.
+#[derive(Clone, Copy)]
+enum SampleByline {
+    Named {
+        church: &'static str,
+        name: &'static str,
+    },
+    Anonymous,
+}
+
+/// Pressed hands carry a count. Quiet hands do not.
+#[derive(Clone, Copy)]
+enum SampleHands {
+    Quiet,
+    Prayed(&'static str),
+}
+
+fn prayer_card(byline: SampleByline, request: &'static str, hands: SampleHands) -> Markup {
+    let (church, name) = match byline {
+        SampleByline::Named { church, name } => (Some(church), Some(name)),
+        SampleByline::Anonymous => (None, None),
+    };
     html! {
         article class="card prayer-card" {
-            p class="eyebrow" { (church) }
+            @if let Some(church) = church {
+                p class="eyebrow" { (church) }
+            }
             p class="prayer-request" { (request) }
             div class="prayer-foot" {
-                p class="byline" {
-                    (person_avatar(name, name, AvatarFace::Initials, AvatarSize::Small))
-                    (name)
+                @if let Some(name) = name {
+                    p class="byline" {
+                        (person_avatar(name, name, AvatarFace::Initials, AvatarSize::Small))
+                        (name)
+                    }
                 }
                 div class="prayer-react" {
-                    span class="pray-mark is-pressed" aria-hidden="true" { (icon(Icon::Pray)) }
-                    span class="pray-count" { (count) }
+                    (sample_hands(hands))
                 }
             }
         }
+    }
+}
+
+fn sample_hands(hands: SampleHands) -> Markup {
+    match hands {
+        SampleHands::Quiet => html! {
+            span class="pray-mark" aria-hidden="true" { (icon(Icon::Pray)) }
+        },
+        SampleHands::Prayed(count) => html! {
+            span class="pray-mark is-pressed" aria-hidden="true" { (icon(Icon::Pray)) }
+            span class="pray-count" { (count) }
+        },
     }
 }
 

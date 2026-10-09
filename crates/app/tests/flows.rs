@@ -755,7 +755,7 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
     assert!(page.contains("/static/join.js?v=6"));
-    assert!(page.contains("/static/app.js?v=33"));
+    assert!(page.contains("/static/app.js?v=35"));
     let shell = get_public(&world, "/static/app.js").await;
     assert!(shell.contains("ecclesia-place"));
     assert!(shell.contains("print-code.css"));
@@ -1961,6 +1961,93 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("Help while my wife is sick"));
     assert!(landing.contains("Prayer matters"));
     assert!(landing.contains("My daughter called last night."));
+    assert!(landing.contains("I lost my job on Friday."));
+    assert!(landing.contains("My husband starts treatment Monday."));
+    assert!(landing.contains("feeling pretty isolated lately."));
+    assert!(landing.contains("after the storm."));
+    assert!(!landing.contains("My father died"));
+    assert!(!landing.contains("custody hearing"));
+    assert!(!landing.contains("landlord sold the house"));
+    assert!(!landing.contains("in surgery this morning"));
+    assert!(!landing.contains("hasn't been coming to church"));
+    assert!(!landing.contains("putting off a conversation"));
+    let prayers = landing.find("Prayer matters").expect("prayers");
+    let after_prayers = landing
+        .find("The same body that meets practical needs")
+        .expect("after prayers");
+    assert!(prayers < after_prayers);
+    let phone = &landing[prayers..after_prayers];
+    let daughter = phone
+        .find("My daughter called last night.")
+        .expect("daughter");
+    let layoff = phone.find("I lost my job on Friday.").expect("layoff");
+    let treatment = phone
+        .find("My husband starts treatment Monday.")
+        .expect("treatment");
+    let isolated = phone
+        .find("feeling pretty isolated lately.")
+        .expect("isolated");
+    let storm = phone.find("after the storm.").expect("storm");
+    assert!(daughter < layoff);
+    assert!(layoff < treatment);
+    assert!(treatment < isolated);
+    assert!(isolated < storm);
+    let margaret = &phone[..layoff];
+    assert!(margaret.contains("Grace Fellowship"));
+    assert!(margaret.contains("Margaret Hale"));
+    assert!(!margaret.contains("is-pressed"));
+    assert!(!margaret.contains("pray-count"));
+    let job_end = phone[layoff..]
+        .find("</article>")
+        .map(|index| layoff + index)
+        .expect("job article end");
+    let job = &phone[layoff..job_end];
+    assert!(job.contains("pray-mark is-pressed"));
+    assert!(job.contains(">11<"));
+    assert!(!job.contains("class=\"eyebrow\""));
+    assert!(!job.contains("class=\"byline\""));
+    let claire_start = phone[..treatment]
+        .rfind("class=\"card prayer-card\"")
+        .expect("claire card");
+    let claire_end = phone[treatment..]
+        .find("</article>")
+        .map(|index| treatment + index)
+        .expect("claire article end");
+    let claire = &phone[claire_start..claire_end];
+    assert!(claire.contains("Claire Bennett"));
+    assert!(claire.contains("Hope Chapel"));
+    assert!(!claire.contains("is-pressed"));
+    assert!(!claire.contains("pray-count"));
+    let mary_start = phone[..isolated]
+        .rfind("class=\"card prayer-card\"")
+        .expect("mary card");
+    let mary_end = phone[storm..]
+        .find("</article>")
+        .map(|index| storm + index)
+        .expect("mary article end");
+    let mary = &phone[mary_start..mary_end];
+    assert!(mary.contains("Mary Collins"));
+    assert!(mary.contains("pray-mark is-pressed"));
+    assert!(mary.contains(">7<"));
+    let rachel_start = phone[..storm]
+        .rfind("class=\"card prayer-card\"")
+        .expect("rachel card");
+    let rachel = &phone[rachel_start..];
+    assert!(rachel.contains("Rachel Thompson"));
+    assert!(rachel.contains("Covenant Church"));
+    assert!(rachel.contains("pray-mark is-pressed"));
+    assert!(rachel.contains(">3<"));
+    assert_eq!(phone.matches("pray-mark is-pressed").count(), 3);
+    assert_eq!(phone.matches("class=\"pray-count\"").count(), 3);
+    assert!(!phone.contains("Anonymous"));
+    assert!(!phone.contains("David Morrison"));
+    assert!(!phone.contains("Pastor Daniel Reed"));
+    assert!(!phone.contains("James Cole"));
+    assert!(!phone.contains("Emily Parker"));
+    assert!(!landing.contains("stretch our budget"));
+    assert!(!landing.contains("community food drive"));
+    assert!(!landing.contains("new small group"));
+    assert!(!landing.contains("new job next week"));
     assert!(!landing.contains("Please pray"));
     assert!(!landing.contains("please pray"));
     assert!(landing.contains("They just need to find each other."));
@@ -1985,7 +2072,8 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("A Need, Answered Together"));
     assert!(!landing.contains("data-photo-viewer"));
     assert!(!landing.contains("data-photo-open"));
-    assert!(landing.contains("/static/app.css?v=51"));
+    assert!(landing.contains("/static/app.css?v=54"));
+    assert!(landing.contains("/static/app.js?v=35"));
     assert!(landing.contains("landing-phones"));
     assert!(!landing.contains("<input"));
     assert!(landing.contains("Create an account"));

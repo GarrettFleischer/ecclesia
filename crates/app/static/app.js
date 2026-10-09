@@ -1,4 +1,5 @@
 (() => {
+  hookReveal();
   let pickerBus = null;
   const csrf = meta("csrf");
   const unread = Number(meta("unread") || "0");
@@ -45,6 +46,79 @@
     enableWebPush(csrf);
   }
 })();
+
+function hookReveal() {
+  document.documentElement.dataset.reveal = "start";
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (reduce.matches || !("IntersectionObserver" in window)) {
+    document.documentElement.dataset.reveal = reduce.matches ? "reduce" : "no-observer";
+    return;
+  }
+  const text = document.querySelectorAll(
+    [
+      ".landing-narrative > h2",
+      ".landing-narrative > h3",
+      ".landing-narrative > p",
+      ".landing-narrative > ul",
+      ".landing-narrative > blockquote.verse",
+      ".landing-narrative > .church-map",
+      ".landing-close .landing-cta",
+      ".sheet-legal .legal > h2",
+      ".sheet-legal .legal > p",
+      ".sheet-legal .legal > ul",
+      ".site-footer > *",
+    ].join(", "),
+  );
+  const phones = document.querySelectorAll(
+    ".landing-phones > .product-frame, .landing-narrative > .product-frame",
+  );
+  if (!text.length && !phones.length) {
+    document.documentElement.dataset.reveal = "empty";
+    return;
+  }
+  const observer = new IntersectionObserver(markRevealed, {
+    root: null,
+    rootMargin: "0px 0px -8% 0px",
+    threshold: 0,
+  });
+  try {
+    text.forEach((node) => watchReveal(node, observer));
+    phones.forEach((node) => watchReveal(node, observer));
+    document.documentElement.classList.add("reveal-ready");
+    document.documentElement.dataset.reveal = "ready";
+  } catch (error) {
+    document.documentElement.classList.remove("reveal-ready");
+    document.documentElement.dataset.reveal = String(error);
+  }
+}
+
+function watchReveal(node, observer) {
+  if (revealEntered(node)) {
+    node.classList.add(revealClass(node));
+    return;
+  }
+  observer.observe(node);
+}
+
+function markRevealed(entries, observer) {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) {
+      return;
+    }
+    entry.target.classList.add(revealClass(entry.target));
+    observer.unobserve(entry.target);
+  });
+}
+
+function revealClass(node) {
+  return node.classList.contains("product-frame") ? "is-arrived" : "is-shown";
+}
+
+function revealEntered(node) {
+  const box = node.getBoundingClientRect();
+  const limit = window.innerHeight * 0.92;
+  return box.top < limit && box.bottom > 0;
+}
 
 function meta(name) {
   const node = document.querySelector(`meta[name="${name}"]`);

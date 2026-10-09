@@ -392,6 +392,14 @@ main.sheet-landing {
 .page-rise > :nth-child(5) { animation-delay: 200ms; }
 .page-rise > :nth-child(n + 6) { animation-delay: 250ms; }
 
+.sheet-landing.page-rise > * {
+  animation: none;
+}
+
+.sheet-legal.page-rise > .legal {
+  animation: none;
+}
+
 .page-rise > :is(h1, :has(h1)) {
   animation: none;
 }
@@ -399,6 +407,11 @@ main.sheet-landing {
 .page-rise:not(.sheet-landing) h1:not(.title-morph) {
   transform-origin: 0 50%;
   animation: title-settle 720ms var(--ease-out) both;
+}
+
+.page-rise.sheet-auth h1:not(.title-morph),
+.page-rise.sheet-legal h1:not(.title-morph) {
+  animation: rise 760ms var(--ease-out) both;
 }
 
 h1,
@@ -1137,7 +1150,7 @@ main > .card-top {
 }
 
 .need-meta {
-  margin: 0.25rem 0 1.1rem;
+  margin: 0.85rem 0 1rem;
 }
 
 .byline {
@@ -1151,9 +1164,17 @@ main > .card-top {
   font-weight: 500;
 }
 
+.byline .meta {
+  margin: 0;
+}
+
 .byline a {
   color: inherit;
   font-weight: 600;
+}
+
+.prayer-card > .eyebrow {
+  margin-bottom: 0.45rem;
 }
 
 .prayer-card > .prayer-request,
@@ -1162,19 +1183,28 @@ main > .card-top {
 }
 
 .prayer-card .prayer-foot {
-  margin-top: 0.85rem;
+  margin-top: 0.8rem;
 }
 
 .prayer-card {
-  padding-bottom: 0.7rem;
+  padding-bottom: 0.95rem;
+}
+
+.card > .byline + p {
+  margin-top: 0.65rem;
 }
 
 .prayer-foot {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
   gap: 0.45rem 0.75rem;
+}
+
+.prayer-foot .byline {
+  min-height: 2.25rem;
+  margin: 0 auto 0 0;
 }
 
 .prayer-react {
@@ -1182,7 +1212,7 @@ main > .card-top {
   flex-direction: column;
   flex: none;
   align-items: center;
-  gap: 0.05rem;
+  gap: 0.12rem;
   margin-left: auto;
 }
 
@@ -2704,12 +2734,16 @@ body.standalone .install-bar {
 .landing-handrail > p,
 .landing-prayer > p,
 .landing-body > p {
-  margin: 0 0 1.25rem;
+  margin: 0 0 1rem;
   color: var(--ink);
   font-size: 1.125rem;
   line-height: 1.75;
   overflow-wrap: break-word;
   text-wrap: pretty;
+}
+
+.landing-narrative > p {
+  margin-bottom: 1rem;
 }
 
 .landing-narrative > ul,
@@ -3307,7 +3341,7 @@ blockquote.verse cite {
 }
 
 .product-screen .prayer-card .eyebrow {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.45rem;
   color: var(--ink-2);
   font-size: 0.7rem;
   font-weight: 600;
@@ -3337,7 +3371,12 @@ blockquote.verse cite {
 }
 
 .product-screen .shot-body {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.35rem;
+}
+
+.product-screen .need-meta {
+  margin-top: 0.55rem;
+  margin-bottom: 0.85rem;
 }
 
 .product-screen .card {
@@ -3345,7 +3384,7 @@ blockquote.verse cite {
 }
 
 .product-screen .card.prayer-card {
-  padding-bottom: 0.45rem;
+  padding-bottom: 0.7rem;
 }
 
 .product-screen .stack,
@@ -3414,7 +3453,7 @@ blockquote.verse cite {
 
 .byline .reply-church {
   display: block;
-  margin-top: 0.12rem;
+  margin-top: 0.22rem;
   color: var(--ink-2);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -4036,8 +4075,29 @@ input.is-invalid:focus {
 @keyframes reveal {
   from {
     opacity: 0;
-    translate: 0 1.75rem;
+    translate: 0 1.05rem;
+  }
+}
+
+@keyframes phone-frame-in {
+  from {
+    opacity: 0;
     scale: 0.97;
+  }
+
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes phone-screen-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 
@@ -4130,6 +4190,65 @@ input.is-invalid:focus {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  html.reveal-ready :is(
+    .landing-narrative > h2,
+    .landing-narrative > h3,
+    .landing-narrative > p,
+    .landing-narrative > ul,
+    .landing-narrative > blockquote.verse,
+    .landing-narrative > .church-map,
+    .landing-close .landing-cta,
+    .sheet-legal .legal > h2,
+    .sheet-legal .legal > p,
+    .sheet-legal .legal > ul,
+    .site-footer > *
+  ):not(.is-shown) {
+    opacity: 0;
+    translate: 0 1.05rem;
+  }
+
+  html.reveal-ready :is(
+    .landing-narrative > h2,
+    .landing-narrative > h3,
+    .landing-narrative > p,
+    .landing-narrative > ul,
+    .landing-narrative > blockquote.verse,
+    .landing-narrative > .church-map,
+    .landing-close .landing-cta,
+    .sheet-legal .legal > h2,
+    .sheet-legal .legal > p,
+    .sheet-legal .legal > ul,
+    .site-footer > *
+  ).is-shown {
+    animation: reveal 800ms var(--ease-out) both;
+  }
+
+  html.reveal-ready :is(
+    .landing-phones > .product-frame,
+    .landing-narrative > .product-frame
+  ):not(.is-arrived) .product-scale,
+  html.reveal-ready :is(
+    .landing-phones > .product-frame,
+    .landing-narrative > .product-frame
+  ):not(.is-arrived) .product-screen > * {
+    opacity: 0;
+  }
+
+  html.reveal-ready :is(
+    .landing-phones > .product-frame,
+    .landing-narrative > .product-frame
+  ).is-arrived .product-scale {
+    transform-origin: center;
+    animation: phone-frame-in 680ms var(--ease-out) backwards;
+  }
+
+  html.reveal-ready :is(
+    .landing-phones > .product-frame,
+    .landing-narrative > .product-frame
+  ).is-arrived .product-screen > * {
+    animation: phone-screen-in 460ms var(--ease-out) 200ms backwards;
+  }
+
   .picker-menu {
     animation: picker-rise 180ms var(--ease-out);
   }
@@ -4182,47 +4301,6 @@ input.is-invalid:focus {
 
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .stack > .card,
-    .people > li,
-    .landing-narrative > p,
-    .landing-narrative > h2,
-    .landing-narrative > h3,
-    .landing-narrative > ul,
-    .landing-narrative > .verse,
-    .landing-handrail > p,
-    .landing-handrail > ul,
-    .landing-prayer > p,
-    .landing-body > p,
-    .landing-block > h2,
-    .landing-block > .section-intro,
-    .product-scale-long .product-screen > *,
-    .product-scale-long .stack > *,
-    .product-screen .prayer-stack > .prayer-card,
-    .landing-handrail > .verse,
-    .landing-prayer .product-frame,
-    .landing-body > p,
-    .landing-body > .verse,
-    .church-map,
-    .church-map .map-place,
-    .landing-close .landing-cta,
-    .site-footer > * {
-      animation: reveal linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 85%;
-    }
-
-    @media (max-width: 859px) {
-      .phone-frame {
-        animation: none;
-      }
-
-      .landing-phone > .phone-frames {
-        animation: reveal linear both;
-        animation-timeline: view();
-        animation-range: entry 0% entry 85%;
-      }
-    }
-
     .topbar {
       animation: bar-settle linear both;
       animation-timeline: scroll(root);
@@ -4257,6 +4335,14 @@ input.is-invalid:focus {
   }
 
   .page-rise > *,
+  .landing-narrative > *,
+  .landing-phones > .product-frame,
+  .landing-narrative > .product-frame,
+  .product-scale,
+  .church-map,
+  .landing-close .landing-cta,
+  .legal > *,
+  .site-footer > *,
   main h1,
   .glow,
   .hero-scene,

@@ -55,9 +55,9 @@ Cards are translucent over the pre-blurred wallpaper and carry no `backdrop-filt
 
 Cross-document view transitions (`@view-transition`). Opening a card moves the `page-title` name onto that card's h3 (`hookTitleMorph` in `app.js`), so the card title becomes the next page's h1. The dock pill glides to the new tab on `--spring`.
 
-Scroll-driven, inside `@supports (animation-timeline: view())`: cards, people rows, and the landing guide reveal as they enter, the top bar frosts after the first 4rem, and the hero drifts and fades. Browsers without it get the settled state.
+Each landing heading, paragraph, verse, and example phone reveals on its own when it enters the viewport. `hookReveal` in `app.js` watches that element and adds `is-shown`; the rise then plays once on `--ease-out`. Nothing below the fold runs on load, and a later sibling does not inherit a delay from an earlier one. Phones do not scale. Terms, privacy, and give use the same trigger on headings, paragraphs, and lists. Account pages rise once. The signed-in app does not scroll-reveal need replies. `view()` still frosts the top bar after the first 4rem and drifts the hero. `overflow-x: clip` on `body` makes a `view()` timeline on the story unreliable, so the story does not use one. If the watcher never runs, the story stays visible.
 
-Hover lift on card links and buttons is inside `@media (hover: hover)`. `prefers-reduced-motion: reduce` turns off view transitions and cuts every animation and transition to nothing. Forced colors outline each surface in `CanvasText` and mark the current tab and the checked choice with `Highlight`.
+Hover lift on card links and buttons is inside `@media (hover: hover)`. `prefers-reduced-motion: reduce` turns off view transitions and scroll reveals, and cuts every animation and transition to nothing. Content stays visible. Forced colors outline each surface in `CanvasText` and mark the current tab and the checked choice with `Highlight`.
 
 ## Chrome seats
 

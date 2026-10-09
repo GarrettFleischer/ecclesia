@@ -315,7 +315,7 @@ pub fn page(
                 link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin;
                 link rel="preload" href="/static/fonts/instrument-serif-normal-latin.woff2" as="font" type="font/woff2" crossorigin;
                 (scene_preload(nav))
-                link rel="stylesheet" href="/static/app.css?v=51";
+                link rel="stylesheet" href="/static/app.css?v=54";
                 script { (maud::PreEscaped(NEED_RETURN_HOLD)) }
                 meta name="csrf" content=(csrf);
                 meta name="unread" content=(unread);
@@ -342,7 +342,7 @@ pub fn page(
                 @if show_dock(nav) {
                     (dock(nav, unread))
                 }
-                script src="/static/app.js?v=33" defer {}
+                script src="/static/app.js?v=35" defer {}
             }
         }
     }
