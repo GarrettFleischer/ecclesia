@@ -755,7 +755,7 @@ async fn us_auth_01_join_search_finds_grace() {
     assert!(page.contains("Name or city"));
     assert!(page.contains("Cedar Falls"));
     assert!(page.contains("/static/join.js?v=6"));
-    assert!(page.contains("/static/app.js?v=35"));
+    assert!(page.contains("/static/app.js?v=36"));
     let shell = get_public(&world, "/static/app.js").await;
     assert!(shell.contains("ecclesia-place"));
     assert!(shell.contains("print-code.css"));
@@ -1943,23 +1943,31 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(landing.contains("The Body of Christ"));
     let title = landing.find("The Body of Christ").expect("title");
     let account = landing.find("Create an account").expect("account");
+    let intro = landing
+        .find("Ecclesia Together is a shared place where Christians and churches can find one another when help is needed.")
+        .expect("intro");
+    let intro_cta = landing
+        .find("Join your community in sharing needs, offering help, and praying for one another.")
+        .expect("intro cta");
     let narrative = landing
-        .find("The church was a community before it was an organization.")
+        .find("The church was never meant to be just a place we attend.")
         .expect("narrative");
     assert!(title < account);
-    assert!(account < narrative);
+    assert!(account < intro);
+    assert!(intro < intro_cta);
+    assert!(intro_cta < narrative);
     let acts = landing.find("Acts 2:44-45").expect("acts 2");
     assert_eq!(landing.matches("Acts 2:44-45").count(), 1);
-    assert!(acts < narrative);
+    assert!(acts < intro);
     assert!(landing.contains("The Church Takes Care of Its Own"));
     assert!(landing.contains("See how they love one another."));
-    assert!(landing.contains("It was part of the mission."));
+    assert!(landing.contains("Churches Don\u{2019}t Have to Do It Alone"));
     assert!(landing.contains("Ride home after surgery"));
     assert!(landing.contains("I can pick you up Thursday."));
     assert!(landing.contains("I haven't seen the Brennans in a while"));
     assert!(landing.contains("My wife has been very sick. I've been home with her."));
     assert!(!landing.contains("Help while my wife is sick"));
-    assert!(landing.contains("Prayer matters"));
+    assert!(landing.contains("Prayer Matters"));
     assert!(landing.contains("My daughter called last night."));
     assert!(landing.contains("I lost my job on Friday."));
     assert!(landing.contains("My husband starts treatment Monday."));
@@ -1971,9 +1979,9 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("in surgery this morning"));
     assert!(!landing.contains("hasn't been coming to church"));
     assert!(!landing.contains("putting off a conversation"));
-    let prayers = landing.find("Prayer matters").expect("prayers");
+    let prayers = landing.find("Prayer Matters").expect("prayers");
     let after_prayers = landing
-        .find("The same body that meets practical needs")
+        .find("Ecclesia Together gives people and congregations a shared place to lift up prayer requests")
         .expect("after prayers");
     assert!(prayers < after_prayers);
     let phone = &landing[prayers..after_prayers];
@@ -2050,7 +2058,7 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("new job next week"));
     assert!(!landing.contains("Please pray"));
     assert!(!landing.contains("please pray"));
-    assert!(landing.contains("They just need to find each other."));
+    assert!(landing.contains("They just need to find one another."));
     assert!(landing.contains("One Body"));
     assert!(!landing.contains("Ecclesia is free for churches and their members."));
     assert!(landing.contains("Bear one another\u{2019}s burdens"));
@@ -2073,7 +2081,7 @@ async fn us_app_03_website_landing_and_guest_home() {
     assert!(!landing.contains("data-photo-viewer"));
     assert!(!landing.contains("data-photo-open"));
     assert!(landing.contains("/static/app.css?v=54"));
-    assert!(landing.contains("/static/app.js?v=35"));
+    assert!(landing.contains("/static/app.js?v=36"));
     assert!(landing.contains("landing-phones"));
     assert!(!landing.contains("<input"));
     assert!(landing.contains("Create an account"));

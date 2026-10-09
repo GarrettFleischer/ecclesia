@@ -26,12 +26,6 @@ pub const ACTS_6_1_NEGLECT: Verse = Verse {
     reference: "Acts 6:1",
 };
 
-/// 1 Corinthians 12:27, opening clause on the landing.
-pub const FIRST_CORINTHIANS_12_27_YOU: Verse = Verse {
-    text: "You are the body of Christ and individually members of it.",
-    reference: "1 Corinthians 12:27",
-};
-
 /// Galatians 6:2.
 pub const GALATIANS_6_2: Verse = Verse {
     text: "Bear one another’s burdens, and so fulfill the law of Christ.",

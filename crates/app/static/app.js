@@ -62,6 +62,7 @@ function hookReveal() {
       ".landing-narrative > ul",
       ".landing-narrative > blockquote.verse",
       ".landing-narrative > .church-map",
+      ".landing-narrative > .landing-intro-cta",
       ".landing-close .landing-cta",
       ".sheet-legal .legal > h2",
       ".sheet-legal .legal > p",
@@ -171,7 +172,37 @@ function hookInstall(native) {
   }
   let pending = null;
   let prompting = false;
+  let installUnlocked = false;
+  let installReady = false;
   const manual = needsManualInstall();
+
+  const showInstallBar = () => {
+    if (!installUnlocked || !installReady) {
+      return;
+    }
+    bar.hidden = false;
+  };
+
+  const unlockInstallBar = () => {
+    installUnlocked = true;
+    showInstallBar();
+  };
+
+  const gate = document.querySelector(".landing-intro-cta");
+  if (gate && "IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          unlockInstallBar();
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "0px 0px -10% 0px", threshold: 0 },
+    );
+    observer.observe(gate);
+  } else {
+    installUnlocked = true;
+  }
 
   if (!manual) {
     install.hidden = true;
@@ -180,10 +211,11 @@ function hookInstall(native) {
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     pending = event;
+    installReady = true;
     if (!manual) {
       install.hidden = false;
     }
-    bar.hidden = false;
+    showInstallBar();
   });
 
   window.addEventListener("appinstalled", () => {
@@ -200,7 +232,8 @@ function hookInstall(native) {
     install.hidden = true;
     dismiss.textContent = "Got it";
     bar.classList.add("install-bar-manual");
-    bar.hidden = false;
+    installReady = true;
+    showInstallBar();
     hookInstallHelp(bar);
   }
 

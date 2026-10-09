@@ -182,6 +182,21 @@ fn landing_cta() -> Markup {
     }
 }
 
+/// Primary join path once the visitor has read what Ecclesia is for.
+fn landing_intro_cta() -> Markup {
+    html! {
+        div class="landing-intro-cta" {
+            p class="lede" {
+                "Join your community in sharing needs, offering help, and praying for one another."
+            }
+            div class="landing-cta" {
+                a class="btn" href="/register" { "Create an account" }
+                a class="btn btn-quiet" href="/session/new" { "Sign in" }
+            }
+        }
+    }
+}
+
 fn hero() -> Markup {
     html! {
         section class="hero" {
@@ -212,105 +227,111 @@ fn narrative() -> Markup {
     html! {
         section class="landing-narrative" aria-labelledby="story-title" {
             (scripture::verse(&scripture::ACTS_2_44))
+            p class="landing-intro" {
+                "Ecclesia Together is a shared place where Christians and churches can find one another when help is needed. Here, people can share practical needs, offer what they have to give, and carry one another in prayer\u{2014}whether someone needs a ride after surgery, a meal during a difficult week, help with a home repair, or simply someone willing to listen. The help may already be sitting in the next pew, or at a church down the road. We need a place where needs and willing hands can find each other, where churches can share their gifts and resources, and where no one has to carry a burden alone. That\u{2019}s what it means to live as one body in Christ."
+            }
+            (landing_intro_cta())
             div class="landing-phones" {
                 (handrail_post())
             }
             h2 id="story-title" { "The Church Takes Care of Its Own" }
             p {
-                "The church was a community before it was an organization."
+                "The church was never meant to be just a place we attend. It is a people who belong to one another."
             }
-            p { "From the beginning, Christians understood that they belonged to one another." }
-            p { "When someone was in need, the rest of the church did not simply offer sympathy and move on." }
-            p { "They stepped in." }
-            p { "What one person lacked, another could provide." }
-            p { "What one household could not carry, the wider body helped carry." }
+            p {
+                "From the beginning, Christians understood that when someone was in need, the rest of the community had a responsibility to respond. They shared what they had, carried one another\u{2019}s burdens, and made sure people were not left to face hardship alone."
+            }
+            p {
+                "Sometimes that care looks like a ride home after surgery, a meal for an exhausted parent, help repairing a home, or someone willing to sit and listen. These may seem like small things, but to someone who is struggling, they can mean everything."
+            }
+            p {
+                "The challenge is that needs are easy to miss. People don\u{2019}t always know who is struggling, and those who need help don\u{2019}t always know whom to ask."
+            }
             div class="landing-phones" {
                 (sarah_phone())
             }
-            p { "Paul gave that relationship a name:" }
-            (scripture::verse(&scripture::FIRST_CORINTHIANS_12_27_YOU))
-            p { "He went on to explain what that means in practice." }
-            p { "The members of a body cannot be indifferent to one another." }
-            p { "When one suffers, the others suffer with them." }
-            p { "When one is honored, the others rejoice." }
-            (scripture::verse(&scripture::FIRST_CORINTHIANS_12_26))
-            p { "That kind of care sounds simple. Living it out is harder." }
-            h3 { "When someone is overlooked, the church responds" }
+            h3 { "No One Should Slip Through the Cracks" }
             p {
-                "The need became obvious as the first church in Jerusalem grew."
+                "As the early church grew, some widows were being overlooked in the daily distribution of food. The apostles didn\u{2019}t ignore the problem or leave it for someone else to solve. They organized a response to make sure those women received the care they needed."
             }
-            p { "The Greek-speaking widows among the believers were being overlooked in the daily distribution of food." }
-            p { "The problem was not a lack of activity." }
-            p { "The church was growing, preaching, gathering, and serving." }
-            p { "But some of its own people were being missed." }
-            p { "The apostles did not treat that as someone else's problem." }
-            p { "They appointed others to take responsibility for the daily distribution so that no one in the church would be neglected." }
             (scripture::verse(&scripture::ACTS_6_1_NEGLECT))
-            p { "That is an important picture of what the church is meant to be." }
-            p { "There will always be people outside the church who need to hear the gospel, receive help, and experience the love of Christ." }
-            p { "That work matters enormously." }
-            p { "But the people already sitting beside us matter too." }
-            p { "A church can be passionate about reaching its community while quietly overlooking the person sitting in the next pew." }
-            p { "It can organize ministries for the city while a widow, a single parent, an elderly member, or a family facing a crisis goes without help." }
+            p { "That example still matters today." }
+            p {
+                "There will always be people outside our churches who need to experience the love of Christ. Serving them is part of our calling. But so is noticing the people already among us."
+            }
+            p {
+                "A congregation can be busy serving its community while a struggling family, an isolated older member, or someone quietly facing a crisis goes without help. Good intentions matter, but they aren\u{2019}t always enough. We need ways to see the needs around us and connect them with people who can respond."
+            }
             div class="landing-phones" {
                 (david_phone())
             }
+            h2 { "Churches Don\u{2019}t Have to Do It Alone" }
             p {
-                "The early church understood that caring for its own was not a distraction from its mission."
+                "A congregation may have needs it cannot meet by itself. Another church may have willing volunteers, useful skills, available resources, or people ready to serve\u{2014}but no way of knowing that help is needed."
             }
-            p strong { "It was part of the mission." }
-            h2 { "One church, not a collection of islands" }
-            p { "There is another problem that is easy to overlook." }
             p {
-                "A congregation can love its people, serve faithfully, and still become an island."
+                "One church may have tools while another needs a repair. One congregation may have volunteers available while another is struggling to care for a family in crisis. Often, the people and resources are already there. They simply aren\u{2019}t connected."
             }
-            p { "The church down the road may have families who need help." }
-            p { "Another congregation may have volunteers with skills that could make a difference." }
-            p { "One church may have resources sitting unused while another is struggling to meet a need." }
-            p { "But if they never know about one another, none of that matters." }
             p {
-                "The New Testament gives us a picture of a church where people shared what they had so that no one was left in need."
+                "Ecclesia Together helps bridge that gap by giving people and churches a shared place to communicate needs, offer help, and care for one another."
+            }
+            p {
+                "No individual can do everything. No congregation can meet every need alone. But when we work together, we can do far more than we can separately."
+            }
+            p {
+                "The goal isn\u{2019}t to replace the local church. It\u{2019}s to help the wider church live more fully as one body."
             }
             (scripture::verse(&scripture::ACTS_4_34))
-            p { "That does not mean every need disappeared." }
-            p { "It means the needs of the community became the concern of the community." }
             (church_map())
-            h2 { "A church that cares is a witness" }
-            p { "We see the same pattern in the generations that followed." }
+            h2 { "A Church That Cares Is a Witness" }
+            p {
+                "When Christians notice one another, respond to real needs, and keep showing up for one another, fellowship becomes more than a Sunday gathering."
+            }
+            p { "It becomes a community." }
             p {
                 "Tertullian recorded the reaction of outsiders to the way Christians treated one another:"
             }
             blockquote class="verse" {
                 p { "\u{201c}See how they love one another.\u{201d}" }
             }
-            p { "The care of its own members was something the world did not do." }
-            p { "That care was a light, and a witness, before anyone outside had to be told." }
             (scripture::verse(&scripture::FIRST_CORINTHIANS_12_26))
-            p { "When a congregation knows its people, notices when something is wrong, and responds when someone needs help, fellowship becomes more than a Sunday gathering." }
-            p { "It becomes a community." }
             p {
-                "And that kind of love is still one of the clearest ways the church can show the world who Christ is."
+                "The way we treat one another says something about the faith we profess. When people see a community that shares its resources, carries its burdens, and refuses to leave others behind, they see the love of Christ made visible."
             }
-            h2 { "Prayer matters" }
+            p {
+                "Caring for one another isn\u{2019}t a distraction from the church\u{2019}s mission. It is one of the ways we live it out."
+            }
+            h2 { "Prayer Matters" }
+            p {
+                "Not every burden can be solved with a meal, a ride, or a helping hand. Sometimes people need someone to listen, to remember them, and to pray with them through an uncertain season."
+            }
+            p {
+                "Prayer is part of how we carry one another\u{2019}s burdens. It reminds us that even when we cannot fix a situation, we do not have to face it alone."
+            }
             (prayer_phone())
             (scripture::verse(&scripture::GALATIANS_6_2))
-            p { "The same body that meets practical needs can carry one another in prayer." }
+            p {
+                "Ecclesia Together gives people and congregations a shared place to lift up prayer requests, stand with those who are struggling, and remind one another that they are not forgotten."
+            }
+            p {
+                "Practical help and prayer belong together. Both are ways of putting our faith into action."
+            }
             h2 { "One Body" }
             p {
-                "Jesus did not call us to build isolated communities that happen to believe the same things."
+                "Jesus did not call us to live as isolated individuals or as separate congregations that happen to share the same faith. He called us to be His body."
             }
-            p { "He called us to be His body." }
             (scripture::verse(&scripture::FIRST_CORINTHIANS_12_27))
-            p { "That means we belong to one another." }
-            p { "We care for the people in our own congregation." }
-            p { "We care for the churches around us." }
-            p { "We serve the people outside our walls." }
-            p { "We do all of it together." }
-            p strong {
-                "The church is stronger when we stop acting like islands and start living like one body."
+            p {
+                "That means caring for the people in our own congregation, the churches around us, and our neighbors beyond our walls."
             }
-            p { "The people who can help are already there." }
-            p { "They just need to find each other." }
+            p {
+                "Some of us can offer time. Others can share a skill, a meal, a ride, a resource, encouragement, or prayer. Each of us has something to give, and each of us may need help along the way."
+            }
+            p {
+                "We don\u{2019}t have to meet every need ourselves. We simply have to be willing to notice, to respond, and to work together."
+            }
+            p { "The people who can help are already here." }
+            p strong { "They just need to find one another." }
         }
     }
 }
