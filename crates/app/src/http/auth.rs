@@ -46,6 +46,7 @@ pub async fn landing(
         html(views::landing(
             views::flash_from(flash.ok, flash.err),
             &session.csrf,
+            &state.origin,
         )),
     ))
 }

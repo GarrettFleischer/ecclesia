@@ -1634,6 +1634,11 @@ async fn us_app_01_manifest_is_installable() {
     );
 
     let (landing, _, _) = get_page(world.app.clone(), None, "/").await;
+    assert!(landing.contains(
+        "<title>Ecclesia · Bring the Body of Christ Back Together</title>"
+    ));
+    assert!(landing.contains(r#"name="description" content="Ecclesia helps the body of Christ live as one—making needs known, offering practical help, and praying for one another across nearby churches.""#));
+    assert!(landing.contains(r#"property="og:image" content="http://127.0.0.1:43781/static/icon-512.png""#));
     assert!(landing.contains("apple-touch-icon"));
     assert!(landing.contains("install-bar"));
     assert!(landing.contains("install-bar-ios"));

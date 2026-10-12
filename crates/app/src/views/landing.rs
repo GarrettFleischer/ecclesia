@@ -10,19 +10,27 @@ use super::draft::RegisterDraft;
 use super::flash::Flash;
 use super::layout::{
     Icon, Nav, OnboardStep, csrf_input, icon, mark_glyph, onboard_steps, page, page_lead,
-    password_field, vesica_lockup,
+    page_public, password_field, vesica_lockup,
 };
 use super::scripture;
 
+/// Search and link previews for the public homepage.
+pub const LANDING_META_TITLE: &str = "Bring the Body of Christ Back Together";
+pub const LANDING_META_DESCRIPTION: &str =
+    "Ecclesia helps the body of Christ live as one—making needs known, offering practical help, and praying for one another across nearby churches.";
+
 /// Public landing. The story under the hero is the only page.
-pub fn landing(flash: Option<Flash>, csrf: &str) -> Markup {
-    super::layout::page(
-        "Ecclesia",
+pub fn landing(flash: Option<Flash>, csrf: &str, origin: &str) -> Markup {
+    page_public(
+        LANDING_META_TITLE,
         None,
         0,
         Nav::Landing,
         flash,
         csrf,
+        origin,
+        "/",
+        LANDING_META_DESCRIPTION,
         html! {
             (hero())
             (story_sections())

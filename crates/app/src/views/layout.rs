@@ -284,6 +284,8 @@ fn seed_number(seed: &str) -> usize {
     })
 }
 
+const SHARE_IMAGE_PATH: &str = "/static/icon-512.png";
+
 pub fn page(
     title: &str,
     user: Option<&User>,
@@ -292,6 +294,43 @@ pub fn page(
     flash: Option<Flash>,
     csrf: &str,
     main: Markup,
+) -> Markup {
+    page_shell(title, user, unread, nav, flash, csrf, main, None)
+}
+
+pub fn page_public(
+    title: &str,
+    user: Option<&User>,
+    unread: i64,
+    nav: Nav,
+    flash: Option<Flash>,
+    csrf: &str,
+    origin: &str,
+    canonical_path: &str,
+    description: &str,
+    main: Markup,
+) -> Markup {
+    page_shell(
+        title,
+        user,
+        unread,
+        nav,
+        flash,
+        csrf,
+        main,
+        Some((origin, canonical_path, description)),
+    )
+}
+
+fn page_shell(
+    title: &str,
+    user: Option<&User>,
+    unread: i64,
+    nav: Nav,
+    flash: Option<Flash>,
+    csrf: &str,
+    main: Markup,
+    share: Option<(&str, &str, &str)>,
 ) -> Markup {
     html! {
         (DOCTYPE)
@@ -307,6 +346,9 @@ pub fn page(
                 meta name="apple-mobile-web-app-status-bar-style" content="default";
                 meta name="apple-mobile-web-app-title" content="Ecclesia";
                 meta name="application-name" content="Ecclesia";
+                @if let Some((origin, path, description)) = share {
+                    (share_meta(origin, title, path, description))
+                }
                 link rel="manifest" href="/static/manifest.webmanifest";
                 link rel="icon" href="/static/favicon.svg" type="image/svg+xml";
                 link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192";
@@ -580,11 +622,35 @@ fn dock_current(state: DockState) -> Option<&'static str> {
     }
 }
 
+fn share_meta(origin: &str, title: &str, canonical_path: &str, description: &str) -> Markup {
+    let page_title = document_title(title);
+    let canonical = absolute_url(origin, canonical_path);
+    let image = absolute_url(origin, SHARE_IMAGE_PATH);
+    html! {
+        meta name="description" content=(description);
+        link rel="canonical" href=(canonical);
+        meta property="og:type" content="website";
+        meta property="og:site_name" content="Ecclesia";
+        meta property="og:title" content=(page_title);
+        meta property="og:description" content=(description);
+        meta property="og:url" content=(canonical);
+        meta property="og:image" content=(image);
+        meta name="twitter:card" content="summary";
+        meta name="twitter:title" content=(page_title);
+        meta name="twitter:description" content=(description);
+        meta name="twitter:image" content=(image);
+    }
+}
+
+fn absolute_url(origin: &str, path: &str) -> String {
+    format!("{}{}", origin.trim_end_matches('/'), path)
+}
+
 fn document_title(title: &str) -> String {
     if title == "Ecclesia" {
         "Ecclesia".into()
     } else {
-        format!("{title} · Ecclesia")
+        format!("Ecclesia · {title}")
     }
 }
 
